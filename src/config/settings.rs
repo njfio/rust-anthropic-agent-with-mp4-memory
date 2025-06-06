@@ -116,7 +116,7 @@ impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
             memory_path: PathBuf::from("agent_memory.mp4"),
-            index_path: PathBuf::from("agent_memory.json"),
+            index_path: PathBuf::from("agent_memory"), // Base path - library will add .metadata and .vector extensions
             auto_save: true,
             max_conversations: 1000,
             enable_search: true,
@@ -162,7 +162,12 @@ impl AgentConfig {
     pub fn with_memory_path<P: Into<PathBuf>>(mut self, path: P) -> Self {
         let path = path.into();
         self.memory.memory_path = path.clone();
-        self.memory.index_path = path.with_extension("json");
+        // Use base path without extension - rust-mp4-memory will add .metadata and .vector
+        if let Some(stem) = path.file_stem() {
+            self.memory.index_path = path.with_file_name(stem);
+        } else {
+            self.memory.index_path = path.clone();
+        }
         self
     }
 

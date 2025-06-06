@@ -5,12 +5,26 @@ use crate::memory::SearchResult;
 use crate::utils::error::{AgentError, Result};
 
 /// Wrapper around the rust-mp4-memory library
-#[derive(Debug)]
 pub struct MemvidWrapper {
     memory_path: PathBuf,
     index_path: PathBuf,
+    encoder: Option<rust_mem_vid::MemvidEncoder>,
+    retriever: Option<rust_mem_vid::MemvidRetriever>,
     chunks: Vec<String>,
     is_built: bool,
+}
+
+impl std::fmt::Debug for MemvidWrapper {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MemvidWrapper")
+            .field("memory_path", &self.memory_path)
+            .field("index_path", &self.index_path)
+            .field("chunks", &self.chunks.len())
+            .field("is_built", &self.is_built)
+            .field("has_encoder", &self.encoder.is_some())
+            .field("has_retriever", &self.retriever.is_some())
+            .finish()
+    }
 }
 
 /// Statistics about the memory system
@@ -25,6 +39,7 @@ impl MemvidWrapper {
     /// Create a new MemVid wrapper
     pub async fn new<P: AsRef<Path>>(memory_path: P, index_path: P) -> Result<Self> {
         let memory_path = memory_path.as_ref().to_path_buf();
+        // The index_path is actually the base path - the library will add .metadata and .vector extensions
         let index_path = index_path.as_ref().to_path_buf();
 
         // Initialize rust_mem_vid if not already done
@@ -32,9 +47,32 @@ impl MemvidWrapper {
             warn!("Failed to initialize rust_mem_vid: {}", e);
         }
 
+        // Create encoder for building videos
+        let encoder = rust_mem_vid::MemvidEncoder::new().await
+            .map_err(|e| AgentError::memory(format!("Failed to create MemvidEncoder: {}", e)))?;
+
+        // Try to create retriever if files exist
+        // Check for the actual files that the library creates: .metadata and .vector
+        let metadata_path = index_path.with_extension("metadata");
+        let vector_path = index_path.with_extension("vector");
+
+        let retriever = if memory_path.exists() && metadata_path.exists() && vector_path.exists() {
+            let memory_path_str = memory_path.to_str()
+                .ok_or_else(|| AgentError::memory("Invalid memory path".to_string()))?;
+            let index_path_str = index_path.to_str()
+                .ok_or_else(|| AgentError::memory("Invalid index path".to_string()))?;
+
+            Some(rust_mem_vid::MemvidRetriever::new(memory_path_str, index_path_str).await
+                .map_err(|e| AgentError::memory(format!("Failed to create MemvidRetriever: {}", e)))?)
+        } else {
+            None
+        };
+
         let mut wrapper = Self {
             memory_path,
             index_path,
+            encoder: Some(encoder),
+            retriever,
             chunks: Vec::new(),
             is_built: false,
         };
@@ -47,21 +85,45 @@ impl MemvidWrapper {
 
     /// Load existing memory if files exist
     async fn load_existing(&mut self) -> Result<()> {
-        if self.memory_path.exists() && self.index_path.exists() {
+        let metadata_path = self.index_path.with_extension("metadata");
+        let vector_path = self.index_path.with_extension("vector");
+
+        if self.memory_path.exists() && metadata_path.exists() && vector_path.exists() {
             info!("Loading existing memory from {:?}", self.memory_path);
 
-            // Load chunks from the index file
-            let content = std::fs::read_to_string(&self.index_path)?;
-            if let Ok(chunks) = serde_json::from_str::<Vec<String>>(&content) {
-                self.chunks = chunks;
-                info!("Loaded {} chunks from existing memory", self.chunks.len());
+            // If we have a retriever, we can get info about the existing memory
+            if let Some(ref retriever) = self.retriever {
+                // Get info about the existing video
+                let video_info = retriever.get_video_info();
+                info!("Loaded existing memory with {} frames", video_info.total_frames);
+                self.is_built = true;
             } else {
-                warn!("Failed to parse existing memory index, starting fresh");
+                // Fall back to loading from index file
+                self.load_from_index_file().await?;
             }
-
-            self.is_built = true;
         } else {
             debug!("No existing memory found, starting fresh");
+        }
+        Ok(())
+    }
+
+    /// Load chunks from the index file (fallback method)
+    async fn load_from_index_file(&mut self) -> Result<()> {
+        let metadata_path = self.index_path.with_extension("metadata");
+
+        if metadata_path.exists() {
+            // Try to load the metadata file to get chunk count
+            match std::fs::read_to_string(&metadata_path) {
+                Ok(_content) => {
+                    // The metadata file contains structured data, not just a simple array
+                    // For now, just mark as built since we know the files exist
+                    info!("Found existing metadata file, marking as built");
+                    self.is_built = true;
+                }
+                Err(e) => {
+                    warn!("Failed to read metadata file: {}", e);
+                }
+            }
         }
         Ok(())
     }
@@ -96,26 +158,48 @@ impl MemvidWrapper {
 
         info!("Building memory video with {} chunks", self.chunks.len());
 
-        // For now, we'll simulate the video building process
-        // In a real implementation, this would use the rust-mp4-memory library
-        // to encode the chunks into a video file
-        
-        // TODO: Implement actual video building using rust_mem_vid
-        // let mut encoder = rust_mem_vid::MemvidEncoder::new().await?;
-        // encoder.add_chunks(self.chunks.clone()).await?;
-        // encoder.build_video(&self.memory_path, &self.index_path).await?;
+        // Use the actual rust-mp4-memory library to build the video
+        if let Some(ref mut encoder) = self.encoder {
+            // Add all chunks to the encoder
+            encoder.add_chunks(self.chunks.clone()).await
+                .map_err(|e| AgentError::memory(format!("Failed to add chunks to encoder: {}", e)))?;
 
-        // For now, we'll just save the chunks as JSON for testing
-        let chunks_json = serde_json::to_string_pretty(&self.chunks)
-            .map_err(|e| AgentError::memory(format!("Failed to serialize chunks: {}", e)))?;
-        
-        std::fs::write(&self.index_path, chunks_json)?;
-        
-        // Create a dummy video file
-        std::fs::write(&self.memory_path, b"dummy video content")?;
+            // Build the video
+            let memory_path_str = self.memory_path.to_str()
+                .ok_or_else(|| AgentError::memory("Invalid memory path".to_string()))?;
+            let index_path_str = self.index_path.to_str()
+                .ok_or_else(|| AgentError::memory("Invalid index path".to_string()))?;
 
-        self.is_built = true;
-        info!("Memory video built successfully");
+            let _stats = encoder.build_video(memory_path_str, index_path_str).await
+                .map_err(|e| AgentError::memory(format!("Failed to build video: {}", e)))?;
+
+            // Wait a moment for files to be fully written and verify they exist
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+            // Check if files exist before creating retriever
+            if !self.memory_path.exists() {
+                return Err(AgentError::memory(format!("Video file not found after build: {:?}", self.memory_path)));
+            }
+
+            let metadata_path = self.index_path.with_extension("metadata");
+            let vector_path = self.index_path.with_extension("vector");
+
+            if !metadata_path.exists() {
+                return Err(AgentError::memory(format!("Metadata file not found after build: {:?}", metadata_path)));
+            }
+            if !vector_path.exists() {
+                return Err(AgentError::memory(format!("Vector file not found after build: {:?}", vector_path)));
+            }
+
+            // Create a new retriever for the built video
+            self.retriever = Some(rust_mem_vid::MemvidRetriever::new(memory_path_str, index_path_str).await
+                .map_err(|e| AgentError::memory(format!("Failed to create retriever after build: {}", e)))?);
+
+            self.is_built = true;
+            info!("Memory video built successfully");
+        } else {
+            return Err(AgentError::memory("No encoder available for building video".to_string()));
+        }
 
         Ok(())
     }
@@ -128,28 +212,38 @@ impl MemvidWrapper {
             return Ok(Vec::new());
         }
 
-        // For now, we'll implement a simple text search
-        // In a real implementation, this would use the rust-mp4-memory library
-        // for semantic search
-        
-        // TODO: Implement actual semantic search using rust_mem_vid
-        // let retriever = rust_mem_vid::MemvidRetriever::new(&self.memory_path, &self.index_path).await?;
-        // let results = retriever.search(query, limit).await?;
+        // Use the actual rust-mp4-memory library for semantic search
+        if let Some(ref retriever) = self.retriever {
+            let search_results = retriever.search(query, limit).await
+                .map_err(|e| AgentError::memory(format!("Failed to search memory: {}", e)))?;
 
-        // Simple text search implementation for testing
-        let mut results = Vec::new();
-        
-        // Load chunks from index file if it exists
-        let chunks = if self.index_path.exists() {
-            let content = std::fs::read_to_string(&self.index_path)?;
-            serde_json::from_str::<Vec<String>>(&content)
-                .unwrap_or_else(|_| self.chunks.clone())
+            // Convert Vec<String> to our SearchResult format
+            let results: Vec<SearchResult> = search_results.into_iter().enumerate().map(|(i, content)| SearchResult {
+                content,
+                score: 1.0 - (i as f32 / limit as f32), // Simple scoring based on order
+                chunk_id: i,
+                metadata: None,
+            }).collect();
+
+            debug!("Found {} search results", results.len());
+            Ok(results)
         } else {
-            self.chunks.clone()
-        };
+            // Fall back to simple text search if no retriever available
+            debug!("No retriever available, falling back to simple text search");
+            self.simple_text_search(query, limit).await
+        }
+    }
+
+    /// Simple text search fallback
+    async fn simple_text_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        let mut results = Vec::new();
+
+        // For simple text search, just use the in-memory chunks
+        // The new library format is more complex and requires proper parsing
+        let chunks = self.chunks.clone();
 
         let query_lower = query.to_lowercase();
-        
+
         for (i, chunk) in chunks.iter().enumerate() {
             if chunk.to_lowercase().contains(&query_lower) {
                 results.push(SearchResult {
@@ -158,7 +252,7 @@ impl MemvidWrapper {
                     chunk_id: i,
                     metadata: None,
                 });
-                
+
                 if results.len() >= limit {
                     break;
                 }
@@ -168,42 +262,70 @@ impl MemvidWrapper {
         // Sort by score (highest first)
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
-        debug!("Found {} search results", results.len());
+        debug!("Found {} search results (simple text search)", results.len());
         Ok(results)
     }
 
     /// Get memory statistics
     pub async fn get_stats(&self) -> Result<MemvidStats> {
-        let video_size = if self.memory_path.exists() {
-            std::fs::metadata(&self.memory_path)?.len()
-        } else {
-            0
-        };
+        if let Some(ref retriever) = self.retriever {
+            // Get stats from the actual video
+            let video_info = retriever.get_video_info();
+            let video_size = if self.memory_path.exists() {
+                std::fs::metadata(&self.memory_path)?.len()
+            } else {
+                0
+            };
 
-        let index_size = if self.index_path.exists() {
-            std::fs::metadata(&self.index_path)?.len()
+            Ok(MemvidStats {
+                total_chunks: video_info.total_frames as usize, // Use total_frames as proxy for chunks
+                video_size_bytes: video_size,
+                index_size_bytes: if self.index_path.exists() {
+                    std::fs::metadata(&self.index_path)?.len()
+                } else {
+                    0
+                },
+            })
         } else {
-            0
-        };
+            // Fall back to file system stats
+            let video_size = if self.memory_path.exists() {
+                std::fs::metadata(&self.memory_path)?.len()
+            } else {
+                0
+            };
 
-        Ok(MemvidStats {
-            total_chunks: self.chunks.len(),
-            video_size_bytes: video_size,
-            index_size_bytes: index_size,
-        })
+            let index_size = if self.index_path.exists() {
+                std::fs::metadata(&self.index_path)?.len()
+            } else {
+                0
+            };
+
+            Ok(MemvidStats {
+                total_chunks: self.chunks.len(),
+                video_size_bytes: video_size,
+                index_size_bytes: index_size,
+            })
+        }
     }
 
     /// Extract text from a specific frame (for debugging)
-    pub async fn extract_frame(&self, frame_number: usize) -> Result<Option<String>> {
-        // TODO: Implement frame extraction using rust_mem_vid
-        // let retriever = rust_mem_vid::MemvidRetriever::new(&self.memory_path, &self.index_path).await?;
-        // let frame_content = retriever.extract_frame(frame_number).await?;
-        
-        // For now, return a chunk if it exists
-        if frame_number < self.chunks.len() {
-            Ok(Some(self.chunks[frame_number].clone()))
+    pub async fn extract_frame(&mut self, frame_number: usize) -> Result<Option<String>> {
+        if let Some(ref mut retriever) = self.retriever {
+            // Use the actual rust-mp4-memory library to extract frame
+            match retriever.extract_frame(frame_number as u32).await {
+                Ok(content) => Ok(Some(content)),
+                Err(e) => {
+                    debug!("Failed to extract frame {}: {}", frame_number, e);
+                    Ok(None)
+                }
+            }
         } else {
-            Ok(None)
+            // Fall back to returning a chunk if it exists
+            if frame_number < self.chunks.len() {
+                Ok(Some(self.chunks[frame_number].clone()))
+            } else {
+                Ok(None)
+            }
         }
     }
 
