@@ -66,6 +66,8 @@ pub struct ToolConfig {
     pub enable_code_execution: bool,
     /// Enable web search tool
     pub enable_web_search: bool,
+    /// Enable code analysis tool
+    pub enable_code_analysis: bool,
     /// Custom tool configurations
     pub custom_tools: HashMap<String, serde_json::Value>,
     /// Tool timeout in seconds
@@ -133,6 +135,7 @@ impl Default for ToolConfig {
             enable_file_tools: true,
             enable_code_execution: true,
             enable_web_search: true,
+            enable_code_analysis: true,
             custom_tools: HashMap::new(),
             tool_timeout_seconds: 30,
         }

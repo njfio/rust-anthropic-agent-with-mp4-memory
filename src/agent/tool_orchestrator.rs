@@ -7,6 +7,7 @@ use crate::anthropic::tools::AnthropicTool;
 use crate::config::AgentConfig;
 use crate::memory::MemoryManager;
 use crate::tools::{
+    code_analysis::CodeAnalysisTool,
     custom_tools::{HttpRequestTool, ShellCommandTool, UuidGeneratorTool},
     file_system::{DirectoryListTool, FileReadTool, FileWriteTool},
     memory_tools::{ConversationSearchTool, MemorySearchTool, MemorySaveTool, MemoryStatsTool},
@@ -80,8 +81,14 @@ impl ToolOrchestrator {
         if config.tools.enable_web_search {
             let web_search = AnthropicTool::web_search();
             self.anthropic_tools.push(web_search);
-            
+
             debug!("Registered web search tool");
+        }
+
+        // Register code analysis tool if enabled
+        if config.tools.enable_code_analysis {
+            self.tool_registry.register(CodeAnalysisTool::new());
+            debug!("Registered code analysis tool");
         }
 
         // Register utility tools
@@ -137,6 +144,11 @@ impl ToolOrchestrator {
 
         debug!("Providing {} tool definitions to API", definitions.len());
         definitions
+    }
+
+    /// Execute a single tool directly
+    pub async fn execute_tool_direct(&self, tool_name: &str, input: serde_json::Value) -> Result<ToolResult> {
+        self.tool_registry.execute(tool_name, input).await
     }
 
     /// Execute tools from content blocks

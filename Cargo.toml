@@ -52,6 +52,9 @@ tempfile = "3.8"
 # Memory integration - using rust-mp4-memory
 rust_mem_vid = { git = "https://github.com/njfio/rust-mp4-memory.git", branch = "main" }
 
+# Code analysis integration - using rust-treesitter-agent-code-utility
+rust_tree_sitter = { git = "https://github.com/njfio/rust-treesitter-agent-code-utility.git", branch = "main" }
+
 # Text processing
 regex = "1.0"
 
@@ -78,10 +81,11 @@ tokio-test = "0.4"
 [features]
 default = ["memory", "all-tools"]
 memory = []
-all-tools = ["text-editor", "memory-tools", "file-tools"]
+all-tools = ["text-editor", "memory-tools", "file-tools", "code-analysis"]
 text-editor = []
 memory-tools = []
 file-tools = []
+code-analysis = []
 
 [profile.release]
 opt-level = 3

@@ -221,6 +221,11 @@ impl Agent {
         self.tool_orchestrator.get_tool_names()
     }
 
+    /// Execute a specific tool directly
+    pub async fn execute_tool(&self, tool_name: &str, input: serde_json::Value) -> Result<crate::tools::ToolResult> {
+        self.tool_orchestrator.execute_tool_direct(tool_name, input).await
+    }
+
     /// Update configuration
     pub async fn update_config(&mut self, config: AgentConfig) -> Result<()> {
         config.validate()?;

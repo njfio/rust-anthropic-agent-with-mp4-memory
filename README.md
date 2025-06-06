@@ -18,9 +18,16 @@ A comprehensive AI agent system in Rust that integrates with Anthropic's Claude 
 
 ### 🛠️ **Extensible Tool System**
 - **Built-in Tools**: Text editor, file system, memory, and utility tools
+- **AI Code Analysis**: Intelligent code explanations, security scanning, and refactoring suggestions
 - **Custom Tools**: Easy framework for developing custom tools
 - **Server Tools**: Integration with Anthropic's server-side tools
 - **Tool Orchestration**: Intelligent tool execution and result handling
+
+### 🧠 **AI-Powered Code Analysis**
+- **Smart Explanations**: AI-generated code explanations with learning mode
+- **Security Scanning**: Automated vulnerability detection and compliance checking
+- **Refactoring Suggestions**: Intelligent code improvement recommendations
+- **Pattern Recognition**: Advanced code pattern analysis and insights
 
 ### 🏗️ **Robust Architecture**
 - **Type Safety**: Comprehensive type system for all API interactions
@@ -97,6 +104,68 @@ cargo run -- stats
 
 # List available tools
 cargo run -- tools
+
+# AI-powered code analysis
+cargo run -- analyze src --action explain --detailed --learning
+cargo run -- analyze src --action security --compliance
+cargo run -- analyze src --action refactor --quick-wins
+```
+
+## 🧠 AI Code Analysis
+
+The agent includes powerful AI-driven code analysis capabilities powered by the integrated rust-treesitter-agent-code-utility.
+
+### Available Analysis Actions
+
+#### 🔍 **Code Explanations** (`explain`)
+Generate intelligent explanations of your codebase with AI insights:
+
+```bash
+# Basic explanation
+cargo run -- analyze src/main.rs --action explain
+
+# Detailed explanation with learning mode
+cargo run -- analyze src --action explain --detailed --learning
+```
+
+#### 🔒 **Security Scanning** (`security`)
+Automated security vulnerability detection and compliance checking:
+
+```bash
+# Basic security scan
+cargo run -- analyze src --action security
+
+# Security scan with compliance assessment
+cargo run -- analyze src --action security --compliance
+```
+
+#### 🔧 **Refactoring Suggestions** (`refactor`)
+Smart code improvement recommendations:
+
+```bash
+# General refactoring suggestions
+cargo run -- analyze src --action refactor
+
+# Quick wins for immediate improvements
+cargo run -- analyze src --action refactor --quick-wins
+```
+
+#### 📊 **Other Analysis Types**
+- `analyze` - Comprehensive code analysis
+- `insights` - Generate architectural insights
+- `find_symbols` - Find specific symbols
+- `query_patterns` - Query code patterns
+- `stats` - Generate code statistics
+- `map_structure` - Map code structure
+
+### Interactive AI Analysis
+
+The agent can also perform code analysis through natural conversation:
+
+```bash
+cargo run -- chat "Can you perform a security scan on my src directory?"
+cargo run -- chat "Explain the code structure in src/main.rs with learning insights"
+cargo run -- chat "Give me refactoring suggestions for quick wins"
 ```
 
 ## 📖 Examples
@@ -225,6 +294,7 @@ max_history_length = 50
 ### Built-in Tools
 
 - **Memory Tools**: Search, save, and manage persistent memory
+- **Code Analysis**: AI-powered code explanations, security scanning, and refactoring suggestions
 - **Text Editor**: View and edit files with full Anthropic text editor support
 - **File System**: Read, write, and list files and directories
 - **HTTP Requests**: Make web requests with domain filtering
@@ -289,11 +359,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [Anthropic](https://www.anthropic.com/) for the Claude API
 - [rust-mp4-memory](https://github.com/njfio/rust-mp4-memory) for the memory system
+- [rust-treesitter-agent-code-utility](https://github.com/njfio/rust-treesitter-agent-code-utility) for AI code analysis
 - The Rust community for excellent crates and tools
 
 ## 🔗 Related Projects
 
 - [rust-mp4-memory](https://github.com/njfio/rust-mp4-memory) - MP4-based memory storage
+- [rust-treesitter-agent-code-utility](https://github.com/njfio/rust-treesitter-agent-code-utility) - AI-powered code analysis
 - [Anthropic API](https://docs.anthropic.com/) - Claude AI API documentation
 
 ---
