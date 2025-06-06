@@ -30,9 +30,13 @@ Thumbs.db
 # Memory files (these contain user data and should not be committed)
 *.mp4
 *.json
-agent_memory.*
+agent_memory*
 memory_*.mp4
 memory_*.json
+*.metadata
+*.vector
+agent_memory_frames/
+*_frames/
 
 # Logs
 *.log
