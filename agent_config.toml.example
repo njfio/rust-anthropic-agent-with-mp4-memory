@@ -1,0 +1,86 @@
+# Example configuration file for rust_memvid_agent
+# Copy this to agent_config.toml and customize for your needs
+
+[anthropic]
+# Your Anthropic API key (can also be set via ANTHROPIC_API_KEY environment variable)
+api_key = "your-anthropic-api-key-here"
+
+# Base URL for the Anthropic API (usually don't need to change this)
+base_url = "https://api.anthropic.com"
+
+# Model to use - options include:
+# - claude-opus-4-20250514 (latest and most capable)
+# - claude-sonnet-4-20250514 (fast and capable)
+# - claude-3-7-sonnet-20241022 (previous generation)
+model = "claude-opus-4-20250514"
+
+# Maximum tokens for responses
+max_tokens = 4096
+
+# Temperature for response generation (0.0 = deterministic, 2.0 = very creative)
+temperature = 0.7
+
+# Request timeout in seconds
+timeout_seconds = 60
+
+# Maximum retries for failed requests
+max_retries = 3
+
+[memory]
+# Path to the memory file (MP4 format)
+memory_path = "agent_memory.mp4"
+
+# Path to the memory index file (JSON format)
+index_path = "agent_memory.json"
+
+# Enable automatic memory saving
+auto_save = true
+
+# Maximum number of conversations to keep in memory
+max_conversations = 1000
+
+# Enable semantic search capabilities
+enable_search = true
+
+# Maximum number of search results to return
+search_limit = 10
+
+[tools]
+# Enable the text editor tool (for viewing and editing files)
+enable_text_editor = true
+
+# Enable memory tools (search, save, stats)
+enable_memory_tools = true
+
+# Enable file system tools (read, write, list)
+enable_file_tools = true
+
+# Enable code execution tool (server-side Python execution)
+enable_code_execution = true
+
+# Enable web search tool (server-side web search)
+enable_web_search = true
+
+# Timeout for tool execution in seconds
+tool_timeout_seconds = 30
+
+# Custom tool configurations (advanced users)
+[tools.custom_tools]
+# Example custom tool configuration
+# weather_api_key = "your-weather-api-key"
+
+[agent]
+# Agent name/identifier
+name = "MemVidAgent"
+
+# System prompt to set the agent's behavior and personality
+# system_prompt = "You are a helpful AI assistant with persistent memory..."
+
+# Enable conversation persistence
+persist_conversations = true
+
+# Maximum conversation history length to send to the API
+max_history_length = 50
+
+# Enable streaming responses (experimental)
+enable_streaming = false

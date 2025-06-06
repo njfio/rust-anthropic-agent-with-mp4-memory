@@ -1,0 +1,220 @@
+use reqwest::{Client, RequestBuilder};
+use serde_json::json;
+use std::time::Duration;
+use tracing::{debug, error, info, warn};
+
+use crate::anthropic::models::{ChatRequest, ChatResponse};
+use crate::config::AnthropicConfig;
+use crate::utils::error::{AgentError, Result};
+
+/// HTTP client for the Anthropic API
+#[derive(Debug, Clone)]
+pub struct AnthropicClient {
+    client: Client,
+    config: AnthropicConfig,
+}
+
+impl AnthropicClient {
+    /// Create a new Anthropic client
+    pub fn new(config: AnthropicConfig) -> Result<Self> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(config.timeout_seconds))
+            .build()
+            .map_err(|e| AgentError::config(format!("Failed to create HTTP client: {}", e)))?;
+
+        Ok(Self { client, config })
+    }
+
+    /// Send a chat request to the Anthropic API
+    pub async fn chat(&self, request: ChatRequest) -> Result<ChatResponse> {
+        let mut retries = 0;
+        let max_retries = self.config.max_retries;
+
+        loop {
+            match self.send_chat_request(&request).await {
+                Ok(response) => return Ok(response),
+                Err(e) if retries < max_retries && e.is_retryable() => {
+                    retries += 1;
+                    let delay = Duration::from_millis(1000 * (2_u64.pow(retries - 1)));
+                    warn!(
+                        "Request failed (attempt {}/{}), retrying in {:?}: {}",
+                        retries, max_retries, delay, e
+                    );
+                    tokio::time::sleep(delay).await;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Send a single chat request without retries
+    async fn send_chat_request(&self, request: &ChatRequest) -> Result<ChatResponse> {
+        debug!("Sending chat request to Anthropic API");
+
+        let url = format!("{}/v1/messages", self.config.base_url);
+        let mut req_builder = self
+            .client
+            .post(&url)
+            .header("x-api-key", &self.config.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json");
+
+        // Add beta headers if needed
+        if self.needs_beta_headers(request) {
+            let beta_headers = self.get_beta_headers(request);
+            req_builder = req_builder.header("anthropic-beta", beta_headers);
+        }
+
+        let response = req_builder
+            .json(request)
+            .send()
+            .await
+            .map_err(|e| AgentError::Http(e))?;
+
+        let status = response.status();
+        let response_text = response
+            .text()
+            .await
+            .map_err(|e| AgentError::Http(e))?;
+
+        debug!("Received response with status: {}", status);
+
+        if !status.is_success() {
+            return self.handle_error_response(status, &response_text);
+        }
+
+        let chat_response: ChatResponse = serde_json::from_str(&response_text)
+            .map_err(|e| AgentError::Json(e))?;
+
+        info!(
+            "Chat request successful. Input tokens: {}, Output tokens: {}",
+            chat_response.usage.input_tokens, chat_response.usage.output_tokens
+        );
+
+        Ok(chat_response)
+    }
+
+    /// Check if the request needs beta headers
+    fn needs_beta_headers(&self, request: &ChatRequest) -> bool {
+        if let Some(tools) = &request.tools {
+            tools.iter().any(|tool| {
+                matches!(
+                    tool.tool_type.as_str(),
+                    "code_execution_20250522" | "text_editor_20250429" | "text_editor_20250124"
+                )
+            })
+        } else {
+            false
+        }
+    }
+
+    /// Get the appropriate beta headers for the request
+    fn get_beta_headers(&self, request: &ChatRequest) -> String {
+        let mut headers = Vec::new();
+
+        if let Some(tools) = &request.tools {
+            for tool in tools {
+                match tool.tool_type.as_str() {
+                    "code_execution_20250522" => {
+                        if !headers.contains(&"code-execution-2025-05-22") {
+                            headers.push("code-execution-2025-05-22");
+                        }
+                    }
+                    "text_editor_20250429" | "text_editor_20250124" => {
+                        // Text editor tools don't require beta headers in current API
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        headers.join(",")
+    }
+
+    /// Handle error responses from the API
+    fn handle_error_response(&self, status: reqwest::StatusCode, body: &str) -> Result<ChatResponse> {
+        error!("API request failed with status {}: {}", status, body);
+
+        // Try to parse error response
+        if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(body) {
+            let error_message = error_json
+                .get("error")
+                .and_then(|e| e.get("message"))
+                .and_then(|m| m.as_str())
+                .unwrap_or("Unknown error");
+
+            match status.as_u16() {
+                401 => Err(AgentError::authentication(format!(
+                    "Invalid API key: {}",
+                    error_message
+                ))),
+                429 => Err(AgentError::rate_limit(format!(
+                    "Rate limit exceeded: {}",
+                    error_message
+                ))),
+                400..=499 => Err(AgentError::anthropic_api(format!(
+                    "Client error ({}): {}",
+                    status, error_message
+                ))),
+                500..=599 => Err(AgentError::anthropic_api(format!(
+                    "Server error ({}): {}",
+                    status, error_message
+                ))),
+                _ => Err(AgentError::anthropic_api(format!(
+                    "HTTP error ({}): {}",
+                    status, error_message
+                ))),
+            }
+        } else {
+            Err(AgentError::anthropic_api(format!(
+                "HTTP error ({}): {}",
+                status, body
+            )))
+        }
+    }
+
+    /// Create a streaming chat request (placeholder for future implementation)
+    pub async fn chat_stream(&self, _request: ChatRequest) -> Result<()> {
+        // TODO: Implement streaming support
+        Err(AgentError::config(
+            "Streaming is not yet implemented".to_string(),
+        ))
+    }
+
+    /// Test the API connection
+    pub async fn test_connection(&self) -> Result<()> {
+        let test_request = ChatRequest {
+            model: self.config.model.clone(),
+            max_tokens: 10,
+            messages: vec![crate::anthropic::models::ApiMessage::user("Hello")],
+            system: None,
+            tools: None,
+            tool_choice: None,
+            temperature: Some(0.0),
+            stream: None,
+        };
+
+        self.chat(test_request).await?;
+        info!("API connection test successful");
+        Ok(())
+    }
+
+    /// Get the current configuration
+    pub fn config(&self) -> &AnthropicConfig {
+        &self.config
+    }
+
+    /// Update the configuration
+    pub fn update_config(&mut self, config: AnthropicConfig) -> Result<()> {
+        // Recreate the client with new timeout if needed
+        if config.timeout_seconds != self.config.timeout_seconds {
+            self.client = Client::builder()
+                .timeout(Duration::from_secs(config.timeout_seconds))
+                .build()
+                .map_err(|e| AgentError::config(format!("Failed to create HTTP client: {}", e)))?;
+        }
+
+        self.config = config;
+        Ok(())
+    }
+}

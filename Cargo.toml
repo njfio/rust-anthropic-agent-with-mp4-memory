@@ -1,0 +1,93 @@
+[package]
+name = "rust_memvid_agent"
+version = "0.1.0"
+edition = "2021"
+authors = ["Nicholas Ferguson <me@njf.io>"]
+description = "AI agent system in Rust with Anthropic integration and MP4 memory storage"
+license = "MIT"
+repository = "https://github.com/njfio/rust_memvid_agent"
+keywords = ["ai", "agent", "anthropic", "memory", "tools"]
+categories = ["development-tools", "science", "text-processing"]
+
+[[bin]]
+name = "memvid-agent"
+path = "src/main.rs"
+
+[dependencies]
+# Core async runtime
+tokio = { version = "1.0", features = ["full"] }
+futures = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# HTTP client for Anthropic API
+reqwest = { version = "0.11", features = ["json", "stream"] }
+
+# CLI
+clap = { version = "4.0", features = ["derive", "env"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Configuration
+config = "0.13"
+toml = "0.8"
+
+# Utilities
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.21"
+
+# File system operations
+walkdir = "2.3"
+tempfile = "3.8"
+
+# Memory integration - using rust-mp4-memory
+rust_mem_vid = { git = "https://github.com/njfio/rust-mp4-memory.git", branch = "main" }
+
+# Text processing
+regex = "1.0"
+
+# Progress indicators
+indicatif = "0.17"
+
+# Environment variables
+dotenv = "0.15"
+
+# Async traits
+async-trait = "0.1"
+
+# URL parsing
+url = "2.4"
+
+# Random number generation
+rand = "0.8"
+
+[dev-dependencies]
+criterion = "0.5"
+tempfile = "3.8"
+tokio-test = "0.4"
+
+[features]
+default = ["memory", "all-tools"]
+memory = []
+all-tools = ["text-editor", "memory-tools", "file-tools"]
+text-editor = []
+memory-tools = []
+file-tools = []
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 0
+debug = true
