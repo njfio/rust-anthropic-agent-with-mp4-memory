@@ -149,14 +149,16 @@ impl Agent {
             // Execute tools and collect results
             let tool_results = self.tool_orchestrator.execute_tools(&response.content).await?;
 
-            // Create user message with tool results
-            let tool_result_message = ChatMessage {
-                role: MessageRole::User,
-                content: tool_results,
-                id: Some(Uuid::new_v4().to_string()),
-                timestamp: Some(chrono::Utc::now()),
-            };
-            self.conversation_manager.add_message(tool_result_message).await?;
+            // Only create user message with tool results if there are actual results
+            if !tool_results.is_empty() {
+                let tool_result_message = ChatMessage {
+                    role: MessageRole::User,
+                    content: tool_results,
+                    id: Some(Uuid::new_v4().to_string()),
+                    timestamp: Some(chrono::Utc::now()),
+                };
+                self.conversation_manager.add_message(tool_result_message).await?;
+            }
 
             // Get updated history and make another request
             let updated_history = self.conversation_manager.get_recent_history(
