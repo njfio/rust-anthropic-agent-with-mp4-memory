@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::anthropic::{AnthropicClient, ChatMessage, ChatRequest, MessageRole};
+use crate::anthropic::{AnthropicClient, ChatMessage, ChatRequest, MessageRole, ContentBlock};
 use crate::config::AgentConfig;
 use crate::memory::MemoryManager;
 use crate::utils::error::{AgentError, Result};
@@ -146,14 +146,29 @@ impl Agent {
             };
             self.conversation_manager.add_message(assistant_message).await?;
 
+            // Check if there are any tool use blocks in the response
+            let has_tool_uses = response.content.iter().any(|block| {
+                matches!(block, ContentBlock::ToolUse { .. })
+            });
+
             // Execute tools and collect results
             let tool_results = self.tool_orchestrator.execute_tools(&response.content).await?;
 
-            // Only create user message with tool results if there are actual results
-            if !tool_results.is_empty() {
+            // Create user message with tool results if there are tool uses (even if results are empty)
+            // This is required by Anthropic's API - every tool_use must have a corresponding tool_result
+            if has_tool_uses {
                 let tool_result_message = ChatMessage {
                     role: MessageRole::User,
-                    content: tool_results,
+                    content: if tool_results.is_empty() {
+                        // If no results were generated, create a placeholder result
+                        vec![ContentBlock::ToolResult {
+                            tool_use_id: "placeholder".to_string(),
+                            content: "No tool results generated".to_string(),
+                            is_error: Some(false),
+                        }]
+                    } else {
+                        tool_results
+                    },
                     id: Some(Uuid::new_v4().to_string()),
                     timestamp: Some(chrono::Utc::now()),
                 };

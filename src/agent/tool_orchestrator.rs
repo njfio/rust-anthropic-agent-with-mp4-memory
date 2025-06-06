@@ -158,15 +158,7 @@ impl ToolOrchestrator {
         for block in content_blocks {
             match block {
                 ContentBlock::ToolUse { id, name, input } => {
-                    // Check if this is actually a server-side tool that Anthropic sent as ToolUse
-                    if self.is_server_tool(name) {
-                        debug!("Server tool sent as ToolUse: {} (id: {})", name, id);
-                        // Server tools are handled by Anthropic, we don't need to execute them
-                        // They will appear as results in subsequent API responses
-                        continue;
-                    }
-
-                    debug!("Executing client tool: {} (id: {})", name, id);
+                    debug!("Executing tool: {} (id: {})", name, id);
 
                     match self.tool_registry.execute(name, input.clone()).await {
                         Ok(result) => {
