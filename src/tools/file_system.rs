@@ -225,17 +225,17 @@ impl Tool for FileWriteTool {
     fn definition(&self) -> ToolDefinition {
         create_tool_definition(
             "file_write",
-            "Write content to a file",
+            "Write content to a file. Both path and content parameters are required.",
             json!({
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Path to the file to write"
+                        "description": "Path to the file to write (required)"
                     },
                     "content": {
                         "type": "string",
-                        "description": "Content to write to the file"
+                        "description": "Content to write to the file (required). Provide the complete file content as a string."
                     }
                 },
                 "required": ["path", "content"]
@@ -278,7 +278,10 @@ impl Tool for FileWriteTool {
             Ok(content) => content,
             Err(e) => {
                 error!("FileWriteTool: Failed to extract 'content' parameter: {}", e);
-                return Ok(ToolResult::error(format!("Missing or invalid 'content' parameter: {}", e)));
+                return Ok(ToolResult::error(format!(
+                    "Missing or invalid 'content' parameter. The file_write tool requires both 'path' and 'content' parameters. \
+                    Please provide the file content as a string in the 'content' parameter. Error: {}", e
+                )));
             }
         };
         let resolved_path = self.resolve_path(&path_str)?;
