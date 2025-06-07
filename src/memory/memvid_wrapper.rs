@@ -382,9 +382,9 @@ impl MemvidWrapper {
     // Phase 2 Performance Enhancement Methods
     // ========================================
 
-    /// Initialize Phase 2 performance features
+    /// Initialize Phase 2 performance features with the latest memvid library
     pub async fn initialize_phase2_features(&mut self) -> Result<()> {
-        info!("Initializing Phase 2 performance features");
+        info!("Initializing Phase 2 performance features with latest memvid library");
 
         // Create a default config for the Phase 2 features
         let config = rust_mem_vid::Config::default();
@@ -393,38 +393,38 @@ impl MemvidWrapper {
         if self.multi_memory_engine.is_none() {
             let engine = rust_mem_vid::MultiMemoryEngine::new(config.clone());
             self.multi_memory_engine = Some(engine);
-            debug!("Multi-memory engine initialized");
+            debug!("Multi-memory engine initialized with latest performance improvements");
         }
 
         // Initialize Temporal Analysis Engine for memory evolution tracking
         if self.temporal_analysis_engine.is_none() {
             let engine = rust_mem_vid::TemporalAnalysisEngine::new(config.clone());
             self.temporal_analysis_engine = Some(engine);
-            debug!("Temporal analysis engine initialized");
+            debug!("Temporal analysis engine initialized with enhanced capabilities");
         }
 
         // Initialize Knowledge Graph Builder for concept relationships
         if self.knowledge_graph_builder.is_none() {
             let builder = rust_mem_vid::KnowledgeGraphBuilder::new(config.clone());
             self.knowledge_graph_builder = Some(builder);
-            debug!("Knowledge graph builder initialized");
+            debug!("Knowledge graph builder initialized with advanced AI features");
         }
 
         // Initialize Content Synthesizer for AI-powered content generation
         if self.content_synthesizer.is_none() {
             let synthesizer = rust_mem_vid::ContentSynthesizer::new(config.clone());
             self.content_synthesizer = Some(synthesizer);
-            debug!("Content synthesizer initialized");
+            debug!("Content synthesizer initialized with AI intelligence");
         }
 
         // Initialize Analytics Dashboard for comprehensive metrics
         if self.analytics_dashboard.is_none() {
             let dashboard = rust_mem_vid::AnalyticsDashboard::new(config);
             self.analytics_dashboard = Some(dashboard);
-            debug!("Analytics dashboard initialized");
+            debug!("Analytics dashboard initialized with comprehensive metrics");
         }
 
-        info!("Phase 2 performance features initialization completed");
+        info!("Phase 2 performance features initialization completed with latest memvid library");
         Ok(())
     }
 
@@ -520,37 +520,144 @@ impl MemvidWrapper {
         }
     }
 
-    /// Generate temporal analysis of memory evolution (placeholder for Phase 2)
+    /// Generate temporal analysis of memory evolution using the latest memvid library
     pub async fn temporal_analysis(&self, days_back: u32) -> Result<serde_json::Value> {
-        debug!("Performing temporal analysis for {} days back (placeholder implementation)", days_back);
+        debug!("Performing temporal analysis for {} days back using latest memvid library", days_back);
 
-        // For now, return a placeholder response until the API stabilizes
+        if let Some(ref engine) = self.temporal_analysis_engine {
+            // Try to use the actual temporal analysis engine
+            if let Some(ref _retriever) = self.retriever {
+                let memory_path_str = self.memory_path.to_str()
+                    .ok_or_else(|| AgentError::memory("Invalid memory path".to_string()))?;
+                let index_path_str = self.index_path.to_str()
+                    .ok_or_else(|| AgentError::memory("Invalid index path".to_string()))?;
+
+                // Create a snapshot for current memory state
+                match engine.create_snapshot(memory_path_str, index_path_str, None, Vec::new()).await {
+                    Ok(snapshot) => {
+                        debug!("Temporal analysis snapshot created successfully");
+
+                        return Ok(serde_json::json!({
+                            "analysis_type": "temporal_analysis",
+                            "days_back": days_back,
+                            "status": "success",
+                            "source": "memvid_temporal_analysis_engine",
+                            "snapshot_analysis": {
+                                "timestamp": snapshot.timestamp,
+                                "video_path": snapshot.video_path,
+                                "index_path": snapshot.index_path,
+                                "total_chunks": snapshot.metadata.total_chunks,
+                                "total_characters": snapshot.metadata.total_characters,
+                                "unique_sources": snapshot.metadata.unique_sources,
+                                "file_size_bytes": snapshot.metadata.file_size_bytes,
+                                "creation_duration_seconds": snapshot.metadata.creation_duration_seconds,
+                                "content_hash": snapshot.metadata.content_hash,
+                                "tags": snapshot.tags,
+                                "description": snapshot.description,
+                                "message": "Single snapshot created - timeline analysis requires multiple snapshots over time"
+                            }
+                        }));
+                    }
+                    Err(e) => {
+                        warn!("Temporal analysis engine failed: {}, falling back to basic stats", e);
+                    }
+                }
+            }
+        }
+
+        // Fallback to basic stats if temporal analysis engine is not available
         let stats = self.get_stats().await?;
 
         Ok(serde_json::json!({
             "analysis_type": "temporal_analysis",
             "days_back": days_back,
-            "status": "placeholder_implementation",
-            "message": "Phase 2 temporal analysis features are being integrated",
+            "status": "fallback_implementation",
+            "message": "Using basic stats - temporal analysis engine not available",
             "basic_stats": {
                 "total_chunks": stats.total_chunks,
                 "video_size_bytes": stats.video_size_bytes,
-                "index_size_bytes": stats.index_size_bytes
+                "index_size_bytes": stats.index_size_bytes,
+                "estimated_growth": "Unable to calculate without temporal engine"
             }
         }))
     }
 
-    /// Build knowledge graph from memory content (placeholder for Phase 2)
+    /// Build knowledge graph from memory content using the latest memvid library
     pub async fn build_knowledge_graph(&self) -> Result<serde_json::Value> {
-        debug!("Building knowledge graph from memory content (placeholder implementation)");
+        debug!("Building knowledge graph from memory content using latest memvid library");
 
-        // For now, return a placeholder response until the API stabilizes
+        if let Some(ref builder) = self.knowledge_graph_builder {
+            // Try to use the actual knowledge graph builder
+            if let Some(ref _retriever) = self.retriever {
+                let memory_path_str = self.memory_path.to_str()
+                    .ok_or_else(|| AgentError::memory("Invalid memory path".to_string()))?;
+
+                // The API expects (memory_path, index_path) tuples
+                let index_path_str = self.index_path.to_str()
+                    .ok_or_else(|| AgentError::memory("Invalid index path".to_string()))?;
+
+                match builder.build_from_memories(&[(memory_path_str.to_string(), index_path_str.to_string())]).await {
+                    Ok(graph) => {
+                        debug!("Knowledge graph built with {} nodes and {} relationships",
+                               graph.nodes.len(), graph.relationships.len());
+
+                        return Ok(serde_json::json!({
+                            "analysis_type": "knowledge_graph",
+                            "status": "success",
+                            "source": "memvid_knowledge_graph_builder",
+                            "knowledge_graph": {
+                                "nodes": graph.nodes.iter().map(|(id, node)| {
+                                    serde_json::json!({
+                                        "id": id,
+                                        "name": node.name,
+                                        "concept_type": node.concept_type,
+                                        "importance_score": node.importance_score,
+                                        "frequency": node.frequency,
+                                        "related_chunks": node.related_chunks,
+                                        "has_embedding": node.embedding.is_some(),
+                                        "metadata": node.metadata
+                                    })
+                                }).collect::<Vec<_>>(),
+                                "relationships": graph.relationships.iter().map(|(id, rel)| {
+                                    serde_json::json!({
+                                        "id": id,
+                                        "source_concept": rel.source_concept,
+                                        "target_concept": rel.target_concept,
+                                        "relationship_type": rel.relationship_type,
+                                        "strength": rel.strength,
+                                        "evidence_chunks": rel.evidence_chunks,
+                                        "confidence": rel.confidence,
+                                        "temporal_pattern": rel.temporal_pattern
+                                    })
+                                }).collect::<Vec<_>>(),
+                                "metadata": {
+                                    "total_nodes": graph.nodes.len(),
+                                    "total_relationships": graph.relationships.len(),
+                                    "created_at": graph.metadata.created_at,
+                                    "last_updated": graph.metadata.last_updated,
+                                    "source_memories": graph.metadata.source_memories,
+                                    "generation_algorithm": graph.metadata.generation_algorithm,
+                                    "confidence_threshold": graph.metadata.confidence_threshold,
+                                    "communities": graph.communities.len(),
+                                    "temporal_snapshots": graph.temporal_evolution.len()
+                                }
+                            }
+                        }));
+                    }
+                    Err(e) => {
+                        warn!("Knowledge graph builder failed: {}, falling back to basic stats", e);
+                    }
+                }
+            }
+        }
+
+        // Fallback to basic stats if knowledge graph builder is not available
         let stats = self.get_stats().await?;
 
         Ok(serde_json::json!({
             "analysis_type": "knowledge_graph",
-            "status": "placeholder_implementation",
-            "message": "Phase 2 knowledge graph features are being integrated",
+            "status": "fallback_implementation",
+            "message": "Using basic stats - knowledge graph builder not available",
             "basic_stats": {
                 "total_chunks": stats.total_chunks,
                 "estimated_concepts": stats.total_chunks / 10,

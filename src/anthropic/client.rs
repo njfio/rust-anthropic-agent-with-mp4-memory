@@ -35,12 +35,26 @@ impl AnthropicClient {
                 Ok(response) => return Ok(response),
                 Err(e) if retries < max_retries && e.is_retryable() => {
                     retries += 1;
-                    let delay = Duration::from_millis(1000 * (2_u64.pow(retries - 1)));
+
+                    // Enhanced retry logic with exponential backoff and jitter
+                    let base_delay = 1000 * (2_u64.pow(retries - 1));
+
+                    // Add jitter to prevent thundering herd
+                    let jitter = rand::random::<u64>() % (base_delay / 4 + 1);
+                    let delay = Duration::from_millis(base_delay + jitter);
+
+                    // For 529 overloaded errors, use longer delays
+                    let final_delay = if e.to_string().contains("529") || e.to_string().contains("overloaded") {
+                        Duration::from_millis((base_delay + jitter) * 2)
+                    } else {
+                        delay
+                    };
+
                     warn!(
                         "Request failed (attempt {}/{}), retrying in {:?}: {}",
-                        retries, max_retries, delay, e
+                        retries, max_retries, final_delay, e
                     );
-                    tokio::time::sleep(delay).await;
+                    tokio::time::sleep(final_delay).await;
                 }
                 Err(e) => return Err(e),
             }
@@ -165,6 +179,14 @@ impl AnthropicClient {
                     "Rate limit exceeded: {}",
                     error_message
                 ))),
+                529 => {
+                    // Handle 529 overloaded error specifically - this is retryable
+                    warn!("Anthropic API is overloaded (529), this request will be retried");
+                    Err(AgentError::anthropic_api(format!(
+                        "API overloaded ({}): {}",
+                        status, error_message
+                    )))
+                },
                 400..=499 => Err(AgentError::anthropic_api(format!(
                     "Client error ({}): {}",
                     status, error_message
