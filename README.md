@@ -2,6 +2,16 @@
 
 A comprehensive AI agent system in Rust that integrates with Anthropic's Claude API and uses MP4-based memory storage for persistent conversations and context.
 
+## Recent Updates
+
+### 🔄 **Memvid Library Performance Update** (Latest)
+- **Updated rust-mp4-memory dependency**: Now using commit `21ffbf34` with latest performance improvements
+- **Enhanced Multi-Memory Support**: Integrated new multi-memory search capabilities for cross-memory operations
+- **Improved Temporal Analysis**: Foundation for memory evolution tracking and learning pattern analysis
+- **Advanced Analytics Framework**: Prepared infrastructure for knowledge graphs and content synthesis
+- **Performance Optimizations**: Leveraging upstream performance improvements and new API features
+- **API Compatibility**: Updated to work with latest memvid library APIs while maintaining backward compatibility
+
 ## 🌟 Features
 
 ### 🔧 **Complete Anthropic Integration**

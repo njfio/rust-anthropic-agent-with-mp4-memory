@@ -4,6 +4,7 @@ pub mod search;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
+use tracing::warn;
 
 use crate::anthropic::models::ChatMessage;
 use crate::config::MemoryConfig;
@@ -62,7 +63,12 @@ pub enum MemoryEntryType {
 impl MemoryManager {
     /// Create a new memory manager
     pub async fn new(config: MemoryConfig) -> Result<Self> {
-        let memvid = MemvidWrapper::new(&config.memory_path, &config.index_path).await?;
+        let mut memvid = MemvidWrapper::new(&config.memory_path, &config.index_path).await?;
+
+        // Initialize Phase 2 performance features
+        if let Err(e) = memvid.initialize_phase2_features().await {
+            warn!("Failed to initialize Phase 2 features: {}", e);
+        }
 
         Ok(Self {
             memvid,
@@ -294,6 +300,53 @@ impl MemoryManager {
         if should_clear {
             self.current_conversation = None;
         }
+    }
+
+    // ========================================
+    // Phase 2 Performance Enhancement Methods
+    // ========================================
+
+    /// Perform multi-memory search across different memory instances
+    pub async fn multi_memory_search(&mut self, query: &str, limit: usize) -> Result<rust_mem_vid::MultiMemorySearchResult> {
+        self.memvid.multi_memory_search(query, limit).await
+    }
+
+    /// Generate temporal analysis of memory evolution
+    pub async fn temporal_analysis(&self, days_back: u32) -> Result<serde_json::Value> {
+        self.memvid.temporal_analysis(days_back).await
+    }
+
+    /// Build knowledge graph from memory content
+    pub async fn build_knowledge_graph(&self) -> Result<serde_json::Value> {
+        self.memvid.build_knowledge_graph().await
+    }
+
+    /// Synthesize content using AI
+    pub async fn synthesize_content(&self, synthesis_type: &str, query: Option<&str>) -> Result<serde_json::Value> {
+        self.memvid.synthesize_content(synthesis_type, query).await
+    }
+
+    /// Generate analytics dashboard data
+    pub async fn generate_analytics_dashboard(&self) -> Result<serde_json::Value> {
+        self.memvid.generate_analytics_dashboard().await
+    }
+
+    /// Check if Phase 2 features are available
+    pub fn has_phase2_features(&self) -> bool {
+        self.memvid.has_phase2_features()
+    }
+
+    /// Get Phase 2 features status
+    pub fn get_phase2_status(&self) -> std::collections::HashMap<String, bool> {
+        self.memvid.get_phase2_status()
+    }
+
+    /// Initialize Phase 2 features if not already done
+    pub async fn ensure_phase2_features(&mut self) -> Result<()> {
+        if !self.has_phase2_features() {
+            self.memvid.initialize_phase2_features().await?;
+        }
+        Ok(())
     }
 }
 
