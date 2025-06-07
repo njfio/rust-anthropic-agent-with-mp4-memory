@@ -174,7 +174,17 @@ impl ToolOrchestrator {
         for block in content_blocks {
             match block {
                 ContentBlock::ToolUse { id, name, input } => {
-                    debug!("Executing tool: {} (id: {})", name, id);
+                    // Check if this is a server-side tool
+                    if self.is_server_tool(name) {
+                        debug!("Creating placeholder result for server tool: {} (id: {}) - execution handled by Anthropic", name, id);
+                        // Server tools are executed by Anthropic, but we need to provide a tool_result
+                        // to satisfy the API requirement. The actual result will be provided by Anthropic.
+                        let placeholder_result = ToolResult::success("Server tool execution handled by Anthropic".to_string());
+                        results.push(placeholder_result.to_content_block(id.clone()));
+                        continue;
+                    }
+
+                    debug!("Executing client tool: {} (id: {})", name, id);
 
                     match self.tool_registry.execute(name, input.clone()).await {
                         Ok(result) => {
