@@ -51,6 +51,11 @@ impl AnthropicClient {
     async fn send_chat_request(&self, request: &ChatRequest) -> Result<ChatResponse> {
         debug!("Sending chat request to Anthropic API");
 
+        // Check if streaming is enabled
+        if request.stream == Some(true) {
+            warn!("Streaming is enabled but not yet implemented, falling back to non-streaming");
+        }
+
         let url = format!("{}/v1/messages", self.config.base_url);
         let mut req_builder = self
             .client
@@ -65,8 +70,12 @@ impl AnthropicClient {
             req_builder = req_builder.header("anthropic-beta", beta_headers);
         }
 
+        // Create a modified request without streaming for now
+        let mut modified_request = request.clone();
+        modified_request.stream = None; // Disable streaming until implemented
+
         let response = req_builder
-            .json(request)
+            .json(&modified_request)
             .send()
             .await
             .map_err(|e| AgentError::Http(e))?;
@@ -84,7 +93,11 @@ impl AnthropicClient {
         }
 
         let chat_response: ChatResponse = serde_json::from_str(&response_text)
-            .map_err(|e| AgentError::Json(e))?;
+            .map_err(|e| {
+                error!("Failed to parse JSON response: {}", e);
+                error!("Response text: {}", response_text);
+                AgentError::Json(e)
+            })?;
 
         info!(
             "Chat request successful. Input tokens: {}, Output tokens: {}",

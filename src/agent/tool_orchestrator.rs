@@ -9,7 +9,7 @@ use crate::memory::MemoryManager;
 use crate::tools::{
     code_analysis::CodeAnalysisTool,
     custom_tools::{HttpRequestTool, ShellCommandTool, UuidGeneratorTool},
-    file_system::{DirectoryListTool, FileReadTool, FileWriteTool},
+    file_system::{DirectoryListTool, FileAppendTool, FileReadTool, FileWriteTool},
     memory_tools::{ConversationSearchTool, MemorySearchTool, MemorySaveTool, MemoryStatsTool},
     Tool, ToolRegistry, ToolResult,
 };
@@ -62,8 +62,9 @@ impl ToolOrchestrator {
         if config.tools.enable_file_tools {
             self.tool_registry.register(FileReadTool::new("."));
             self.tool_registry.register(FileWriteTool::new(".").with_overwrite(false));
+            self.tool_registry.register(FileAppendTool::new("."));
             self.tool_registry.register(DirectoryListTool::new("."));
-            
+
             debug!("Registered file system tools");
         }
 

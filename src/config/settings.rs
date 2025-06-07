@@ -130,7 +130,7 @@ impl Default for MemoryConfig {
 impl Default for ToolConfig {
     fn default() -> Self {
         Self {
-            enable_text_editor: false,
+            enable_text_editor: true,
             enable_memory_tools: true,
             enable_file_tools: true,
             enable_code_execution: true,

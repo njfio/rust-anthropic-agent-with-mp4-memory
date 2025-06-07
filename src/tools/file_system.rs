@@ -281,15 +281,25 @@ impl Tool for FileWriteTool {
                 error!("FileWriteTool: Failed to extract 'content' parameter: {}", e);
 
                 // Check if this is a large file that might have content transmission issues
-                if path_str.contains("bouncing_ball_dodecahedron") || path_str.ends_with(".html") {
+                if path_str.contains("bouncing_ball_dodecahedron") || path_str.ends_with(".html") || path_str.ends_with(".js") || path_str.ends_with(".css") {
                     return Ok(ToolResult::error(format!(
-                        "Content parameter missing for file '{}'. This may be due to large content size limitations. \
-                        \n\nSuggested solutions:\
-                        \n1. Break the content into smaller chunks and use multiple file_write calls\
-                        \n2. Create the file with basic structure first, then add content incrementally\
-                        \n3. Use a simpler approach with smaller content blocks\
-                        \n\nThe file_write tool requires both 'path' and 'content' parameters in a single call. \
-                        Please provide the complete file content in the 'content' parameter.", path_str
+                        "CRITICAL: Content parameter missing for file '{}'. This is a known issue with large content transmission.\
+                        \n\n🔧 IMMEDIATE SOLUTIONS:\
+                        \n1. **USE file_append TOOL**: Perfect for large content!\
+                        \n   - Create file with basic structure using file_write\
+                        \n   - Use file_append to add content in chunks\
+                        \n   - Example: file_write for HTML skeleton, file_append for JavaScript\
+                        \n\n2. **CHUNKED APPROACH**: Break content into smaller sections (< 4000 chars each)\
+                        \n   - Create file with basic structure first\
+                        \n   - Use multiple file_append calls to build content incrementally\
+                        \n   - Each chunk should be under 4000 characters\
+                        \n\n3. **SIMPLIFIED CONTENT**: Reduce complexity temporarily\
+                        \n   - Remove comments and extra whitespace\
+                        \n   - Split large functions into smaller ones\
+                        \n   - Use external CDN links instead of inline code\
+                        \n\n⚠️  This is a limitation of the current API implementation for large content (>4000 chars).\
+                        \nThe content exists in memory but cannot be transmitted in a single tool call.\
+                        \n\n💡 TIP: Use file_append tool which is specifically designed for this scenario!", path_str
                     )));
                 }
 
