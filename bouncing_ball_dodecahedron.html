@@ -94,10 +94,9 @@
         let zoom = 1;
 
         // Dodecahedron vertices (normalized)
-        const phi = (1 + Math.sqrt(5)) / 2;
-        const a = 1 / Math.sqrt(3);
-        const b = a / phi;
-        const c = a * phi;
+        const phi = (1 + Math.sqrt(5)) / 2; // Golden ratio
+        const invPhi = 1 / phi;
+        const scale = 150; // Scale factor for the dodecahedron
 
         class Ball {
             constructor(x, y, z, radius) {
@@ -147,33 +146,70 @@
             }
 
             checkCollision(vertices, faces) {
-                // Check collision with each face of the dodecahedron
+                // Simple sphere collision with dodecahedron using distance from center
+                let distFromCenter = this.pos.mag();
+                let dodecahedronRadius = scale * 0.85; // Approximate inner radius
+
+                // If ball is outside the dodecahedron, bounce it back
+                if (distFromCenter + this.radius > dodecahedronRadius) {
+                    // Calculate normal pointing inward
+                    let normal = p5.Vector.mult(this.pos, -1);
+                    normal.normalize();
+
+                    // Reflect velocity
+                    let velDotNormal = p5.Vector.dot(this.vel, normal);
+                    if (velDotNormal > 0) {
+                        this.vel.sub(p5.Vector.mult(normal, 2 * velDotNormal));
+                        this.vel.mult(bounceDamping);
+
+                        // Push ball back inside
+                        let pushDistance = (distFromCenter + this.radius) - dodecahedronRadius;
+                        this.pos.add(p5.Vector.mult(normal, pushDistance));
+                    }
+                }
+
+                // Additional precise collision detection for faces
                 for (let face of faces) {
                     let faceVertices = face.map(i => vertices[i]);
-                    
-                    // Calculate face normal
+
+                    // Calculate face normal (pointing inward)
+                    let center = createVector(0, 0, 0);
+                    for (let v of faceVertices) {
+                        center.add(v);
+                    }
+                    center.div(faceVertices.length);
+
                     let v1 = p5.Vector.sub(faceVertices[1], faceVertices[0]);
                     let v2 = p5.Vector.sub(faceVertices[2], faceVertices[0]);
                     let normal = p5.Vector.cross(v1, v2);
                     normal.normalize();
-                    
+
+                    // Ensure normal points inward
+                    let toCenter = p5.Vector.mult(center, -1);
+                    if (p5.Vector.dot(normal, toCenter) < 0) {
+                        normal.mult(-1);
+                    }
+
                     // Calculate distance from ball center to face plane
                     let d = p5.Vector.dot(normal, p5.Vector.sub(this.pos, faceVertices[0]));
-                    
+
                     // Check if ball is colliding with this face
-                    if (abs(d) < this.radius) {
-                        // Check if ball is inside the face boundaries
+                    if (d > 0 && d < this.radius) {
+                        // Project ball position onto face plane
                         let projection = p5.Vector.sub(this.pos, p5.Vector.mult(normal, d));
-                        if (this.isPointInPolygon(projection, faceVertices, normal)) {
+
+                        // Simple check if projection is near the face
+                        let distToFaceCenter = p5.Vector.dist(projection, center);
+                        if (distToFaceCenter < 60) { // Approximate face radius
                             // Collision detected - reflect velocity
                             let velDotNormal = p5.Vector.dot(this.vel, normal);
-                            if (velDotNormal < 0) {
+                            if (velDotNormal > 0) {
                                 this.vel.sub(p5.Vector.mult(normal, 2 * velDotNormal));
                                 this.vel.mult(bounceDamping);
-                                
-                                // Push ball out of collision
-                                let pushOut = this.radius - abs(d);
-                                this.pos.add(p5.Vector.mult(normal, pushOut * Math.sign(d)));
+
+                                // Push ball away from face
+                                let pushOut = this.radius - d;
+                                this.pos.add(p5.Vector.mult(normal, -pushOut));
                             }
                         }
                     }

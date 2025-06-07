@@ -104,23 +104,50 @@ impl MemvidWrapper {
         Ok(wrapper)
     }
 
-    /// Load existing memory if files exist
+    /// Load existing memory if files exist using new incremental features
     async fn load_existing(&mut self) -> Result<()> {
         let metadata_path = self.index_path.with_extension("metadata");
         let vector_path = self.index_path.with_extension("vector");
 
         if self.memory_path.exists() && metadata_path.exists() && vector_path.exists() {
-            info!("Loading existing memory from {:?}", self.memory_path);
+            info!("Loading existing memory from {:?} using incremental features", self.memory_path);
 
-            // If we have a retriever, we can get info about the existing memory
-            if let Some(ref retriever) = self.retriever {
-                // Get info about the existing video
-                let video_info = retriever.get_video_info();
-                info!("Loaded existing memory with {} frames", video_info.total_frames);
-                self.is_built = true;
-            } else {
-                // Fall back to loading from index file
-                self.load_from_index_file().await?;
+            let memory_path_str = self.memory_path.to_str()
+                .ok_or_else(|| AgentError::memory("Invalid memory path".to_string()))?;
+            let index_path_str = self.index_path.to_str()
+                .ok_or_else(|| AgentError::memory("Invalid index path".to_string()))?;
+
+            // Load existing video into encoder for true incremental building
+            match rust_mem_vid::MemvidEncoder::load_existing(memory_path_str, index_path_str).await {
+                Ok(encoder) => {
+                    info!("Successfully loaded existing memory with {} chunks for incremental building",
+                          encoder.chunks().len());
+
+                    // Extract existing chunks for in-memory operations
+                    self.chunks = encoder.chunks().iter()
+                        .map(|chunk| chunk.content.clone())
+                        .collect();
+
+                    // Replace encoder with loaded one
+                    self.encoder = Some(encoder);
+
+                    // Create retriever for searching
+                    match rust_mem_vid::MemvidRetriever::new(memory_path_str, index_path_str).await {
+                        Ok(retriever) => {
+                            self.retriever = Some(retriever);
+                            self.is_built = true;
+                            info!("Incremental memory system ready with {} existing chunks", self.chunks.len());
+                        }
+                        Err(e) => {
+                            warn!("Failed to create retriever: {}, search will be limited", e);
+                            self.is_built = true; // Still mark as built since we have the encoder
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to load existing memory for incremental building: {}, falling back to basic loading", e);
+                    self.load_from_index_file().await?;
+                }
             }
         } else {
             debug!("No existing memory found, starting fresh");
@@ -170,34 +197,66 @@ impl MemvidWrapper {
         Ok(())
     }
 
-    /// Build the memory video (encode chunks into MP4)
+    /// Build the memory video using incremental append (true incremental building)
     pub async fn build_video(&mut self) -> Result<()> {
         if self.chunks.is_empty() {
             warn!("No chunks to build into video");
             return Ok(());
         }
 
-        info!("Building memory video with {} chunks", self.chunks.len());
+        let memory_path_str = self.memory_path.to_str()
+            .ok_or_else(|| AgentError::memory("Invalid memory path".to_string()))?;
+        let index_path_str = self.index_path.to_str()
+            .ok_or_else(|| AgentError::memory("Invalid index path".to_string()))?;
 
-        // Use the actual rust-mp4-memory library to build the video
         if let Some(ref mut encoder) = self.encoder {
-            // Add all chunks to the encoder
-            encoder.add_chunks(self.chunks.clone()).await
-                .map_err(|e| AgentError::memory(format!("Failed to add chunks to encoder: {}", e)))?;
+            // Check if this is an incremental update or full build
+            let existing_chunk_count = encoder.chunks().len();
+            let new_chunk_count = self.chunks.len();
 
-            // Build the video
-            let memory_path_str = self.memory_path.to_str()
-                .ok_or_else(|| AgentError::memory("Invalid memory path".to_string()))?;
-            let index_path_str = self.index_path.to_str()
-                .ok_or_else(|| AgentError::memory("Invalid index path".to_string()))?;
+            if existing_chunk_count > 0 && new_chunk_count > existing_chunk_count {
+                // Incremental append: only add new chunks
+                let new_chunks: Vec<String> = self.chunks[existing_chunk_count..].to_vec();
+                info!("Performing incremental append: {} new chunks to existing {} chunks",
+                      new_chunks.len(), existing_chunk_count);
 
-            let _stats = encoder.build_video(memory_path_str, index_path_str).await
-                .map_err(|e| AgentError::memory(format!("Failed to build video: {}", e)))?;
+                // Convert to TextChunk format for append_to_video
+                let text_chunks: Vec<rust_mem_vid::text::TextChunk> = new_chunks.into_iter().enumerate().map(|(i, content)| {
+                    rust_mem_vid::text::TextChunk {
+                        content,
+                        metadata: rust_mem_vid::text::ChunkMetadata {
+                            id: existing_chunk_count + i,
+                            source: Some("agent_memory".to_string()),
+                            page: None,
+                            char_offset: 0,
+                            length: 0, // Will be calculated by the library
+                            frame: (existing_chunk_count + i) as u32,
+                            extra: std::collections::HashMap::new(),
+                        },
+                    }
+                }).collect();
+
+                let _stats = encoder.append_to_video(memory_path_str, index_path_str, text_chunks).await
+                    .map_err(|e| AgentError::memory(format!("Failed to append to video: {}", e)))?;
+
+                info!("Incremental append completed successfully");
+            } else {
+                // Full build: add all chunks and build from scratch
+                info!("Performing full build with {} chunks", self.chunks.len());
+
+                encoder.add_chunks(self.chunks.clone()).await
+                    .map_err(|e| AgentError::memory(format!("Failed to add chunks to encoder: {}", e)))?;
+
+                let _stats = encoder.build_video(memory_path_str, index_path_str).await
+                    .map_err(|e| AgentError::memory(format!("Failed to build video: {}", e)))?;
+
+                info!("Full build completed successfully");
+            }
 
             // Wait a moment for files to be fully written and verify they exist
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-            // Check if files exist before creating retriever
+            // Verify files exist
             if !self.memory_path.exists() {
                 return Err(AgentError::memory(format!("Video file not found after build: {:?}", self.memory_path)));
             }
@@ -212,12 +271,12 @@ impl MemvidWrapper {
                 return Err(AgentError::memory(format!("Vector file not found after build: {:?}", vector_path)));
             }
 
-            // Create a new retriever for the built video
+            // Create/update retriever for the built video
             self.retriever = Some(rust_mem_vid::MemvidRetriever::new(memory_path_str, index_path_str).await
                 .map_err(|e| AgentError::memory(format!("Failed to create retriever after build: {}", e)))?);
 
             self.is_built = true;
-            info!("Memory video built successfully");
+            info!("Memory video built successfully with incremental features");
         } else {
             return Err(AgentError::memory("No encoder available for building video".to_string()));
         }
@@ -376,6 +435,103 @@ impl MemvidWrapper {
     /// Get the number of chunks
     pub fn chunk_count(&self) -> usize {
         self.chunks.len()
+    }
+
+    /// Compare this memory with another memory video using the new diff engine
+    pub async fn compare_with_memory(&self, other_video: &str, other_index: &str) -> Result<serde_json::Value> {
+        let memory_path_str = self.memory_path.to_str()
+            .ok_or_else(|| AgentError::memory("Invalid memory path".to_string()))?;
+        let index_path_str = self.index_path.to_str()
+            .ok_or_else(|| AgentError::memory("Invalid index path".to_string()))?;
+
+        if !self.memory_path.exists() {
+            return Err(AgentError::memory("Current memory video does not exist".to_string()));
+        }
+
+        info!("Comparing current memory with: {}", other_video);
+
+        // Create memory diff engine
+        let config = rust_mem_vid::Config::default();
+        let diff_engine = rust_mem_vid::MemoryDiffEngine::new(config)
+            .with_similarity_threshold(0.8)
+            .with_semantic_analysis(true);
+
+        // Perform the comparison
+        match diff_engine.compare_memories(memory_path_str, index_path_str, other_video, other_index).await {
+            Ok(diff) => {
+                info!("Memory comparison completed: {} added, {} removed, {} modified",
+                      diff.summary.added_count, diff.summary.removed_count, diff.summary.modified_count);
+
+                Ok(serde_json::json!({
+                    "comparison_type": "memory_diff",
+                    "status": "success",
+                    "source": "memvid_memory_diff_engine",
+                    "diff_summary": {
+                        "old_memory": diff.old_memory,
+                        "new_memory": diff.new_memory,
+                        "timestamp": diff.timestamp,
+                        "total_old_chunks": diff.summary.total_old_chunks,
+                        "total_new_chunks": diff.summary.total_new_chunks,
+                        "added_count": diff.summary.added_count,
+                        "removed_count": diff.summary.removed_count,
+                        "modified_count": diff.summary.modified_count,
+                        "unchanged_count": diff.summary.unchanged_count,
+                        "similarity_score": diff.summary.similarity_score,
+                        "content_growth_ratio": diff.summary.content_growth_ratio
+                    },
+                    "changes": {
+                        "added_chunks": diff.added_chunks.len(),
+                        "removed_chunks": diff.removed_chunks.len(),
+                        "modified_chunks": diff.modified_chunks.len(),
+                        "semantic_changes": diff.semantic_changes.len()
+                    },
+                    "detailed_diff": {
+                        "added_chunks": diff.added_chunks.iter().take(5).map(|chunk| {
+                            serde_json::json!({
+                                "chunk_id": chunk.chunk_id,
+                                "content_preview": if chunk.content.len() > 100 {
+                                    format!("{}...", &chunk.content[..100])
+                                } else {
+                                    chunk.content.clone()
+                                },
+                                "source": chunk.source,
+                                "frame_number": chunk.frame_number
+                            })
+                        }).collect::<Vec<_>>(),
+                        "removed_chunks": diff.removed_chunks.iter().take(5).map(|chunk| {
+                            serde_json::json!({
+                                "chunk_id": chunk.chunk_id,
+                                "content_preview": if chunk.content.len() > 100 {
+                                    format!("{}...", &chunk.content[..100])
+                                } else {
+                                    chunk.content.clone()
+                                },
+                                "source": chunk.source,
+                                "frame_number": chunk.frame_number
+                            })
+                        }).collect::<Vec<_>>(),
+                        "modified_chunks": diff.modified_chunks.iter().take(5).map(|modification| {
+                            serde_json::json!({
+                                "old_chunk_id": modification.old_chunk.chunk_id,
+                                "new_chunk_id": modification.new_chunk.chunk_id,
+                                "similarity_score": modification.similarity_score,
+                                "change_type": modification.change_type,
+                                "text_diff": {
+                                    "added_words": modification.text_diff.added_text.len(),
+                                    "removed_words": modification.text_diff.removed_text.len(),
+                                    "common_words": modification.text_diff.common_text.len(),
+                                    "edit_distance": modification.text_diff.edit_distance
+                                }
+                            })
+                        }).collect::<Vec<_>>()
+                    }
+                }))
+            }
+            Err(e) => {
+                warn!("Memory comparison failed: {}", e);
+                Err(AgentError::memory(format!("Failed to compare memories: {}", e)))
+            }
+        }
     }
 
     // ========================================
