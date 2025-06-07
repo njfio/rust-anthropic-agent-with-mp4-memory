@@ -1,4 +1,4 @@
-use rust_memvid_agent::{Agent, AgentConfig, MemoryEntryType};
+use rust_memvid_agent::{Agent, AgentConfig};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

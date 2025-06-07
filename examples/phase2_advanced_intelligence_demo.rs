@@ -1,7 +1,6 @@
-use rust_memvid_agent::{Agent, AgentConfig, MemoryEntryType};
-use serde_json::json;
+use rust_memvid_agent::{Agent, AgentConfig};
 use std::env;
-use tracing::{info, warn};
+use tracing::info;
 
 /// Comprehensive demonstration of Phase 2 Advanced Intelligence features
 /// 
@@ -47,16 +46,16 @@ async fn main() -> anyhow::Result<()> {
     info!("📝 Phase 1: Populating memory with diverse content...");
     
     let sample_entries = vec![
-        ("Rust is a systems programming language focused on safety and performance", MemoryEntryType::Fact),
-        ("Learning functional programming patterns in Rust", MemoryEntryType::Learning),
-        ("Implemented async/await patterns for better concurrency", MemoryEntryType::Achievement),
-        ("Need to improve error handling in the authentication module", MemoryEntryType::Task),
-        ("Memory management in Rust uses ownership and borrowing", MemoryEntryType::Fact),
-        ("Exploring advanced trait patterns and generics", MemoryEntryType::Learning),
-        ("Successfully optimized database queries for 50% performance improvement", MemoryEntryType::Achievement),
-        ("Code review revealed potential security vulnerabilities", MemoryEntryType::Task),
-        ("Rust's type system prevents many common programming errors", MemoryEntryType::Fact),
-        ("Understanding lifetime parameters and their applications", MemoryEntryType::Learning),
+        ("Rust is a systems programming language focused on safety and performance", "fact"),
+        ("Learning functional programming patterns in Rust", "learning"),
+        ("Implemented async/await patterns for better concurrency", "achievement"),
+        ("Need to improve error handling in the authentication module", "task"),
+        ("Memory management in Rust uses ownership and borrowing", "fact"),
+        ("Exploring advanced trait patterns and generics", "learning"),
+        ("Successfully optimized database queries for 50% performance improvement", "achievement"),
+        ("Code review revealed potential security vulnerabilities", "task"),
+        ("Rust's type system prevents many common programming errors", "fact"),
+        ("Understanding lifetime parameters and their applications", "learning"),
     ];
 
     for (content, entry_type) in sample_entries {

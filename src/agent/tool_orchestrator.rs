@@ -10,7 +10,6 @@ use crate::tools::{
     advanced_memory_tools::AdvancedMemoryAnalyticsTool,
     code_analysis::CodeAnalysisTool,
     custom_tools::{HttpRequestTool, ShellCommandTool, UuidGeneratorTool},
-    file_system::{DirectoryListTool, FileAppendTool, FileReadTool, FileWriteTool},
     memory_tools::{ConversationSearchTool, MemorySearchTool, MemorySaveTool, MemoryStatsTool},
     Tool, ToolRegistry, ToolResult,
 };
@@ -41,12 +40,12 @@ impl ToolOrchestrator {
     pub async fn register_builtin_tools(&mut self, config: &AgentConfig) -> Result<()> {
         info!("Registering built-in tools");
 
-        // Register text editor tool if enabled
+        // Register Anthropic's native text editor tool if enabled
         if config.tools.enable_text_editor {
             let text_editor = AnthropicTool::text_editor_for_model(&config.anthropic.model);
             self.anthropic_tools.push(text_editor);
 
-            debug!("Registered text editor tool for model: {}", config.anthropic.model);
+            debug!("Registered Anthropic's native text editor tool for model: {}", config.anthropic.model);
         }
 
         // Register memory tools if enabled
@@ -62,15 +61,8 @@ impl ToolOrchestrator {
             debug!("Registered memory tools including advanced analytics");
         }
 
-        // Register file system tools if enabled
-        if config.tools.enable_file_tools {
-            self.tool_registry.register(FileReadTool::new("."));
-            self.tool_registry.register(FileWriteTool::new(".").with_overwrite(false));
-            self.tool_registry.register(FileAppendTool::new("."));
-            self.tool_registry.register(DirectoryListTool::new("."));
-
-            debug!("Registered file system tools");
-        }
+        // File system operations are now handled by Anthropic's native text editor tool
+        // No custom file system tools needed
 
 
 
@@ -366,6 +358,6 @@ mod tests {
 
         assert!(orchestrator.tool_count() > 0);
         assert!(orchestrator.has_tool("memory_search"));
-        assert!(orchestrator.has_tool("file_read"));
+        // File operations are now handled by Anthropic's native text editor tool
     }
 }

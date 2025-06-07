@@ -1,14 +1,11 @@
 pub mod advanced_memory_tools;
 pub mod code_analysis;
 pub mod custom_tools;
-pub mod file_system;
 pub mod memory_tools;
-pub mod text_editor;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use uuid::Uuid;
 
 use crate::anthropic::models::{ContentBlock, ToolDefinition};
 use crate::utils::error::{AgentError, Result};

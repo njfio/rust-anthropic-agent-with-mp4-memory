@@ -56,12 +56,10 @@ pub struct MemoryConfig {
 /// Tool system configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolConfig {
-    /// Enable text editor tool
+    /// Enable text editor tool (Anthropic's native text editor)
     pub enable_text_editor: bool,
     /// Enable memory tools
     pub enable_memory_tools: bool,
-    /// Enable file system tools
-    pub enable_file_tools: bool,
     /// Enable code execution tool
     pub enable_code_execution: bool,
     /// Enable web search tool
@@ -132,7 +130,6 @@ impl Default for ToolConfig {
         Self {
             enable_text_editor: true,
             enable_memory_tools: true,
-            enable_file_tools: true,
             enable_code_execution: true,
             enable_web_search: true,
             enable_code_analysis: true,
