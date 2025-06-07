@@ -42,12 +42,10 @@ impl ToolOrchestrator {
 
         // Register text editor tool if enabled
         if config.tools.enable_text_editor {
-            // Only register the Anthropic text editor tool, not our custom implementation
-            // to avoid conflicts
-            let anthropic_text_editor = AnthropicTool::text_editor_for_model(&config.anthropic.model);
-            self.anthropic_tools.push(anthropic_text_editor);
+            let text_editor = AnthropicTool::text_editor_for_model(&config.anthropic.model);
+            self.anthropic_tools.push(text_editor);
 
-            debug!("Registered Anthropic text editor tool");
+            debug!("Registered text editor tool for model: {}", config.anthropic.model);
         }
 
         // Register memory tools if enabled
@@ -69,11 +67,13 @@ impl ToolOrchestrator {
             debug!("Registered file system tools");
         }
 
+
+
         // Register code execution tool if enabled
         if config.tools.enable_code_execution {
             let code_execution = AnthropicTool::code_execution();
             self.anthropic_tools.push(code_execution);
-            
+
             debug!("Registered code execution tool");
         }
 
@@ -133,14 +133,30 @@ impl ToolOrchestrator {
         let mut definitions = Vec::new();
 
         // Add client tool definitions
-        definitions.extend(self.tool_registry.get_definitions());
+        let client_definitions = self.tool_registry.get_definitions();
+        debug!("Client tools: {:?}", client_definitions.iter().map(|d| &d.name).collect::<Vec<_>>());
+        definitions.extend(client_definitions);
 
         // Add Anthropic tool definitions
-        definitions.extend(
-            self.anthropic_tools
-                .iter()
-                .map(|tool| tool.to_definition())
-        );
+        let server_definitions: Vec<ToolDefinition> = self.anthropic_tools
+            .iter()
+            .map(|tool| tool.to_definition())
+            .collect();
+        debug!("Server tools: {:?}", server_definitions.iter().map(|d| &d.name).collect::<Vec<_>>());
+        definitions.extend(server_definitions);
+
+        // Check for duplicates
+        let mut seen_names = std::collections::HashSet::new();
+        let mut duplicates = Vec::new();
+        for def in &definitions {
+            if !seen_names.insert(&def.name) {
+                duplicates.push(&def.name);
+            }
+        }
+
+        if !duplicates.is_empty() {
+            error!("Duplicate tool names found: {:?}", duplicates);
+        }
 
         debug!("Providing {} tool definitions to API", definitions.len());
         definitions

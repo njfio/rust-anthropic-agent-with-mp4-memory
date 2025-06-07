@@ -3,7 +3,7 @@ use base64::Engine;
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::anthropic::models::ToolDefinition;
 use crate::tools::{create_tool_definition, extract_string_param, Tool, ToolResult};
@@ -244,8 +244,23 @@ impl Tool for FileWriteTool {
     }
 
     async fn execute(&self, input: serde_json::Value) -> Result<ToolResult> {
-        let path_str = extract_string_param(&input, "path")?;
-        let content = extract_string_param(&input, "content")?;
+        debug!("FileWriteTool received input: {}", serde_json::to_string_pretty(&input).unwrap_or_else(|_| "invalid json".to_string()));
+
+        let path_str = match extract_string_param(&input, "path") {
+            Ok(path) => path,
+            Err(e) => {
+                error!("FileWriteTool: Failed to extract 'path' parameter: {}", e);
+                return Ok(ToolResult::error(format!("Missing or invalid 'path' parameter: {}", e)));
+            }
+        };
+
+        let content = match extract_string_param(&input, "content") {
+            Ok(content) => content,
+            Err(e) => {
+                error!("FileWriteTool: Failed to extract 'content' parameter: {}", e);
+                return Ok(ToolResult::error(format!("Missing or invalid 'content' parameter: {}", e)));
+            }
+        };
         let resolved_path = self.resolve_path(&path_str)?;
 
         debug!("Writing file: {:?} ({} chars)", resolved_path, content.len());
