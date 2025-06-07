@@ -202,10 +202,11 @@ impl Agent {
     }
 
     /// Save information to memory
-    pub async fn save_to_memory<S: Into<String>>(&mut self, content: S, entry_type: crate::memory::MemoryEntryType) -> Result<()> {
-        let entry = crate::memory::MemoryEntry::new(content, entry_type);
+    pub async fn save_to_memory<S: Into<String>>(&mut self, content: S, entry_type: S) -> Result<()> {
         let mut memory_manager = self.memory_manager.lock().await;
-        memory_manager.save_memory(entry).await
+        let metadata = std::collections::HashMap::new();
+        memory_manager.save_memory(content.into(), entry_type.into(), metadata).await?;
+        Ok(())
     }
 
     /// Get memory statistics
@@ -264,10 +265,10 @@ impl Agent {
         }
     }
 
-    /// Build and finalize memory
+    /// Build and finalize memory (no-op for JSON storage)
     pub async fn finalize_memory(&mut self) -> Result<()> {
-        let mut memory_manager = self.memory_manager.lock().await;
-        memory_manager.build_memory().await
+        // No-op for JSON storage - data is already persisted
+        Ok(())
     }
 }
 

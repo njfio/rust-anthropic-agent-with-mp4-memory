@@ -258,13 +258,7 @@ async fn run_search(config: AgentConfig, query: String, limit: usize) -> anyhow:
 async fn run_save(config: AgentConfig, content: String, entry_type: String, tags: Option<String>) -> anyhow::Result<()> {
     let mut agent = Agent::new(config).await?;
     
-    let entry_type = match entry_type.as_str() {
-        "note" => rust_memvid_agent::MemoryEntryType::Note,
-        "code" => rust_memvid_agent::MemoryEntryType::Code,
-        "document" => rust_memvid_agent::MemoryEntryType::Document,
-        "fact" => rust_memvid_agent::MemoryEntryType::Fact,
-        other => rust_memvid_agent::MemoryEntryType::Custom(other.to_string()),
-    };
+    // entry_type is now just a string for the simple memory system
 
     agent.save_to_memory(content, entry_type).await?;
     

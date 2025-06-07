@@ -4,4 +4,4 @@
 // logic in the future.
 
 // Re-export memory types for convenience
-pub use crate::memory::{MemoryManager, MemoryEntry, MemoryEntryType, Conversation, SearchResult};
+pub use crate::memory::{MemoryManager, MemoryEntry, Conversation, SearchResult};

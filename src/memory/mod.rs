@@ -76,16 +76,16 @@ impl MemoryManager {
 
     /// Add a message to the current conversation
     pub async fn add_message(&mut self, message: ChatMessage) -> Result<()> {
-        if let Some(ref mut conversation) = self.current_conversation {
+        let conversation_to_save = if let Some(ref mut conversation) = self.current_conversation {
             conversation.messages.push(message);
             conversation.updated_at = chrono::Utc::now();
-
-            // Save the conversation to memory
-            self.save_conversation(conversation.clone()).await?;
+            conversation.clone()
         } else {
             return Err(AgentError::memory("No active conversation".to_string()));
-        }
+        };
 
+        // Save the conversation to memory
+        self.save_conversation(conversation_to_save).await?;
         Ok(())
     }
 

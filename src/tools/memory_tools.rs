@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, info};
 
 use crate::anthropic::models::ToolDefinition;
-use crate::memory::{MemoryEntry, MemoryEntryType, MemoryManager};
+use crate::memory::MemoryManager;
 use crate::tools::{
     create_tool_definition, extract_optional_int_param, extract_optional_string_param,
     extract_string_param, Tool, ToolResult,
@@ -70,20 +70,13 @@ impl Tool for MemorySearchTool {
             result_text.push_str(&format!(
                 "{}. [{}] {}\n   Tags: {}\n   Created: {}\n\n",
                 i + 1,
-                match entry.entry_type {
-                    MemoryEntryType::Conversation => "Conversation",
-                    MemoryEntryType::Note => "Note",
-                    MemoryEntryType::Code => "Code",
-                    MemoryEntryType::Document => "Document",
-                    MemoryEntryType::Fact => "Fact",
-                    MemoryEntryType::Custom(ref name) => name,
-                },
+                &entry.entry_type,
                 if entry.content.len() > 200 {
                     format!("{}...", &entry.content[..200])
                 } else {
                     entry.content.clone()
                 },
-                entry.tags.join(", "),
+                "no tags", // Simple memory doesn't have tags
                 entry.created_at.format("%Y-%m-%d %H:%M:%S")
             ));
         }
@@ -149,16 +142,9 @@ impl Tool for MemorySaveTool {
         let entry_type_str = extract_optional_string_param(&input, "entry_type")
             .unwrap_or_else(|| "note".to_string());
         
-        let entry_type = match entry_type_str.as_str() {
-            "note" => MemoryEntryType::Note,
-            "code" => MemoryEntryType::Code,
-            "document" => MemoryEntryType::Document,
-            "fact" => MemoryEntryType::Fact,
-            "conversation" => MemoryEntryType::Conversation,
-            other => MemoryEntryType::Custom(other.to_string()),
-        };
+        let entry_type = entry_type_str;
 
-        let tags = input
+        let _tags: Vec<String> = input
             .get("tags")
             .and_then(|v| v.as_array())
             .map(|arr| {
@@ -170,15 +156,14 @@ impl Tool for MemorySaveTool {
 
         debug!("Saving memory entry: {} chars, type: {:?}", content.len(), entry_type);
 
-        let entry = MemoryEntry::new(content, entry_type).with_tags(tags);
-        
         let mut memory_manager = self.memory_manager.lock().await;
-        memory_manager.save_memory(entry.clone()).await?;
+        let metadata = std::collections::HashMap::new();
+        let memory_id = memory_manager.save_memory(content, entry_type, metadata).await?;
 
-        info!("Saved memory entry with ID: {}", entry.id);
+        info!("Saved memory entry with ID: {}", memory_id);
         Ok(ToolResult::success(format!(
             "Successfully saved memory entry with ID: {}",
-            entry.id
+            memory_id
         )))
     }
 
@@ -308,7 +293,7 @@ impl Tool for ConversationSearchTool {
             result_text.push_str(&format!(
                 "{}. {}\n   Created: {}\n   Messages: {}\n\n",
                 i + 1,
-                conversation.get_summary(),
+                format!("{} messages", conversation.messages.len()),
                 conversation.created_at.format("%Y-%m-%d %H:%M:%S"),
                 conversation.messages.len()
             ));

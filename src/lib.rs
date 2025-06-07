@@ -51,7 +51,7 @@ pub use utils::error::{AgentError, Result};
 pub use tools::{Tool, ToolRegistry, ToolResult};
 
 // Re-export memory types
-pub use memory::{MemoryManager, SearchResult, MemoryEntry, MemoryEntryType, MemoryStats};
+pub use memory::{MemoryManager, SearchResult, MemoryEntry, MemoryStats};
 
 /// Initialize the agent system with default logging
 pub async fn init() -> Result<()> {

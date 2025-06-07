@@ -21,8 +21,8 @@ impl ConversationManager {
     /// Start a new conversation
     pub async fn start_conversation(&self, title: Option<String>) -> Result<String> {
         let mut memory_manager = self.memory_manager.lock().await;
-        let conversation_id = memory_manager.start_conversation(title).await?;
-        
+        let conversation_id = memory_manager.start_conversation(title);
+
         info!("Started conversation: {}", conversation_id);
         Ok(conversation_id)
     }
@@ -35,12 +35,17 @@ impl ConversationManager {
     }
 
     /// Get recent conversation history
-    pub async fn get_recent_history(&self, limit: usize) -> Result<Vec<ChatMessage>> {
+    pub async fn get_recent_history(&self, _limit: usize) -> Result<Vec<ChatMessage>> {
         let memory_manager = self.memory_manager.lock().await;
-        let history = memory_manager.get_conversation_context(limit).await?;
-        
-        debug!("Retrieved {} messages from conversation history", history.len());
-        Ok(history)
+
+        // Get current conversation and return its messages
+        if let Some(conversation) = memory_manager.get_current_conversation() {
+            debug!("Retrieved {} messages from conversation history", conversation.messages.len());
+            Ok(conversation.messages.clone())
+        } else {
+            debug!("No current conversation found");
+            Ok(Vec::new())
+        }
     }
 
     /// Get a specific conversation
@@ -58,12 +63,12 @@ impl ConversationManager {
     /// Get current conversation ID
     pub async fn current_conversation_id(&self) -> Option<String> {
         let memory_manager = self.memory_manager.lock().await;
-        memory_manager.current_conversation_id().map(|s| s.to_string())
+        memory_manager.get_current_conversation_id().map(|s| s.to_string())
     }
 
-    /// Set current conversation ID
-    pub async fn set_current_conversation_id(&self, conversation_id: Option<String>) {
-        let mut memory_manager = self.memory_manager.lock().await;
-        memory_manager.set_current_conversation_id(conversation_id);
+    /// Set current conversation ID (not implemented for simple memory)
+    pub async fn set_current_conversation_id(&self, _conversation_id: Option<String>) {
+        // Not implemented for simple memory system
+        // Current conversation is managed internally
     }
 }
