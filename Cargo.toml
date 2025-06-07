@@ -52,7 +52,7 @@ walkdir = "2.3"
 tempfile = "3.8"
 
 # Memory integration - using rust-mp4-memory
-rust_mem_vid = { git = "https://github.com/njfio/rust-mp4-memory.git", branch = "main" }
+
 
 # Code analysis integration - using rust-treesitter-agent-code-utility
 rust_tree_sitter = { git = "https://github.com/njfio/rust-treesitter-agent-code-utility.git", branch = "main" }
