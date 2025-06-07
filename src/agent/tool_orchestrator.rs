@@ -10,6 +10,7 @@ use crate::tools::{
     advanced_memory_tools::AdvancedMemoryAnalyticsTool,
     code_analysis::CodeAnalysisTool,
     custom_tools::{HttpRequestTool, ShellCommandTool, UuidGeneratorTool},
+    local_file_ops::LocalTextEditorTool,
     memory_tools::{ConversationSearchTool, MemorySearchTool, MemorySaveTool, MemoryStatsTool},
     Tool, ToolRegistry, ToolResult,
 };
@@ -40,12 +41,13 @@ impl ToolOrchestrator {
     pub async fn register_builtin_tools(&mut self, config: &AgentConfig) -> Result<()> {
         info!("Registering built-in tools");
 
-        // Register Anthropic's native text editor tool if enabled
+        // Register text editor tool if enabled
+        // We use a local implementation instead of Anthropic's server-side tool
+        // to ensure files can actually be modified on the local machine
         if config.tools.enable_text_editor {
-            let text_editor = AnthropicTool::text_editor_for_model(&config.anthropic.model);
-            self.anthropic_tools.push(text_editor);
-
-            debug!("Registered Anthropic's native text editor tool for model: {}", config.anthropic.model);
+            // Don't register Anthropic's server-side text editor tool
+            // Instead, we'll register our local implementation below
+            debug!("Text editor enabled - will use local implementation for actual file modifications");
         }
 
         // Register memory tools if enabled
@@ -61,8 +63,12 @@ impl ToolOrchestrator {
             debug!("Registered memory tools including advanced analytics");
         }
 
-        // File system operations are now handled by Anthropic's native text editor tool
-        // No custom file system tools needed
+        // Register local file operations tool for actual file system modifications
+        // This complements Anthropic's server-side text editor tool
+        if config.tools.enable_text_editor {
+            self.tool_registry.register(LocalTextEditorTool::new("."));
+            debug!("Registered local text editor tool for actual file modifications");
+        }
 
 
 

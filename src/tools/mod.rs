@@ -1,6 +1,7 @@
 pub mod advanced_memory_tools;
 pub mod code_analysis;
 pub mod custom_tools;
+pub mod local_file_ops;
 pub mod memory_tools;
 
 use async_trait::async_trait;

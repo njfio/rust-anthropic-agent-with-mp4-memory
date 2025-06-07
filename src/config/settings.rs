@@ -58,6 +58,8 @@ pub struct MemoryConfig {
 pub struct ToolConfig {
     /// Enable text editor tool (Anthropic's native text editor)
     pub enable_text_editor: bool,
+    /// Enable local file operations (for actual file system modifications)
+    pub enable_local_file_ops: bool,
     /// Enable memory tools
     pub enable_memory_tools: bool,
     /// Enable code execution tool
