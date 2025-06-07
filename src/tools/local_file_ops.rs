@@ -115,12 +115,21 @@ impl LocalTextEditorTool {
     /// Handle the create command (matches Anthropic's interface)
     async fn handle_create(&self, input: &serde_json::Value) -> Result<ToolResult> {
         let path_str = extract_string_param(input, "path")?;
-        let file_text = extract_string_param(input, "file_text")?;
+
+        // Try to get file_text parameter, provide helpful error if missing
+        let file_text = match extract_string_param(input, "file_text") {
+            Ok(text) => text,
+            Err(_) => {
+                return Ok(ToolResult::error(
+                    "Missing required parameter 'file_text' for create command. Please provide the content to write to the file."
+                ));
+            }
+        };
 
         let resolved_path = self.resolve_path(&path_str)?;
 
         if resolved_path.exists() {
-            return Ok(ToolResult::error("File already exists"));
+            return Ok(ToolResult::error(format!("File already exists: {}", path_str)));
         }
 
         // Create parent directories if they don't exist
@@ -170,7 +179,7 @@ impl Tool for LocalTextEditorTool {
         // Local text editor tool with custom implementation
         create_tool_definition(
             "str_replace_based_edit_tool",
-            "Local text editor for viewing and editing files using str_replace operations",
+            "Local text editor for viewing and editing files. Commands: view (path, optional view_range), create (path, file_text), str_replace (path, old_str, new_str)",
             json!({
                 "type": "object",
                 "properties": {
@@ -185,15 +194,15 @@ impl Tool for LocalTextEditorTool {
                     },
                     "file_text": {
                         "type": "string",
-                        "description": "Content for create command"
+                        "description": "Content for create command (required for create)"
                     },
                     "old_str": {
                         "type": "string",
-                        "description": "Text to find for str_replace command"
+                        "description": "Text to find for str_replace command (required for str_replace)"
                     },
                     "new_str": {
                         "type": "string",
-                        "description": "Text to replace with for str_replace command"
+                        "description": "Text to replace with for str_replace command (required for str_replace)"
                     },
                     "view_range": {
                         "type": "array",

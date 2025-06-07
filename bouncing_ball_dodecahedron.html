@@ -69,6 +69,9 @@
             Bounce Damping: <input type="range" id="damping" min="0.5" max="1" step="0.01" value="0.85">
         </label>
         <label>
+            Wall Bounce Force: <input type="range" id="wallBounce" min="0.8" max="2" step="0.01" value="1.0">
+        </label>
+        <label>
             <input type="checkbox" id="trails" checked> Show Trails
         </label>
         <label>
@@ -88,6 +91,7 @@
         let gravity = 0.3;
         let ballRadius = 15;
         let bounceDamping = 0.85;
+        let wallBounceForce = 1.0;
         let showTrails = true;
         let showGlow = true;
         let trail = [];
@@ -98,7 +102,7 @@
         // Dodecahedron vertices (normalized)
         const phi = (1 + Math.sqrt(5)) / 2; // Golden ratio
         const invPhi = 1 / phi;
-        const scale = 150; // Scale factor for the dodecahedron
+        const dodecaScale = 150; // Scale factor for the dodecahedron
 
         class Ball {
             constructor(x, y, z, radius) {
@@ -148,114 +152,133 @@
             }
 
             checkCollision(vertices, faces) {
-                // First, apply a bounding sphere check as a failsafe
-                let maxRadius = scale * 0.85; // Slightly larger than inscribed sphere
-                let distFromCenter = this.pos.mag();
-                
-                if (distFromCenter + this.radius > maxRadius) {
-                    // Push back towards center
-                    let normal = this.pos.copy();
-                    normal.normalize();
+                // Transform vertices to world space based on current rotation
+                let worldVertices = [];
+                for (let v of vertices) {
+                    let worldV = v.copy();
                     
-                    // Reflect velocity if moving outward
-                    let velDotNormal = p5.Vector.dot(this.vel, normal);
-                    if (velDotNormal > 0) {
-                        this.vel.sub(p5.Vector.mult(normal, 2 * velDotNormal));
-                        this.vel.mult(bounceDamping);
-                    }
+                    // Apply Y rotation
+                    let cosY = cos(currentRotationY);
+                    let sinY = sin(currentRotationY);
+                    let x = worldV.x * cosY - worldV.z * sinY;
+                    let z = worldV.x * sinY + worldV.z * cosY;
+                    worldV.x = x;
+                    worldV.z = z;
                     
-                    // Push ball back inside
-                    this.pos.normalize();
-                    this.pos.mult(maxRadius - this.radius - 1);
-                    return;
+                    // Apply X rotation
+                    let cosX = cos(currentRotationX);
+                    let sinX = sin(currentRotationX);
+                    let y = worldV.y * cosX - worldV.z * sinX;
+                    z = worldV.y * sinX + worldV.z * cosX;
+                    worldV.y = y;
+                    worldV.z = z;
+                    
+                    worldVertices.push(worldV);
                 }
                 
-                // Transform ball position to dodecahedron's local space
-                let localPos = this.pos.copy();
-                
-                // Apply inverse rotations
-                // First inverse Y rotation
-                let cosY = cos(-currentRotationY);
-                let sinY = sin(-currentRotationY);
-                let x = localPos.x * cosY + localPos.z * sinY;
-                let z = -localPos.x * sinY + localPos.z * cosY;
-                localPos.x = x;
-                localPos.z = z;
-                
-                // Then inverse X rotation
-                let cosX = cos(-currentRotationX);
-                let sinX = sin(-currentRotationX);
-                let y = localPos.y * cosX - localPos.z * sinX;
-                z = localPos.y * sinX + localPos.z * cosX;
-                localPos.y = y;
-                localPos.z = z;
-                
-                // Check each face for collision
+                // For each face, check if ball is getting too close from inside
                 for (let face of faces) {
-                    // Calculate face center
-                    let center = createVector(0, 0, 0);
-                    for (let idx of face) {
-                        center.add(vertices[idx]);
-                    }
-                    center.div(face.length);
+                    // Get world-space vertices for this face
+                    let faceVertices = face.map(idx => worldVertices[idx]);
                     
-                    // Calculate face normal using first three vertices
-                    let v0 = vertices[face[0]];
-                    let v1 = vertices[face[1]];
-                    let v2 = vertices[face[2]];
+                    // Calculate face center
+                    let faceCenter = createVector(0, 0, 0);
+                    for (let v of faceVertices) {
+                        faceCenter.add(v);
+                    }
+                    faceCenter.div(faceVertices.length);
+                    
+                    // Calculate face normal (pointing inward)
+                    let v0 = faceVertices[0];
+                    let v1 = faceVertices[1];
+                    let v2 = faceVertices[2];
                     
                     let edge1 = p5.Vector.sub(v1, v0);
                     let edge2 = p5.Vector.sub(v2, v0);
-                    let faceNormal = p5.Vector.cross(edge1, edge2);
-                    faceNormal.normalize();
+                    let normal = p5.Vector.cross(edge1, edge2);
+                    normal.normalize();
                     
-                    // Make sure normal points outward
-                    if (p5.Vector.dot(faceNormal, center) < 0) {
-                        faceNormal.mult(-1);
+                    // Ensure normal points inward (toward origin)
+                    if (p5.Vector.dot(normal, faceCenter) > 0) {
+                        normal.mult(-1);
                     }
                     
-                    // Distance from ball center to face plane
-                    let distToPlane = p5.Vector.dot(p5.Vector.sub(localPos, v0), faceNormal);
+                    // Get the plane equation: ax + by + cz + d = 0
+                    // where (a,b,c) is the normal and d is the distance
+                    let d = -p5.Vector.dot(normal, faceCenter);
                     
-                    // Check if ball is close to this face
-                    if (distToPlane > 0 && distToPlane < this.radius + 5) {
-                        // Simple check: is the ball center projection near the face center?
-                        let projectedPoint = p5.Vector.sub(localPos, p5.Vector.mult(faceNormal, distToPlane));
-                        let distToFaceCenter = p5.Vector.dist(projectedPoint, center);
+                    // Distance from ball center to plane (positive = on the normal side)
+                    let distToPlane = p5.Vector.dot(normal, this.pos) + d;
+                    
+                    // If ball is approaching the face from inside
+                    if (distToPlane < this.radius && distToPlane > -this.radius * 2) {
+                        // Project ball position onto the face plane
+                        let projectedPos = p5.Vector.sub(this.pos, p5.Vector.mult(normal, distToPlane));
                         
-                        // Approximate face size (dodecahedron faces are regular pentagons)
-                        let faceRadius = scale * 0.5;
+                        // Check if the projected position is inside the pentagon
+                        let isInsideFace = this.pointInPolygon(projectedPos, faceVertices, normal);
                         
-                        if (distToFaceCenter < faceRadius && distToPlane < this.radius) {
-                            // Transform normal back to world space
-                            let worldNormal = faceNormal.copy();
-                            
-                            // Apply X rotation
-                            y = worldNormal.y * cosX + worldNormal.z * sinX;
-                            z = -worldNormal.y * sinX + worldNormal.z * cosX;
-                            worldNormal.y = y;
-                            worldNormal.z = z;
-                            
-                            // Apply Y rotation
-                            x = worldNormal.x * cosY - worldNormal.z * sinY;
-                            z = worldNormal.x * sinY + worldNormal.z * cosY;
-                            worldNormal.x = x;
-                            worldNormal.z = z;
-                            
-                            // Check velocity direction
-                            let velDotNormal = p5.Vector.dot(this.vel, worldNormal);
-                            if (velDotNormal < 0) {
-                                // Reflect velocity
-                                this.vel.sub(p5.Vector.mult(worldNormal, 2 * velDotNormal));
-                                this.vel.mult(bounceDamping);
+                        if (isInsideFace) {
+                            // Ball is colliding with this face
+                            if (distToPlane < this.radius) {
+                                // Calculate how much we need to push the ball back
+                                let penetration = this.radius - distToPlane;
                                 
-                                // Push ball away from face
-                                let pushDist = this.radius - distToPlane + 1;
-                                this.pos.add(p5.Vector.mult(worldNormal, pushDist));
+                                // Push ball away from the face (inward)
+                                this.pos.add(p5.Vector.mult(normal, penetration + 0.5));
+                                
+                                // Reflect velocity if moving toward the face
+                                let velDotNormal = p5.Vector.dot(this.vel, normal);
+                                if (velDotNormal < 0) {
+                                    // Reflect velocity with wall bounce force
+                                    this.vel.sub(p5.Vector.mult(normal, 2 * velDotNormal));
+                                    this.vel.mult(bounceDamping * wallBounceForce);
+                                }
                             }
                         }
                     }
                 }
+            }
+            
+            pointInPolygon(point, polygon, normal) {
+                // Use the crossing number algorithm
+                let inside = false;
+                let n = polygon.length;
+                
+                // Find a direction that's not parallel to the normal
+                let testDir = createVector(1, 0, 0);
+                if (abs(p5.Vector.dot(testDir, normal)) > 0.9) {
+                    testDir = createVector(0, 1, 0);
+                }
+                
+                // Make sure test direction is perpendicular to normal
+                let cross = p5.Vector.cross(normal, testDir);
+                testDir = p5.Vector.cross(cross, normal);
+                testDir.normalize();
+                
+                for (let i = 0; i < n; i++) {
+                    let v1 = polygon[i];
+                    let v2 = polygon[(i + 1) % n];
+                    
+                    // Check if edge crosses the test ray from point
+                    let edge = p5.Vector.sub(v2, v1);
+                    let toV1 = p5.Vector.sub(v1, point);
+                    
+                    // Calculate intersection using parametric equations
+                    let edgeCrossTest = p5.Vector.cross(edge, testDir);
+                    let denominator = p5.Vector.dot(edgeCrossTest, normal);
+                    
+                    if (abs(denominator) > 0.0001) {
+                        let t = -p5.Vector.dot(p5.Vector.cross(toV1, testDir), normal) / denominator;
+                        let u = -p5.Vector.dot(p5.Vector.cross(toV1, edge), normal) / denominator;
+                        
+                        if (t >= 0 && t <= 1 && u > 0) {
+                            inside = !inside;
+                        }
+                    }
+                }
+                
+                return inside;
             }
 
             display() {
@@ -285,56 +308,64 @@
             createCanvas(windowWidth, windowHeight, WEBGL);
             
             // Initialize dodecahedron vertices
-            const a = 1;
-            const b = invPhi;
+            const a = 1.0;
+            const b = 1.0 / phi;
             const c = phi;
             
             dodecahedron = {
                 vertices: [
-                    createVector(a, a, a),
-                    createVector(a, a, -a),
-                    createVector(a, -a, a),
-                    createVector(a, -a, -a),
-                    createVector(-a, a, a),
-                    createVector(-a, a, -a),
-                    createVector(-a, -a, a),
-                    createVector(-a, -a, -a),
-                    createVector(0, b, c),
-                    createVector(0, b, -c),
-                    createVector(0, -b, c),
-                    createVector(0, -b, -c),
-                    createVector(b, c, 0),
-                    createVector(b, -c, 0),
-                    createVector(-b, c, 0),
-                    createVector(-b, -c, 0),
-                    createVector(c, 0, b),
-                    createVector(c, 0, -b),
-                    createVector(-c, 0, b),
-                    createVector(-c, 0, -b)
+                    // (±1, ±1, ±1)
+                    createVector(a, a, a),       // 0
+                    createVector(a, a, -a),      // 1
+                    createVector(a, -a, a),      // 2
+                    createVector(a, -a, -a),     // 3
+                    createVector(-a, a, a),      // 4
+                    createVector(-a, a, -a),     // 5
+                    createVector(-a, -a, a),     // 6
+                    createVector(-a, -a, -a),    // 7
+                    // (0, ±1/φ, ±φ)
+                    createVector(0, b, c),       // 8
+                    createVector(0, b, -c),      // 9
+                    createVector(0, -b, c),      // 10
+                    createVector(0, -b, -c),     // 11
+                    // (±1/φ, ±φ, 0)
+                    createVector(b, c, 0),       // 12
+                    createVector(b, -c, 0),      // 13
+                    createVector(-b, c, 0),      // 14
+                    createVector(-b, -c, 0),     // 15
+                    // (±φ, 0, ±1/φ)
+                    createVector(c, 0, b),       // 16
+                    createVector(c, 0, -b),      // 17
+                    createVector(-c, 0, b),      // 18
+                    createVector(-c, 0, -b)      // 19
                 ],
                 faces: [
-                    [0, 16, 2, 10, 8],
+                    // Top faces
                     [0, 8, 4, 14, 12],
                     [0, 12, 1, 17, 16],
+                    [0, 16, 2, 10, 8],
                     [1, 12, 14, 5, 9],
                     [1, 9, 11, 3, 17],
+                    // Middle faces
                     [2, 16, 17, 3, 13],
-                    [2, 13, 6, 10],
+                    [2, 13, 15, 6, 10],
                     [3, 11, 7, 15, 13],
+                    // Bottom faces
                     [4, 8, 10, 6, 18],
                     [4, 18, 19, 5, 14],
                     [5, 19, 7, 11, 9],
-                    [6, 13, 15, 7, 19, 18]
+                    [6, 15, 7, 19, 18]
                 ]
             };
             
-            // Scale vertices
+            // Normalize and scale vertices
             for (let v of dodecahedron.vertices) {
-                v.mult(scale);
+                v.normalize();
+                v.mult(dodecaScale);
             }
             
-            // Initialize ball
-            ball = new Ball(0, 0, 0, ballRadius);
+            // Initialize ball at a position inside the dodecahedron
+            ball = new Ball(0, -50, 0, ballRadius);
             
             // Setup controls
             document.getElementById('rotSpeed').addEventListener('input', (e) => {
@@ -352,6 +383,10 @@
             
             document.getElementById('damping').addEventListener('input', (e) => {
                 bounceDamping = parseFloat(e.target.value);
+            });
+            
+            document.getElementById('wallBounce').addEventListener('input', (e) => {
+                wallBounceForce = parseFloat(e.target.value);
             });
             
             document.getElementById('trails').addEventListener('change', (e) => {
@@ -409,6 +444,38 @@
             stroke(100, 150, 255, 150);
             noFill();
             
+            // Debug: Highlight faces with different colors
+            let faceColors = [
+                color(255, 100, 100, 50),
+                color(100, 255, 100, 50),
+                color(100, 100, 255, 50),
+                color(255, 255, 100, 50),
+                color(255, 100, 255, 50),
+                color(100, 255, 255, 50),
+                color(255, 150, 100, 50),
+                color(150, 255, 100, 50),
+                color(100, 150, 255, 50),
+                color(255, 100, 150, 50),
+                color(150, 100, 255, 50),
+                color(100, 255, 150, 50)
+            ];
+            
+            // Draw filled faces for debugging
+            for (let i = 0; i < dodecahedron.faces.length; i++) {
+                let face = dodecahedron.faces[i];
+                fill(faceColors[i]);
+                beginShape();
+                for (let idx of face) {
+                    let v = dodecahedron.vertices[idx];
+                    vertex(v.x, v.y, v.z);
+                }
+                endShape(CLOSE);
+            }
+            
+            // Draw edges
+            stroke(100, 150, 255, 150);
+            noFill();
+            
             // Draw edges
             let edges = new Set();
             for (let face of dodecahedron.faces) {
@@ -446,7 +513,7 @@
         }
 
         function resetBall() {
-            ball = new Ball(0, 0, 0, ballRadius);
+            ball = new Ball(0, -50, 0, ballRadius);
             trail = [];
         }
 

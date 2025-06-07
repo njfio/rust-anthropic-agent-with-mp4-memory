@@ -129,7 +129,7 @@ impl Agent {
 
         // Process tool calls if any
         let mut tool_iterations = 0;
-        const MAX_TOOL_ITERATIONS: usize = 10;
+        const MAX_TOOL_ITERATIONS: usize = 5; // Reduced to prevent infinite loops
 
         while response.content.iter().any(|block| {
             matches!(block, crate::anthropic::models::ContentBlock::ToolUse { .. })
