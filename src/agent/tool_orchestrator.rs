@@ -7,6 +7,7 @@ use crate::anthropic::tools::AnthropicTool;
 use crate::config::AgentConfig;
 use crate::memory::MemoryManager;
 use crate::tools::{
+    advanced_memory_tools::AdvancedMemoryAnalyticsTool,
     code_analysis::CodeAnalysisTool,
     custom_tools::{HttpRequestTool, ShellCommandTool, UuidGeneratorTool},
     file_system::{DirectoryListTool, FileAppendTool, FileReadTool, FileWriteTool},
@@ -54,8 +55,11 @@ impl ToolOrchestrator {
             self.tool_registry.register(MemorySaveTool::new(self.memory_manager.clone()));
             self.tool_registry.register(MemoryStatsTool::new(self.memory_manager.clone()));
             self.tool_registry.register(ConversationSearchTool::new(self.memory_manager.clone()));
-            
-            debug!("Registered memory tools");
+
+            // Register Phase 2 Advanced Memory Analytics Tool
+            self.tool_registry.register(AdvancedMemoryAnalyticsTool::new(self.memory_manager.clone()));
+
+            debug!("Registered memory tools including advanced analytics");
         }
 
         // Register file system tools if enabled

@@ -1,3 +1,4 @@
+pub mod advanced_memory_tools;
 pub mod code_analysis;
 pub mod custom_tools;
 pub mod file_system;

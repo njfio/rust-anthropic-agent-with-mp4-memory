@@ -29,6 +29,34 @@ A comprehensive AI agent system in Rust that integrates with Anthropic's Claude 
 - **Refactoring Suggestions**: Intelligent code improvement recommendations
 - **Pattern Recognition**: Advanced code pattern analysis and insights
 
+### 🚀 **Phase 2 Advanced Intelligence Features**
+
+#### 🧠 Advanced Memory Analytics
+- **Knowledge Graph Generation**: Build conceptual knowledge graphs from memory content with confidence scoring
+- **Temporal Analysis**: Track memory evolution, learning patterns, and knowledge growth over time
+- **Content Synthesis**: AI-powered content summarization, insights generation, and trend analysis
+- **Analytics Dashboard**: Comprehensive memory usage metrics, engagement patterns, and activity analysis
+- **Concept Extraction**: Intelligent extraction of key concepts with semantic categorization
+- **Relationship Analysis**: Discover hidden connections and relationships between memory entries
+
+#### 🔍 Enhanced Code Analysis
+- **Semantic Analysis**: Deep understanding of code concepts, abstractions, and domain patterns
+- **Pattern Recognition**: Automatic detection of architecture patterns, design patterns, and anti-patterns
+- **Learning Path Generation**: Personalized learning recommendations based on code complexity and skill level
+- **Advanced Security Scanning**: OWASP Top 10 vulnerability detection with CWE mapping and compliance assessment
+- **Secrets Detection**: Entropy-based detection of API keys, tokens, and credentials with risk assessment
+- **Smart Refactoring**: Automated code improvement suggestions with impact analysis and roadmap generation
+- **Performance Optimization**: Hotspot identification, algorithmic improvements, and benchmarking suggestions
+- **Test Coverage Analysis**: Comprehensive testing gap analysis, quality assessment, and test recommendations
+- **Dependency Management**: Security scanning, license compliance, outdated dependency detection, and update recommendations
+
+#### 🤖 AI-Powered Insights
+- **Multi-dimensional Analysis**: Combine semantic, temporal, and structural analysis for comprehensive insights
+- **Confidence Scoring**: AI confidence levels for all recommendations, insights, and analysis results
+- **Automated Roadmaps**: Generate comprehensive improvement roadmaps with phases and effort estimation
+- **Cross-reference Intelligence**: Discover hidden connections across different domains and contexts
+- **Adaptive Learning**: System learns from usage patterns to improve recommendations and insights over time
+
 ### 🏗️ **Robust Architecture**
 - **Type Safety**: Comprehensive type system for all API interactions
 - **Error Handling**: Detailed error types and recovery mechanisms
@@ -109,6 +137,13 @@ cargo run -- tools
 cargo run -- analyze src --action explain --detailed --learning
 cargo run -- analyze src --action security --compliance
 cargo run -- analyze src --action refactor --quick-wins
+
+# Phase 2 Advanced Intelligence Features
+cargo run -- analyze src --action advanced_ai --semantic --patterns
+cargo run -- analyze src --action owasp_scan --owasp_top10 --secrets
+cargo run -- analyze src --action smart_refactor --roadmap --benchmarks
+cargo run -- analyze src --action test_coverage --missing_tests
+cargo run -- analyze src --action dependency_scan --security_deps
 ```
 
 ## 🧠 AI Code Analysis
@@ -158,6 +193,25 @@ cargo run -- analyze src --action refactor --quick-wins
 - `stats` - Generate code statistics
 - `map_structure` - Map code structure
 
+#### 🚀 **Phase 2 Advanced Analysis Actions**
+- `advanced_ai` / `semantic_analysis` - Deep semantic understanding with concept recognition
+- `pattern_recognition` - Architecture and design pattern detection
+- `learning_paths` - Personalized learning recommendations
+- `advanced_security` / `owasp_scan` - OWASP Top 10 vulnerability detection
+- `secrets_detection` - Advanced secrets detection with entropy analysis
+- `vulnerability_scan` - Comprehensive vulnerability scanning
+- `smart_refactor` / `code_smells` - Intelligent refactoring with roadmaps
+- `design_patterns` - Design pattern analysis and recommendations
+- `performance_optimize` - Performance optimization suggestions
+- `test_coverage` - Test coverage analysis and gap identification
+- `missing_tests` - Missing test identification and prioritization
+- `test_quality` - Test quality assessment and improvement suggestions
+- `coverage_gaps` - Coverage gap analysis and remediation
+- `dependency_scan` - Dependency analysis and optimization
+- `security_deps` - Security dependency scanning
+- `outdated_deps` - Outdated dependency detection
+- `license_check` - License compliance checking
+
 ### Interactive AI Analysis
 
 The agent can also perform code analysis through natural conversation:
@@ -166,6 +220,12 @@ The agent can also perform code analysis through natural conversation:
 cargo run -- chat "Can you perform a security scan on my src directory?"
 cargo run -- chat "Explain the code structure in src/main.rs with learning insights"
 cargo run -- chat "Give me refactoring suggestions for quick wins"
+
+# Advanced Memory Analytics through conversation
+cargo run -- chat "Build a knowledge graph from my memory"
+cargo run -- chat "Show me temporal analysis of my learning patterns"
+cargo run -- chat "Synthesize insights from my recent conversations"
+cargo run -- chat "Generate an analytics dashboard for my memory usage"
 ```
 
 ## 📖 Examples
@@ -294,7 +354,8 @@ max_history_length = 50
 ### Built-in Tools
 
 - **Memory Tools**: Search, save, and manage persistent memory
-- **Code Analysis**: AI-powered code explanations, security scanning, and refactoring suggestions
+- **Advanced Memory Analytics**: Knowledge graphs, temporal analysis, content synthesis, and analytics dashboards
+- **Code Analysis**: AI-powered code explanations, security scanning, and refactoring suggestions with Phase 2 advanced intelligence
 - **Text Editor**: View and edit files with full Anthropic text editor support
 - **File System**: Read, write, and list files and directories
 - **HTTP Requests**: Make web requests with domain filtering
