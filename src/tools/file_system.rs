@@ -246,6 +246,26 @@ impl Tool for FileWriteTool {
     async fn execute(&self, input: serde_json::Value) -> Result<ToolResult> {
         debug!("FileWriteTool received input: {}", serde_json::to_string_pretty(&input).unwrap_or_else(|_| "invalid json".to_string()));
 
+        // Log the structure of the input for debugging
+        if let Some(obj) = input.as_object() {
+            debug!("FileWriteTool input keys: {:?}", obj.keys().collect::<Vec<_>>());
+            for (key, value) in obj {
+                debug!("FileWriteTool input[{}]: {} (type: {})", key,
+                    serde_json::to_string(value).unwrap_or_else(|_| "invalid".to_string()),
+                    match value {
+                        serde_json::Value::String(_) => "string",
+                        serde_json::Value::Number(_) => "number",
+                        serde_json::Value::Bool(_) => "bool",
+                        serde_json::Value::Array(_) => "array",
+                        serde_json::Value::Object(_) => "object",
+                        serde_json::Value::Null => "null",
+                    }
+                );
+            }
+        } else {
+            debug!("FileWriteTool input is not an object: {:?}", input);
+        }
+
         let path_str = match extract_string_param(&input, "path") {
             Ok(path) => path,
             Err(e) => {
