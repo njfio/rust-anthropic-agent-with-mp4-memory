@@ -149,9 +149,13 @@ impl Agent {
             // Execute tools and collect results
             let tool_results = self.tool_orchestrator.execute_tools(&response.content).await?;
 
-            // Only create tool result message if there are actual client tool results
-            // Server tools are handled entirely by Anthropic and don't need our tool result messages
-            if !tool_results.is_empty() {
+            // Always create tool result message if there were any tool uses
+            // This ensures every tool_use block has a corresponding tool_result block
+            let has_tool_uses = response.content.iter().any(|block| {
+                matches!(block, crate::anthropic::models::ContentBlock::ToolUse { .. })
+            });
+
+            if has_tool_uses && !tool_results.is_empty() {
                 let tool_result_message = ChatMessage {
                     role: MessageRole::User,
                     content: tool_results,
@@ -159,6 +163,12 @@ impl Agent {
                     timestamp: Some(chrono::Utc::now()),
                 };
                 self.conversation_manager.add_message(tool_result_message).await?;
+            }
+
+            // Check if we're about to hit the limit
+            if tool_iterations >= MAX_TOOL_ITERATIONS {
+                warn!("Maximum tool iterations reached, stopping tool execution");
+                break;
             }
 
             // Get updated history and make another request
@@ -170,9 +180,7 @@ impl Agent {
             response = self.anthropic_client.chat(request.clone()).await?;
         }
 
-        if tool_iterations >= MAX_TOOL_ITERATIONS {
-            warn!("Maximum tool iterations reached, stopping tool execution");
-        }
+        // Tool iterations completed (either no more tool uses or max iterations reached)
 
         // Add final assistant response
         let final_message = ChatMessage {
