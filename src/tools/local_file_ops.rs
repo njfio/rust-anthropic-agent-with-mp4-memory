@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
 use crate::anthropic::models::ToolDefinition;
-use crate::tools::{extract_string_param, Tool, ToolResult};
+use crate::tools::{create_tool_definition, extract_string_param, Tool, ToolResult};
 use crate::utils::error::{AgentError, Result};
 
 /// Local implementation of Anthropic's str_replace_based_edit_tool
@@ -167,12 +167,11 @@ impl LocalTextEditorTool {
 #[async_trait]
 impl Tool for LocalTextEditorTool {
     fn definition(&self) -> ToolDefinition {
-        // Use the exact same tool definition as Anthropic's text editor
-        ToolDefinition {
-            tool_type: "text_editor_20250429".to_string(),
-            name: "str_replace_based_edit_tool".to_string(),
-            description: Some("Tool for viewing and editing files using str_replace operations".to_string()),
-            input_schema: Some(json!({
+        // Local text editor tool with custom implementation
+        create_tool_definition(
+            "str_replace_based_edit_tool",
+            "Local text editor for viewing and editing files using str_replace operations",
+            json!({
                 "type": "object",
                 "properties": {
                     "command": {
@@ -203,11 +202,8 @@ impl Tool for LocalTextEditorTool {
                     }
                 },
                 "required": ["command", "path"]
-            })),
-            max_uses: None,
-            allowed_domains: None,
-            blocked_domains: None,
-        }
+            }),
+        )
     }
 
     async fn execute(&self, input: serde_json::Value) -> Result<ToolResult> {

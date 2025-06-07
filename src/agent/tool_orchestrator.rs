@@ -41,14 +41,9 @@ impl ToolOrchestrator {
     pub async fn register_builtin_tools(&mut self, config: &AgentConfig) -> Result<()> {
         info!("Registering built-in tools");
 
-        // Register text editor tool if enabled
-        // We use a local implementation instead of Anthropic's server-side tool
-        // to ensure files can actually be modified on the local machine
-        if config.tools.enable_text_editor {
-            // Don't register Anthropic's server-side text editor tool
-            // Instead, we'll register our local implementation below
-            debug!("Text editor enabled - will use local implementation for actual file modifications");
-        }
+        // Text editor tool is handled as a local client tool only
+        // We don't register Anthropic's server-side text editor tool at all
+        debug!("Text editor will be handled by local implementation only");
 
         // Register memory tools if enabled
         if config.tools.enable_memory_tools {
@@ -223,8 +218,8 @@ impl ToolOrchestrator {
         }
 
         // Also check for known Anthropic server tool names
+        // Note: str_replace_based_edit_tool is now handled locally, not as a server tool
         matches!(name,
-            "str_replace_based_edit_tool" |
             "str_replace_editor" |
             "code_execution" |
             "web_search"

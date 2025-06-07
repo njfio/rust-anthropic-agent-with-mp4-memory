@@ -29,7 +29,7 @@ anyhow = "1.0"
 thiserror = "1.0"
 
 # HTTP client for Anthropic API
-reqwest = { version = "0.11", features = ["json", "stream"] }
+reqwest = { version = "0.11.27", features = ["json", "stream"] }
 
 # CLI
 clap = { version = "4.0", features = ["derive", "env"] }
@@ -40,7 +40,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Configuration
 config = "0.13"
-toml = "0.8"
+toml = "0.7"
 
 # Utilities
 uuid = { version = "1.0", features = ["v4", "serde"] }
@@ -61,7 +61,7 @@ rust_tree_sitter = { git = "https://github.com/njfio/rust-treesitter-agent-code-
 regex = "1.0"
 
 # Progress indicators
-indicatif = "0.17"
+indicatif = "0.16"
 
 # Environment variables
 dotenv = "0.15"
@@ -74,6 +74,11 @@ url = "2.4"
 
 # Random number generation
 rand = "0.8"
+
+# Pin problematic dependencies to avoid edition2024 requirement and newer rustc requirements
+base64ct = "=1.6.0"
+native-tls = "=0.2.11"
+idna = "=0.4.0"
 
 [dev-dependencies]
 criterion = "0.5"

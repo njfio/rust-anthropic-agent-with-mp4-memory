@@ -131,6 +131,7 @@ impl Default for ToolConfig {
     fn default() -> Self {
         Self {
             enable_text_editor: true,
+            enable_local_file_ops: true,
             enable_memory_tools: true,
             enable_code_execution: true,
             enable_web_search: true,
