@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use base64::Engine;
 use serde_json::json;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use tracing::{debug, error, info, warn};
 
@@ -278,6 +279,20 @@ impl Tool for FileWriteTool {
             Ok(content) => content,
             Err(e) => {
                 error!("FileWriteTool: Failed to extract 'content' parameter: {}", e);
+
+                // Check if this is a large file that might have content transmission issues
+                if path_str.contains("bouncing_ball_dodecahedron") || path_str.ends_with(".html") {
+                    return Ok(ToolResult::error(format!(
+                        "Content parameter missing for file '{}'. This may be due to large content size limitations. \
+                        \n\nSuggested solutions:\
+                        \n1. Break the content into smaller chunks and use multiple file_write calls\
+                        \n2. Create the file with basic structure first, then add content incrementally\
+                        \n3. Use a simpler approach with smaller content blocks\
+                        \n\nThe file_write tool requires both 'path' and 'content' parameters in a single call. \
+                        Please provide the complete file content in the 'content' parameter.", path_str
+                    )));
+                }
+
                 return Ok(ToolResult::error(format!(
                     "Missing or invalid 'content' parameter. The file_write tool requires both 'path' and 'content' parameters. \
                     Please provide the file content as a string in the 'content' parameter. Error: {}", e
@@ -318,6 +333,151 @@ impl Tool for FileWriteTool {
 
     fn description(&self) -> Option<&str> {
         Some("Write content to a file")
+    }
+}
+
+/// Tool for appending content to files (useful for large files)
+#[derive(Debug, Clone)]
+pub struct FileAppendTool {
+    /// Working directory for file operations
+    working_dir: PathBuf,
+    /// Allowed file extensions (None means all allowed)
+    allowed_extensions: Option<Vec<String>>,
+}
+
+impl FileAppendTool {
+    /// Create a new file append tool
+    pub fn new<P: Into<PathBuf>>(working_dir: P) -> Self {
+        Self {
+            working_dir: working_dir.into(),
+            allowed_extensions: None,
+        }
+    }
+
+    /// Set allowed file extensions
+    pub fn with_allowed_extensions(mut self, extensions: Vec<String>) -> Self {
+        self.allowed_extensions = Some(extensions);
+        self
+    }
+
+    /// Resolve a path relative to the working directory
+    fn resolve_path(&self, path: &str) -> Result<PathBuf> {
+        let path = Path::new(path);
+
+        // Prevent directory traversal attacks
+        if path.components().any(|comp| matches!(comp, std::path::Component::ParentDir)) {
+            return Err(AgentError::invalid_input(
+                "Path traversal not allowed (..)",
+            ));
+        }
+
+        let resolved = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            self.working_dir.join(path)
+        };
+
+        Ok(resolved)
+    }
+
+    /// Check if file extension is allowed
+    fn is_extension_allowed(&self, path: &Path) -> bool {
+        if let Some(allowed) = &self.allowed_extensions {
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                allowed.iter().any(|a| a.eq_ignore_ascii_case(ext))
+            } else {
+                false
+            }
+        } else {
+            true
+        }
+    }
+}
+
+#[async_trait]
+impl Tool for FileAppendTool {
+    fn definition(&self) -> ToolDefinition {
+        create_tool_definition(
+            "file_append",
+            "Append content to a file. Creates the file if it doesn't exist. Useful for building large files incrementally.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the file to append to (required)"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Content to append to the file (required). This content will be added to the end of the file."
+                    }
+                },
+                "required": ["path", "content"]
+            }),
+        )
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<ToolResult> {
+        debug!("FileAppendTool received input: {}", serde_json::to_string_pretty(&input).unwrap_or_else(|_| "invalid json".to_string()));
+
+        let path_str = match extract_string_param(&input, "path") {
+            Ok(path) => path,
+            Err(e) => {
+                error!("FileAppendTool: Failed to extract 'path' parameter: {}", e);
+                return Ok(ToolResult::error(format!("Missing or invalid 'path' parameter: {}", e)));
+            }
+        };
+
+        let content = match extract_string_param(&input, "content") {
+            Ok(content) => content,
+            Err(e) => {
+                error!("FileAppendTool: Failed to extract 'content' parameter: {}", e);
+                return Ok(ToolResult::error(format!(
+                    "Missing or invalid 'content' parameter. The file_append tool requires both 'path' and 'content' parameters. \
+                    Please provide the content to append as a string in the 'content' parameter. Error: {}", e
+                )));
+            }
+        };
+
+        let resolved_path = self.resolve_path(&path_str)?;
+
+        debug!("Appending to file: {:?} ({} chars)", resolved_path, content.len());
+
+        if !self.is_extension_allowed(&resolved_path) {
+            return Ok(ToolResult::error("File extension not allowed"));
+        }
+
+        // Create parent directories if they don't exist
+        if let Some(parent) = resolved_path.parent() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                return Ok(ToolResult::error(format!("Failed to create parent directories: {}", e)));
+            }
+        }
+
+        match fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&resolved_path)
+        {
+            Ok(mut file) => {
+                match file.write_all(content.as_bytes()) {
+                    Ok(()) => {
+                        info!("Successfully appended to file: {:?} ({} chars)", resolved_path, content.len());
+                        Ok(ToolResult::success(format!("Successfully appended {} characters to file: {}", content.len(), path_str)))
+                    }
+                    Err(e) => Ok(ToolResult::error(format!("Failed to write to file: {}", e))),
+                }
+            }
+            Err(e) => Ok(ToolResult::error(format!("Failed to open file for appending: {}", e))),
+        }
+    }
+
+    fn name(&self) -> &str {
+        "file_append"
+    }
+
+    fn description(&self) -> Option<&str> {
+        Some("Append content to a file. Creates the file if it doesn't exist. Useful for building large files incrementally.")
     }
 }
 

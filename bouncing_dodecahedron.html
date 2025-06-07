@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bouncing Dodecahedron</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        let dodecahedron;
+        let rotationX = 0;
+        let rotationY = 0;
+        let rotationZ = 0;
+        
+        // Physics variables
+        let posY;
+        let velocityY = 0;
+        let gravity = 0.5;
+        let damping = 0.8;
+        let ground;
+        
+        // Dodecahedron vertices (normalized to unit sphere)
+        let phi = (1 + Math.sqrt(5)) / 2; // Golden ratio
+        let vertices;
+        
+        function setup() {
+            createCanvas(windowWidth, windowHeight, WEBGL);
+            
+            // Initialize position
+            posY = -height/4;
+            ground = height/2 - 100;
+            
+            // Define dodecahedron vertices
+            let a = 1.0;
+            let b = 1.0 / phi;
+            let c = 2.0 - phi;
+            
+            vertices = [
+                // Rectangle in xy-plane
+                createVector(a, a, a),
+                createVector(a, a, -a),
+                createVector(a, -a, a),
+                createVector(a, -a, -a),
+                createVector(-a, a, a),
+                createVector(-a, a, -a),
+                createVector(-a, -a, a),
+                createVector(-a, -a, -a),
+                
+                // Rectangle in xz-plane
+                createVector(0, b, c),
+                createVector(0, b, -c),
+                createVector(0, -b, c),
+                createVector(0, -b, -c),
+                
+                // Rectangle in yz-plane
+                createVector(b, c, 0),
+                createVector(b, -c, 0),
+                createVector(-b, c, 0),
+                createVector(-b, -c, 0),
+                
+                // Rectangle in xy-plane (shifted)
+                createVector(c, 0, b),
+                createVector(c, 0, -b),
+                createVector(-c, 0, b),
+                createVector(-c, 0, -b)
+            ];
+            
+            // Normalize vertices to unit sphere and scale
+            let scale = 80;
+            for (let v of vertices) {
+                v.normalize();
+                v.mult(scale);
+            }
+        }
+        
+        function draw() {
+            background(240);
+            
+            // Lighting
+            ambientLight(60);
+            directionalLight(255, 255, 255, -1, 0.5, -1);
+            pointLight(255, 255, 255, 0, -200, 200);
+            
+            // Apply physics
+            velocityY += gravity;
+            posY += velocityY;
+            
+            // Check for ground collision
+            if (posY > ground - 80) {
+                posY = ground - 80;
+                velocityY *= -damping;
+                
+                // Add some random rotation on bounce
+                rotationX += random(-0.1, 0.1);
+                rotationY += random(-0.1, 0.1);
+            }
+            
+            // Draw ground
+            push();
+            translate(0, ground + 50, 0);
+            fill(200);
+            noStroke();
+            box(width * 2, 100, width * 2);
+            pop();
+            
+            // Draw dodecahedron
+            push();
+            translate(0, posY, 0);
+            
+            // Continuous rotation
+            rotationX += 0.01;
+            rotationY += 0.02;
+            rotationZ += 0.005;
+            
+            rotateX(rotationX);
+            rotateY(rotationY);
+            rotateZ(rotationZ);
+            
+            // Set material properties
+            fill(100, 150, 255);
+            stroke(50, 100, 200);
+            strokeWeight(2);
+            
+            // Draw dodecahedron faces
+            // A dodecahedron has 12 pentagonal faces
+            drawDodecahedronFaces();
+            
+            pop();
+        }
+        
+        function drawDodecahedronFaces() {
+            // Define the 12 pentagonal faces by vertex indices
+            let faces = [
+                [0, 16, 2, 10, 8],
+                [0, 8, 4, 14, 12],
+                [16, 17, 1, 12, 0],
+                [1, 9, 11, 3, 17],
+                [1, 12, 14, 5, 9],
+                [2, 13, 15, 6, 10],
+                [13, 3, 17, 16, 2],
+                [3, 11, 7, 15, 13],
+                [4, 8, 10, 6, 18],
+                [14, 4, 18, 19, 5],
+                [5, 19, 7, 11, 9],
+                [15, 7, 19, 18, 6]
+            ];
+            
+            // Draw each pentagonal face
+            for (let face of faces) {
+                beginShape();
+                for (let i of face) {
+                    if (i < vertices.length) {
+                        vertex(vertices[i].x, vertices[i].y, vertices[i].z);
+                    }
+                }
+                endShape(CLOSE);
+            }
+        }
+        
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+            ground = height/2 - 100;
+        }
+        
+        // Add mouse interaction - click to drop the ball again
+        function mousePressed() {
+            posY = -height/4;
+            velocityY = random(-5, 5);
+            rotationX += random(-0.5, 0.5);
+            rotationY += random(-0.5, 0.5);
+        }
+    </script>
+</body>
+</html>
