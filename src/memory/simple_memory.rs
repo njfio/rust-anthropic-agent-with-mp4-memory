@@ -39,14 +39,35 @@ impl SimpleMemory {
         
         debug!("Initializing fast JSON memory at: {:?}", memory_path);
 
-        // Load existing data if file exists
+        // Load existing data if file exists, or create new if incompatible format
         let data = if memory_path.exists() {
             debug!("Loading existing memory data");
             let content = fs::read_to_string(&memory_path)
                 .map_err(|e| AgentError::memory(format!("Failed to read memory file: {}", e)))?;
-            
-            serde_json::from_str::<MemoryData>(&content)
-                .map_err(|e| AgentError::memory(format!("Failed to parse memory data: {}", e)))?
+
+            // Try to parse as new format, fallback to creating new if incompatible
+            match serde_json::from_str::<MemoryData>(&content) {
+                Ok(data) => {
+                    debug!("Successfully loaded existing JSON memory data with {} chunks", data.chunks.len());
+                    data
+                }
+                Err(e) => {
+                    debug!("Existing memory file has incompatible format ({}), creating new JSON memory", e);
+                    // Backup the old file
+                    let backup_path = memory_path.with_extension("mp4.backup");
+                    if let Err(backup_err) = fs::copy(&memory_path, &backup_path) {
+                        debug!("Failed to backup old memory file: {}", backup_err);
+                    } else {
+                        debug!("Backed up old memory file to: {:?}", backup_path);
+                    }
+
+                    MemoryData {
+                        chunks: Vec::new(),
+                        created_at: chrono::Utc::now(),
+                        updated_at: chrono::Utc::now(),
+                    }
+                }
+            }
         } else {
             debug!("Creating new memory data");
             MemoryData {
