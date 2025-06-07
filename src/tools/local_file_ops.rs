@@ -114,7 +114,15 @@ impl LocalTextEditorTool {
 
     /// Handle the create command (matches Anthropic's interface)
     async fn handle_create(&self, input: &serde_json::Value) -> Result<ToolResult> {
-        let path_str = extract_string_param(input, "path")?;
+        // Try to get path parameter with better error handling
+        let path_str = match extract_string_param(input, "path") {
+            Ok(path) => path,
+            Err(_) => {
+                return Ok(ToolResult::error(
+                    "Missing required parameter 'path' for create command. Please provide the file path."
+                ));
+            }
+        };
 
         // Try to get file_text parameter, provide helpful error if missing
         let file_text = match extract_string_param(input, "file_text") {
@@ -216,6 +224,9 @@ impl Tool for LocalTextEditorTool {
     }
 
     async fn execute(&self, input: serde_json::Value) -> Result<ToolResult> {
+        // Debug: Log the full input to see what parameters we're receiving
+        debug!("Local text editor tool received input: {}", serde_json::to_string_pretty(&input).unwrap_or_else(|_| "Invalid JSON".to_string()));
+
         let command = extract_string_param(&input, "command")?;
 
         debug!("Executing local file operation: {}", command);
