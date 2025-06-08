@@ -116,7 +116,7 @@ impl Default for AnthropicConfig {
             model: "claude-opus-4-20250514".to_string(),
             max_tokens: 4096,
             temperature: 0.7,
-            timeout_seconds: 120,
+            timeout_seconds: 300,
             max_retries: 3,
         }
     }
