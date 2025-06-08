@@ -65,6 +65,11 @@ impl AnthropicClient {
     async fn send_chat_request(&self, request: &ChatRequest) -> Result<ChatResponse> {
         debug!("Sending chat request to Anthropic API");
 
+        // Log the complete request payload
+        let request_json = serde_json::to_string_pretty(&request)
+            .unwrap_or_else(|_| "Failed to serialize request".to_string());
+        info!("🚀 ANTHROPIC REQUEST PAYLOAD:\n{}", request_json);
+
         // Check if streaming is enabled
         if request.stream == Some(true) {
             warn!("Streaming is enabled but not yet implemented, falling back to non-streaming");
@@ -101,6 +106,9 @@ impl AnthropicClient {
             .map_err(|e| AgentError::Http(e))?;
 
         debug!("Received response with status: {}", status);
+
+        // Log the complete response payload
+        info!("📥 ANTHROPIC RESPONSE PAYLOAD:\n{}", response_text);
 
         if !status.is_success() {
             return self.handle_error_response(status, &response_text);
