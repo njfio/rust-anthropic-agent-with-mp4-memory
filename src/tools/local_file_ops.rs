@@ -156,7 +156,13 @@ impl LocalTextEditorTool {
         let old_str = extract_string_param(input, "old_str")?;
         let new_str = extract_string_param(input, "new_str")?;
 
+        info!("🔄 STR_REPLACE operation:");
+        info!("📁 Path: {}", path_str);
+        info!("🔍 Old text: {:?}", old_str);
+        info!("✏️  New text: {:?}", new_str);
+
         let resolved_path = self.resolve_path(&path_str)?;
+        info!("📍 Resolved path: {:?}", resolved_path);
 
         if !resolved_path.exists() {
             return Ok(ToolResult::error("File not found"));
@@ -166,17 +172,24 @@ impl LocalTextEditorTool {
         let matches = content.matches(&old_str).count();
 
         match matches {
-            0 => Ok(ToolResult::error("No match found for replacement")),
+            0 => {
+                info!("❌ No match found for replacement");
+                Ok(ToolResult::error("No match found for replacement"))
+            },
             1 => {
                 let new_content = content.replace(&old_str, &new_str);
                 fs::write(&resolved_path, new_content)?;
-                info!("Successfully replaced text in {:?}", resolved_path);
+                info!("✅ Successfully replaced text in {:?}", resolved_path);
+                info!("💾 File written successfully!");
                 Ok(ToolResult::success("Successfully replaced text at exactly one location"))
             }
-            n => Ok(ToolResult::error(format!(
-                "Found {} matches for replacement text. Please provide more context to make a unique match.",
-                n
-            ))),
+            n => {
+                info!("⚠️  Found {} matches for replacement text", n);
+                Ok(ToolResult::error(format!(
+                    "Found {} matches for replacement text. Please provide more context to make a unique match.",
+                    n
+                )))
+            },
         }
     }
 }
@@ -225,11 +238,12 @@ impl Tool for LocalTextEditorTool {
 
     async fn execute(&self, input: serde_json::Value) -> Result<ToolResult> {
         // Debug: Log the full input to see what parameters we're receiving
-        debug!("Local text editor tool received input: {}", serde_json::to_string_pretty(&input).unwrap_or_else(|_| "Invalid JSON".to_string()));
+        info!("🔧 LOCAL TEXT EDITOR TOOL CALLED");
+        info!("📥 Input received: {}", serde_json::to_string_pretty(&input).unwrap_or_else(|_| "Invalid JSON".to_string()));
 
         let command = extract_string_param(&input, "command")?;
 
-        debug!("Executing local file operation: {}", command);
+        info!("⚡ Executing local file operation: {}", command);
 
         match command.as_str() {
             "view" => self.handle_view(&input).await,
