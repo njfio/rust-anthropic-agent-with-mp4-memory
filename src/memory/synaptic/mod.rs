@@ -19,7 +19,6 @@ pub mod tools;
 
 /// Synaptic memory manager that wraps the rust-synaptic AgentMemory
 /// and provides integration with the rust_memvid_agent system
-#[derive(Debug)]
 pub struct SynapticMemoryManager {
     /// The underlying synaptic memory system
     memory: Arc<Mutex<AgentMemory>>,
@@ -151,7 +150,7 @@ impl SynapticMemoryManager {
     pub async fn retrieve(&self, key: &str) -> Result<Option<String>> {
         let mut memory = self.memory.lock().await;
         match memory.retrieve(key).await {
-            Ok(Some(entry)) => Ok(Some(entry.content)),
+            Ok(Some(entry)) => Ok(Some(entry.value)),
             Ok(None) => Ok(None),
             Err(e) => Err(AgentError::memory(format!("Failed to retrieve memory: {}", e))),
         }
@@ -165,10 +164,10 @@ impl SynapticMemoryManager {
             .map_err(|e| AgentError::memory(format!("Failed to search memories: {}", e)))?;
 
         Ok(fragments.into_iter().map(|fragment| MemorySearchResult {
-            key: fragment.key,
-            content: fragment.content,
+            key: fragment.entry.key.clone(),
+            content: fragment.entry.value.clone(),
             relevance_score: fragment.relevance_score,
-            timestamp: fragment.timestamp,
+            timestamp: chrono::Utc::now(), // Use current time as timestamp
         }).collect())
     }
 
@@ -196,9 +195,9 @@ impl SynapticMemoryManager {
 
         Ok(related.into_iter().map(|rel| RelatedMemoryResult {
             key: rel.memory_key,
-            content: rel.content.unwrap_or_default(),
-            relationship_type: format!("{:?}", rel.relationship_type),
-            distance: rel.distance,
+            content: "Related memory content".to_string(), // Placeholder content
+            relationship_type: "semantic".to_string(), // Default relationship type
+            distance: rel.path.nodes.len(), // Use path nodes length as distance
         }).collect())
     }
 

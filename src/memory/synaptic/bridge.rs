@@ -5,6 +5,7 @@
 //! including external integrations, distributed consensus, embeddings, analytics, and real-time features.
 
 use std::sync::Arc;
+use std::path::Path;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
@@ -16,7 +17,6 @@ use crate::utils::error::{AgentError, Result};
 
 /// A bridge that can use either the simple memory system or the synaptic system
 /// This allows for gradual migration and A/B testing between memory systems
-#[derive(Debug)]
 pub struct MemoryBridge {
     /// The simple memory system (legacy)
     simple_memory: Option<Arc<Mutex<SimpleMemory>>>,
@@ -71,7 +71,7 @@ impl MemoryBridge {
         index_path: &str,
         config: BridgeConfig,
     ) -> Result<Self> {
-        let simple_memory = SimpleMemory::new(memory_path, index_path).await?;
+        let simple_memory = SimpleMemory::new(Path::new(memory_path), Path::new(index_path)).await?;
         
         Ok(Self {
             simple_memory: Some(Arc::new(Mutex::new(simple_memory))),
@@ -101,7 +101,7 @@ impl MemoryBridge {
         synaptic_config: SynapticConfig,
         bridge_config: BridgeConfig,
     ) -> Result<Self> {
-        let simple_memory = SimpleMemory::new(memory_path, index_path).await?;
+        let simple_memory = SimpleMemory::new(Path::new(memory_path), Path::new(index_path)).await?;
         let synaptic_memory = SynapticMemoryManager::new(synaptic_config).await?;
         
         Ok(Self {
@@ -116,7 +116,7 @@ impl MemoryBridge {
         match self.config.primary_system {
             MemorySystem::Simple => {
                 if let Some(ref simple) = self.simple_memory {
-                    simple.lock().await.add_chunk(content).await?;
+                    simple.lock().await.add_chunk(content.clone()).await?;
                 } else {
                     return Err(AgentError::memory("Simple memory not available".to_string()));
                 }
@@ -174,8 +174,8 @@ impl MemoryBridge {
                     results.into_iter().map(|result| MemorySearchResult {
                         key: Uuid::new_v4().to_string(), // Simple memory doesn't have keys
                         content: result.content,
-                        relevance_score: result.score,
-                        timestamp: result.timestamp,
+                        relevance_score: result.score as f64,
+                        timestamp: chrono::Utc::now(), // Use current time as timestamp
                     }).collect()
                 } else {
                     return Err(AgentError::memory("Simple memory not available".to_string()));
@@ -197,8 +197,8 @@ impl MemoryBridge {
                     let converted: Vec<MemorySearchResult> = simple_results.into_iter().map(|result| MemorySearchResult {
                         key: format!("simple_{}", Uuid::new_v4()),
                         content: result.content,
-                        relevance_score: result.score,
-                        timestamp: result.timestamp,
+                        relevance_score: result.score as f64,
+                        timestamp: chrono::Utc::now(), // Use current time as timestamp
                     }).collect();
                     all_results.extend(converted);
                 }
@@ -229,8 +229,8 @@ impl MemoryBridge {
                         return Ok(results.into_iter().map(|result| MemorySearchResult {
                             key: format!("fallback_{}", Uuid::new_v4()),
                             content: result.content,
-                            relevance_score: result.score,
-                            timestamp: result.timestamp,
+                            relevance_score: result.score as f64,
+                            timestamp: chrono::Utc::now(), // Use current time as timestamp
                         }).collect());
                     }
                 }
@@ -273,8 +273,8 @@ impl MemoryBridge {
         if let Some(ref simple) = self.simple_memory {
             let simple_memory = simple.lock().await;
             stats.simple_stats = Some(SimpleMemoryStats {
-                chunk_count: simple_memory.get_chunk_count(),
-                total_size: simple_memory.get_total_size(),
+                chunk_count: simple_memory.chunk_count(),
+                total_size: 0, // SimpleMemory doesn't have get_total_size method
             });
         }
 

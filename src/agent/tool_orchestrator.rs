@@ -218,9 +218,9 @@ impl ToolOrchestrator {
         }
 
         // Also check for known Anthropic server tool names
-        // Note: str_replace_based_edit_tool is now handled locally, not as a server tool
         matches!(name,
             "str_replace_editor" |
+            "str_replace_based_edit_tool" |
             "code_execution" |
             "web_search"
         )

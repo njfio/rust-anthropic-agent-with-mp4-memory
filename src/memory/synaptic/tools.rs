@@ -9,42 +9,37 @@ use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::tools::{Tool, ToolResult};
-use crate::memory::synaptic::{SynapticMemoryManager, MemorySearchResult};
+use crate::tools::{Tool, ToolResult, create_tool_definition};
+use crate::anthropic::models::ToolDefinition;
+use crate::memory::synaptic::SynapticMemoryManager;
 use crate::utils::error::{AgentError, Result};
 
 /// Tool for storing memories in the synaptic system
-#[derive(Debug)]
 pub struct SynapticStoreTool {
     memory_manager: Arc<Mutex<SynapticMemoryManager>>,
 }
 
 /// Tool for searching memories in the synaptic system
-#[derive(Debug)]
 pub struct SynapticSearchTool {
     memory_manager: Arc<Mutex<SynapticMemoryManager>>,
 }
 
 /// Tool for semantic search using embeddings
-#[derive(Debug)]
 pub struct SynapticSemanticSearchTool {
     memory_manager: Arc<Mutex<SynapticMemoryManager>>,
 }
 
 /// Tool for finding related memories using knowledge graph
-#[derive(Debug)]
 pub struct SynapticRelatedMemoriesTool {
     memory_manager: Arc<Mutex<SynapticMemoryManager>>,
 }
 
 /// Tool for getting memory statistics and analytics
-#[derive(Debug)]
 pub struct SynapticStatsTool {
     memory_manager: Arc<Mutex<SynapticMemoryManager>>,
 }
 
 /// Tool for creating memory checkpoints
-#[derive(Debug)]
 pub struct SynapticCheckpointTool {
     memory_manager: Arc<Mutex<SynapticMemoryManager>>,
 }
@@ -91,41 +86,45 @@ impl Tool for SynapticStoreTool {
         "synaptic_store_memory"
     }
 
-    fn description(&self) -> &str {
-        "Store a memory in the synaptic memory system with full distributed power. Supports knowledge graph relationships, temporal tracking, and distributed consensus."
+    fn description(&self) -> Option<&str> {
+        Some("Store a memory in the synaptic memory system with full distributed power. Supports knowledge graph relationships, temporal tracking, and distributed consensus.")
     }
 
-    fn parameters(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "key": {
-                    "type": "string",
-                    "description": "Unique key for the memory entry"
+    fn definition(&self) -> ToolDefinition {
+        create_tool_definition(
+            "synaptic_store",
+            "Store a memory in the synaptic memory system with full distributed power. Supports knowledge graph relationships, temporal tracking, and distributed consensus.",
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "Unique key for the memory entry"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Content to store in memory"
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional tags for categorizing the memory"
+                    },
+                    "metadata": {
+                        "type": "object",
+                        "description": "Optional metadata for the memory entry"
+                    }
                 },
-                "content": {
-                    "type": "string",
-                    "description": "Content to store in memory"
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Optional tags for categorizing the memory"
-                },
-                "metadata": {
-                    "type": "object",
-                    "description": "Optional metadata for the memory entry"
-                }
-            },
-            "required": ["key", "content"]
-        })
+                "required": ["key", "content"]
+            })
+        )
     }
 
     async fn execute(&self, input: Value) -> Result<ToolResult> {
         let key = input["key"].as_str()
-            .ok_or_else(|| AgentError::tool("Missing 'key' parameter".to_string()))?;
+            .ok_or_else(|| AgentError::tool("synaptic_store", "Missing 'key' parameter"))?;
         let content = input["content"].as_str()
-            .ok_or_else(|| AgentError::tool("Missing 'content' parameter".to_string()))?;
+            .ok_or_else(|| AgentError::tool("synaptic_store", "Missing 'content' parameter"))?;
 
         let memory_manager = self.memory_manager.lock().await;
         memory_manager.store(key, content).await?;
@@ -143,41 +142,45 @@ impl Tool for SynapticSearchTool {
         "synaptic_search_memory"
     }
 
-    fn description(&self) -> &str {
-        "Search for memories in the synaptic memory system using advanced algorithms including knowledge graph traversal and temporal analysis."
+    fn description(&self) -> Option<&str> {
+        Some("Search for memories in the synaptic memory system using advanced algorithms including knowledge graph traversal and temporal analysis.")
     }
 
-    fn parameters(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Search query to find relevant memories"
+    fn definition(&self) -> ToolDefinition {
+        create_tool_definition(
+            "synaptic_search_memory",
+            "Search for memories in the synaptic memory system using advanced algorithms including knowledge graph traversal and temporal analysis.",
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query to find relevant memories"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return",
+                        "default": 10
+                    },
+                    "include_temporal": {
+                        "type": "boolean",
+                        "description": "Include temporal analysis in search",
+                        "default": true
+                    },
+                    "include_knowledge_graph": {
+                        "type": "boolean",
+                        "description": "Include knowledge graph relationships in search",
+                        "default": true
+                    }
                 },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum number of results to return",
-                    "default": 10
-                },
-                "include_temporal": {
-                    "type": "boolean",
-                    "description": "Include temporal analysis in search",
-                    "default": true
-                },
-                "include_knowledge_graph": {
-                    "type": "boolean",
-                    "description": "Include knowledge graph relationships in search",
-                    "default": true
-                }
-            },
-            "required": ["query"]
-        })
+                "required": ["query"]
+            })
+        )
     }
 
     async fn execute(&self, input: Value) -> Result<ToolResult> {
         let query = input["query"].as_str()
-            .ok_or_else(|| AgentError::tool("Missing 'query' parameter".to_string()))?;
+            .ok_or_else(|| AgentError::tool("synaptic_search_memory", "Missing 'query' parameter"))?;
         let limit = input["limit"].as_u64().unwrap_or(10) as usize;
 
         let memory_manager = self.memory_manager.lock().await;
@@ -192,13 +195,12 @@ impl Tool for SynapticSearchTool {
             })
         }).collect();
 
-        Ok(ToolResult::success_with_data(
-            format!("Found {} memories matching query '{}'", search_results.len(), query),
-            serde_json::json!({
+        Ok(ToolResult::success(
+            format!("Found {} memories matching query '{}': {}", search_results.len(), query, serde_json::to_string(&serde_json::json!({
                 "results": search_results,
                 "query": query,
                 "total_found": search_results.len()
-            })
+            })).unwrap_or_default())
         ))
     }
 }
@@ -209,36 +211,40 @@ impl Tool for SynapticSemanticSearchTool {
         "synaptic_semantic_search"
     }
 
-    fn description(&self) -> &str {
-        "Perform semantic search using vector embeddings in the synaptic memory system. Finds memories based on semantic similarity rather than keyword matching."
+    fn description(&self) -> Option<&str> {
+        Some("Perform semantic search using vector embeddings in the synaptic memory system. Finds memories based on semantic similarity rather than keyword matching.")
     }
 
-    fn parameters(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Semantic search query"
+    fn definition(&self) -> ToolDefinition {
+        create_tool_definition(
+            "synaptic_semantic_search",
+            "Perform semantic search using vector embeddings in the synaptic memory system. Finds memories based on semantic similarity rather than keyword matching.",
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Semantic search query"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return",
+                        "default": 10
+                    },
+                    "similarity_threshold": {
+                        "type": "number",
+                        "description": "Minimum similarity score (0.0 to 1.0)",
+                        "default": 0.7
+                    }
                 },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum number of results to return",
-                    "default": 10
-                },
-                "similarity_threshold": {
-                    "type": "number",
-                    "description": "Minimum similarity score (0.0 to 1.0)",
-                    "default": 0.7
-                }
-            },
-            "required": ["query"]
-        })
+                "required": ["query"]
+            })
+        )
     }
 
     async fn execute(&self, input: Value) -> Result<ToolResult> {
         let query = input["query"].as_str()
-            .ok_or_else(|| AgentError::tool("Missing 'query' parameter".to_string()))?;
+            .ok_or_else(|| AgentError::tool("synaptic_semantic_search", "Missing 'query' parameter"))?;
         let limit = input["limit"].as_u64().map(|l| l as usize);
 
         #[cfg(feature = "embeddings")]
@@ -255,14 +261,13 @@ impl Tool for SynapticSemanticSearchTool {
                 })
             }).collect();
 
-            Ok(ToolResult::success_with_data(
-                format!("Found {} semantically similar memories for query '{}'", search_results.len(), query),
-                serde_json::json!({
+            Ok(ToolResult::success(
+                format!("Found {} semantically similar memories for query '{}': {}", search_results.len(), query, serde_json::to_string(&serde_json::json!({
                     "results": search_results,
                     "query": query,
                     "search_type": "semantic",
                     "total_found": search_results.len()
-                })
+                })).unwrap_or_default())
             ))
         }
 
@@ -279,36 +284,40 @@ impl Tool for SynapticRelatedMemoriesTool {
         "synaptic_find_related"
     }
 
-    fn description(&self) -> &str {
-        "Find memories related to a specific memory using the knowledge graph. Discovers connections and relationships between memories."
+    fn description(&self) -> Option<&str> {
+        Some("Find memories related to a specific memory using the knowledge graph. Discovers connections and relationships between memories.")
     }
 
-    fn parameters(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "memory_key": {
-                    "type": "string",
-                    "description": "Key of the memory to find related memories for"
+    fn definition(&self) -> ToolDefinition {
+        create_tool_definition(
+            "synaptic_find_related",
+            "Find memories related to a specific memory using the knowledge graph. Discovers connections and relationships between memories.",
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "memory_key": {
+                        "type": "string",
+                        "description": "Key of the memory to find related memories for"
+                    },
+                    "max_depth": {
+                        "type": "integer",
+                        "description": "Maximum depth to traverse in the knowledge graph",
+                        "default": 3
+                    },
+                    "relationship_types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Types of relationships to follow (optional)"
+                    }
                 },
-                "max_depth": {
-                    "type": "integer",
-                    "description": "Maximum depth to traverse in the knowledge graph",
-                    "default": 3
-                },
-                "relationship_types": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Types of relationships to follow (optional)"
-                }
-            },
-            "required": ["memory_key"]
-        })
+                "required": ["memory_key"]
+            })
+        )
     }
 
     async fn execute(&self, input: Value) -> Result<ToolResult> {
         let memory_key = input["memory_key"].as_str()
-            .ok_or_else(|| AgentError::tool("Missing 'memory_key' parameter".to_string()))?;
+            .ok_or_else(|| AgentError::tool("synaptic_find_related", "Missing 'memory_key' parameter"))?;
         let max_depth = input["max_depth"].as_u64().unwrap_or(3) as usize;
 
         let memory_manager = self.memory_manager.lock().await;
@@ -323,14 +332,13 @@ impl Tool for SynapticRelatedMemoriesTool {
             })
         }).collect();
 
-        Ok(ToolResult::success_with_data(
-            format!("Found {} related memories for key '{}'", related_results.len(), memory_key),
-            serde_json::json!({
+        Ok(ToolResult::success(
+            format!("Found {} related memories for key '{}': {}", related_results.len(), memory_key, serde_json::to_string(&serde_json::json!({
                 "results": related_results,
                 "source_key": memory_key,
                 "max_depth": max_depth,
                 "total_found": related_results.len()
-            })
+            })).unwrap_or_default())
         ))
     }
 }
@@ -341,35 +349,38 @@ impl Tool for SynapticStatsTool {
         "synaptic_memory_stats"
     }
 
-    fn description(&self) -> &str {
-        "Get comprehensive statistics and analytics for the synaptic memory system, including distributed system metrics."
+    fn description(&self) -> Option<&str> {
+        Some("Get comprehensive statistics and analytics for the synaptic memory system, including distributed system metrics.")
     }
 
-    fn parameters(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "include_detailed": {
-                    "type": "boolean",
-                    "description": "Include detailed analytics and metrics",
-                    "default": true
-                },
-                "include_distributed": {
-                    "type": "boolean",
-                    "description": "Include distributed system metrics",
-                    "default": true
+    fn definition(&self) -> ToolDefinition {
+        create_tool_definition(
+            "synaptic_memory_stats",
+            "Get comprehensive statistics and analytics for the synaptic memory system, including distributed system metrics.",
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "include_detailed": {
+                        "type": "boolean",
+                        "description": "Include detailed analytics and metrics",
+                        "default": true
+                    },
+                    "include_distributed": {
+                        "type": "boolean",
+                        "description": "Include distributed system metrics",
+                        "default": true
+                    }
                 }
-            }
-        })
+            })
+        )
     }
 
     async fn execute(&self, input: Value) -> Result<ToolResult> {
         let memory_manager = self.memory_manager.lock().await;
         let stats = memory_manager.get_stats().await?;
 
-        Ok(ToolResult::success_with_data(
-            "Retrieved synaptic memory statistics",
-            serde_json::to_value(stats).map_err(|e| AgentError::tool(format!("Failed to serialize stats: {}", e)))?
+        Ok(ToolResult::success(
+            format!("Retrieved synaptic memory statistics: {}", serde_json::to_string(&serde_json::to_value(stats).map_err(|e| AgentError::tool("synaptic_memory_stats", &format!("Failed to serialize stats: {}", e)))?).unwrap_or_default())
         ))
     }
 }
@@ -380,25 +391,29 @@ impl Tool for SynapticCheckpointTool {
         "synaptic_create_checkpoint"
     }
 
-    fn description(&self) -> &str {
-        "Create a checkpoint of the current synaptic memory state for backup and recovery purposes."
+    fn description(&self) -> Option<&str> {
+        Some("Create a checkpoint of the current synaptic memory state for backup and recovery purposes.")
     }
 
-    fn parameters(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string",
-                    "description": "Optional description for the checkpoint"
-                },
-                "include_metadata": {
-                    "type": "boolean",
-                    "description": "Include metadata in the checkpoint",
-                    "default": true
+    fn definition(&self) -> ToolDefinition {
+        create_tool_definition(
+            "synaptic_create_checkpoint",
+            "Create a checkpoint of the current synaptic memory state for backup and recovery purposes.",
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": "Optional description for the checkpoint"
+                    },
+                    "include_metadata": {
+                        "type": "boolean",
+                        "description": "Include metadata in the checkpoint",
+                        "default": true
+                    }
                 }
-            }
-        })
+            })
+        )
     }
 
     async fn execute(&self, input: Value) -> Result<ToolResult> {
@@ -407,13 +422,12 @@ impl Tool for SynapticCheckpointTool {
         let memory_manager = self.memory_manager.lock().await;
         let checkpoint_id = memory_manager.checkpoint().await?;
 
-        Ok(ToolResult::success_with_data(
-            format!("Created checkpoint with ID: {}", checkpoint_id),
-            serde_json::json!({
+        Ok(ToolResult::success(
+            format!("Created checkpoint with ID: {}: {}", checkpoint_id, serde_json::to_string(&serde_json::json!({
                 "checkpoint_id": checkpoint_id,
                 "description": description,
                 "created_at": chrono::Utc::now()
-            })
+            })).unwrap_or_default())
         ))
     }
 }
