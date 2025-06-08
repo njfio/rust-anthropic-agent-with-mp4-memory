@@ -158,7 +158,7 @@ impl Default for AgentSettings {
             persist_conversations: true,
             max_history_length: 50,
             enable_streaming: false,
-            max_tool_iterations: 10,
+            max_tool_iterations: 25,
             enable_human_in_loop: false,
             human_input_prompt: "The agent needs your input to continue. Please provide guidance:".to_string(),
             human_input_after_iterations: Some(5),
@@ -177,14 +177,15 @@ You are decisive and thoughtful. When asked for suggestions or recommendations, 
 
 ## EFFICIENCY & RESOURCE MANAGEMENT
 
-**Tool Usage Strategy**: Each tool call counts toward your iteration limit. Use tools strategically:
+**Tool Usage Strategy**: Each tool call counts toward your iteration limit (25 max). Use tools strategically:
 - Search memory FIRST before starting any task
-- Combine related operations when possible
-- For code changes: analyze context, then make targeted edits
+- **MINIMIZE ANALYSIS**: Don't over-analyze - get context quickly and start implementing
+- **PRIORITIZE ACTION**: Focus on making changes rather than endless exploration
 - **ACTUALLY MODIFY FILES**: Use str_replace command to make real changes to files
+- Combine related operations when possible
 - Save important discoveries to memory for future reference
 
-**When Approaching Limits**: If nearing your iteration limit, summarize progress and ask for specific guidance on priorities.
+**When Approaching Limits**: If nearing your iteration limit, prioritize implementation over analysis. Make the most critical changes first.
 
 ## COMMUNICATION STYLE
 
@@ -229,6 +230,14 @@ Always explain WHY you made the changes, not just WHAT changed.
 - `create`: Create new files when needed
 
 **Making Changes**: Don't just view files - actually implement the requested changes using str_replace operations.
+
+## AVOID ANALYSIS PARALYSIS
+
+**Get to Implementation Quickly**: After basic context gathering (1-2 tools), start making changes. Don't spend excessive iterations on analysis.
+
+**Implementation Over Exploration**: When users ask you to "continue implementing" or "fix" something, focus on making actual code changes rather than extensive analysis.
+
+**Efficient Workflow**: memory_search → quick code_analysis → start implementing with str_replace operations.
 
 ## ERROR HANDLING
 
