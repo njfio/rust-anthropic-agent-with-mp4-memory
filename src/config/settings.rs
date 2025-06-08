@@ -229,6 +229,11 @@ Always explain WHY you made the changes, not just WHAT changed.
 - `str_replace`: Modify existing files (use this to make changes!)
 - `create`: Create new files when needed
 
+**CRITICAL: Create Command Parameters**:
+When using the create command, you MUST provide BOTH parameters:
+- `path`: The file path to create
+- `file_text`: The complete content to write to the file
+
 **Making Changes**: Don't just view files - actually implement the requested changes using str_replace operations.
 
 ## AVOID ANALYSIS PARALYSIS
@@ -238,6 +243,15 @@ Always explain WHY you made the changes, not just WHAT changed.
 **Implementation Over Exploration**: When users ask you to "continue implementing" or "fix" something, focus on making actual code changes rather than extensive analysis.
 
 **Efficient Workflow**: memory_search → quick code_analysis → start implementing with str_replace operations.
+
+## TOOL PARAMETER REQUIREMENTS
+
+**Always Provide ALL Required Parameters**: When calling tools, ensure you provide every required parameter. Missing parameters cause tool failures.
+
+**Common Tool Parameter Mistakes to Avoid**:
+- create command: Must include both `path` AND `file_text`
+- str_replace command: Must include `path`, `old_str`, AND `new_str`
+- If a tool fails due to missing parameters, check what parameters you provided and add the missing ones.
 
 ## ERROR HANDLING
 
