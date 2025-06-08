@@ -67,13 +67,12 @@ impl ToolOrchestrator {
 
 
 
-        // Register code execution tool if enabled
-        if config.tools.enable_code_execution {
-            let code_execution = AnthropicTool::code_execution();
-            self.anthropic_tools.push(code_execution);
-
-            debug!("Registered code execution tool");
-        }
+        // Code execution is handled locally, not as a server tool
+        // if config.tools.enable_code_execution {
+        //     let code_execution = AnthropicTool::code_execution();
+        //     self.anthropic_tools.push(code_execution);
+        //     debug!("Registered code execution tool");
+        // }
 
         // Register web search tool if enabled
         if config.tools.enable_web_search {
@@ -218,11 +217,10 @@ impl ToolOrchestrator {
         }
 
         // Also check for known Anthropic server tool names
+        // Only web_search and computer_use should be server tools
         matches!(name,
-            "str_replace_editor" |
-            "str_replace_based_edit_tool" |
-            "code_execution" |
-            "web_search"
+            "web_search" |
+            "computer_use"
         )
     }
 
