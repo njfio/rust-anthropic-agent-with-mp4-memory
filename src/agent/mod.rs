@@ -1,6 +1,7 @@
 pub mod conversation;
 pub mod memory_manager;
 pub mod tool_orchestrator;
+pub mod synaptic_agent;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;

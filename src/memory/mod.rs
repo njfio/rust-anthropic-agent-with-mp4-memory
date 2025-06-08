@@ -1,4 +1,5 @@
 pub mod simple_memory;
+pub mod synaptic;
 pub mod search;
 
 use serde::{Deserialize, Serialize};
