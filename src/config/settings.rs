@@ -87,6 +87,14 @@ pub struct AgentSettings {
     pub max_history_length: usize,
     /// Enable streaming responses
     pub enable_streaming: bool,
+    /// Maximum number of tool iterations before stopping
+    pub max_tool_iterations: usize,
+    /// Enable human-in-the-loop for complex tasks
+    pub enable_human_in_loop: bool,
+    /// Prompt for human input when needed
+    pub human_input_prompt: String,
+    /// Auto-pause for human input after this many tool iterations
+    pub human_input_after_iterations: Option<usize>,
 }
 
 impl Default for AgentConfig {
@@ -150,6 +158,10 @@ impl Default for AgentSettings {
             persist_conversations: true,
             max_history_length: 50,
             enable_streaming: false,
+            max_tool_iterations: 10,
+            enable_human_in_loop: false,
+            human_input_prompt: "The agent needs your input to continue. Please provide guidance:".to_string(),
+            human_input_after_iterations: Some(5),
         }
     }
 }

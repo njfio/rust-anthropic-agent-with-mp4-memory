@@ -27,6 +27,14 @@ struct Cli {
     #[arg(long)]
     memory_path: Option<String>,
 
+    /// Maximum tool iterations before stopping
+    #[arg(long)]
+    max_tool_iterations: Option<usize>,
+
+    /// Enable human-in-the-loop for complex tasks
+    #[arg(long)]
+    enable_human_in_loop: bool,
+
     /// Verbose logging
     #[arg(short, long)]
     verbose: bool,
@@ -164,6 +172,12 @@ async fn main() -> anyhow::Result<()> {
     }
     if let Some(memory_path) = cli.memory_path {
         config = config.with_memory_path(memory_path);
+    }
+    if let Some(max_iterations) = cli.max_tool_iterations {
+        config.agent.max_tool_iterations = max_iterations;
+    }
+    if cli.enable_human_in_loop {
+        config.agent.enable_human_in_loop = true;
     }
 
     match cli.command {

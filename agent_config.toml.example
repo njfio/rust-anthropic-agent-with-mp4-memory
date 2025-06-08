@@ -82,5 +82,17 @@ persist_conversations = true
 # Maximum conversation history length to send to the API
 max_history_length = 50
 
+# Maximum number of tool iterations before stopping (prevents infinite loops)
+max_tool_iterations = 10
+
+# Enable human-in-the-loop for complex tasks
+enable_human_in_loop = false
+
+# Prompt to show when requesting human input
+human_input_prompt = "The agent needs your input to continue. Please provide guidance:"
+
+# Auto-pause for human input after this many tool iterations (optional)
+human_input_after_iterations = 5
+
 # Enable streaming responses (experimental)
 enable_streaming = false

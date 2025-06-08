@@ -130,11 +130,11 @@ impl Agent {
 
         // Process tool calls if any
         let mut tool_iterations = 0;
-        const MAX_TOOL_ITERATIONS: usize = 5; // Reduced to prevent infinite loops
+        let max_tool_iterations = self.config.agent.max_tool_iterations;
 
         while response.content.iter().any(|block| {
             matches!(block, crate::anthropic::models::ContentBlock::ToolUse { .. })
-        }) && tool_iterations < MAX_TOOL_ITERATIONS {
+        }) && tool_iterations < max_tool_iterations {
             tool_iterations += 1;
             debug!("Processing tool calls (iteration {})", tool_iterations);
 
@@ -188,9 +188,21 @@ impl Agent {
             }
 
             // Check if we're about to hit the limit
-            if tool_iterations >= MAX_TOOL_ITERATIONS {
-                warn!("Maximum tool iterations reached, stopping tool execution");
+            if tool_iterations >= max_tool_iterations {
+                warn!("Maximum tool iterations ({}) reached, stopping tool execution", max_tool_iterations);
                 break;
+            }
+
+            // Check for human-in-the-loop intervention
+            if self.config.agent.enable_human_in_loop {
+                if let Some(human_input_threshold) = self.config.agent.human_input_after_iterations {
+                    if tool_iterations >= human_input_threshold {
+                        info!("Human-in-the-loop threshold ({}) reached after {} iterations", human_input_threshold, tool_iterations);
+                        // For now, we'll just log this. In a full implementation, this would pause for human input
+                        // TODO: Implement actual human input mechanism (stdin, web interface, etc.)
+                        warn!("Human input would be requested here: {}", self.config.agent.human_input_prompt);
+                    }
+                }
             }
 
             // Get updated history and make another request
@@ -204,6 +216,11 @@ impl Agent {
 
         // Tool iterations completed (either no more tool uses or max iterations reached)
 
+        // Check if the final response has tool uses that need results
+        let final_has_tool_uses = response.content.iter().any(|block| {
+            matches!(block, crate::anthropic::models::ContentBlock::ToolUse { .. })
+        });
+
         // Add final assistant response
         let final_message = ChatMessage {
             role: MessageRole::Assistant,
@@ -212,6 +229,38 @@ impl Agent {
             timestamp: Some(chrono::Utc::now()),
         };
         self.conversation_manager.add_message(final_message.clone()).await?;
+
+        // If the final response has tool uses, we need to handle them to avoid API errors
+        if final_has_tool_uses {
+            warn!("Final response contains tool uses but max iterations reached. Creating placeholder results.");
+
+            // Execute tools for the final response
+            let final_tool_results = self.tool_orchestrator.execute_tools(&response.content).await?;
+
+            // Create tool result message for the final tool uses
+            let final_tool_results = if final_tool_results.is_empty() {
+                // Create error results for any unmatched tool uses
+                response.content.iter()
+                    .filter_map(|block| {
+                        if let crate::anthropic::models::ContentBlock::ToolUse { id, .. } = block {
+                            Some(crate::tools::ToolResult::error("Tool execution stopped due to max iterations".to_string()).to_content_block(id.clone()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            } else {
+                final_tool_results
+            };
+
+            let final_tool_result_message = ChatMessage {
+                role: MessageRole::User,
+                content: final_tool_results,
+                id: Some(Uuid::new_v4().to_string()),
+                timestamp: Some(chrono::Utc::now()),
+            };
+            self.conversation_manager.add_message(final_tool_result_message).await?;
+        }
 
         // Extract text response
         let response_text = final_message.get_text();
@@ -299,6 +348,43 @@ impl Agent {
     pub async fn finalize_memory(&mut self) -> Result<()> {
         // No-op for JSON storage - data is already persisted
         Ok(())
+    }
+
+    /// Request human input during agent execution
+    /// This is a placeholder for human-in-the-loop functionality
+    pub async fn request_human_input(&self, prompt: &str) -> Result<String> {
+        // For now, this is a placeholder implementation
+        // In a full implementation, this would:
+        // 1. Pause agent execution
+        // 2. Present the prompt to the human user
+        // 3. Wait for human input (via CLI, web interface, etc.)
+        // 4. Return the human's response
+
+        warn!("Human input requested: {}", prompt);
+        warn!("Human-in-the-loop not fully implemented yet. Returning default response.");
+
+        // Return a default response for now
+        Ok("Human input not available - continuing with agent decision".to_string())
+    }
+
+    /// Set maximum tool iterations
+    pub fn set_max_tool_iterations(&mut self, max_iterations: usize) {
+        self.config.agent.max_tool_iterations = max_iterations;
+    }
+
+    /// Get maximum tool iterations
+    pub fn get_max_tool_iterations(&self) -> usize {
+        self.config.agent.max_tool_iterations
+    }
+
+    /// Enable or disable human-in-the-loop
+    pub fn set_human_in_loop(&mut self, enabled: bool) {
+        self.config.agent.enable_human_in_loop = enabled;
+    }
+
+    /// Check if human-in-the-loop is enabled
+    pub fn is_human_in_loop_enabled(&self) -> bool {
+        self.config.agent.enable_human_in_loop
     }
 }
 
