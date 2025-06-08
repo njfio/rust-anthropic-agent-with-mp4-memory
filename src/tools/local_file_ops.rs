@@ -114,10 +114,16 @@ impl LocalTextEditorTool {
 
     /// Handle the create command (matches Anthropic's interface)
     async fn handle_create(&self, input: &serde_json::Value) -> Result<ToolResult> {
+        info!("📝 CREATE operation:");
+
         // Try to get path parameter with better error handling
         let path_str = match extract_string_param(input, "path") {
-            Ok(path) => path,
+            Ok(path) => {
+                info!("📁 Path: {}", path);
+                path
+            },
             Err(_) => {
+                info!("❌ Missing path parameter");
                 return Ok(ToolResult::error(
                     "Missing required parameter 'path' for create command. Please provide the file path."
                 ));
@@ -126,8 +132,12 @@ impl LocalTextEditorTool {
 
         // Try to get file_text parameter, provide helpful error if missing
         let file_text = match extract_string_param(input, "file_text") {
-            Ok(text) => text,
+            Ok(text) => {
+                info!("📄 File content length: {} chars", text.len());
+                text
+            },
             Err(_) => {
+                info!("❌ Missing file_text parameter for create command");
                 return Ok(ToolResult::error(
                     "Missing required parameter 'file_text' for create command. Please provide the content to write to the file."
                 ));
@@ -135,18 +145,22 @@ impl LocalTextEditorTool {
         };
 
         let resolved_path = self.resolve_path(&path_str)?;
+        info!("📍 Resolved path: {:?}", resolved_path);
 
         if resolved_path.exists() {
+            info!("❌ File already exists");
             return Ok(ToolResult::error(format!("File already exists: {}", path_str)));
         }
 
         // Create parent directories if they don't exist
         if let Some(parent) = resolved_path.parent() {
+            info!("📂 Creating parent directories: {:?}", parent);
             fs::create_dir_all(parent)?;
         }
 
         fs::write(&resolved_path, file_text)?;
-        info!("Successfully created file: {:?}", resolved_path);
+        info!("✅ Successfully created file: {:?}", resolved_path);
+        info!("💾 File written successfully!");
         Ok(ToolResult::success(format!("File created successfully at {}", path_str)))
     }
 
