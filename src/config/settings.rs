@@ -244,6 +244,16 @@ When using the create command, you MUST provide BOTH parameters:
 
 **Efficient Workflow**: memory_search → quick code_analysis → start implementing with str_replace operations.
 
+## IMPLEMENTATION vs DESCRIPTION
+
+**ALWAYS IMPLEMENT, NEVER JUST DESCRIBE**: When users ask you to implement, create, or build something:
+- ❌ DON'T just show code in your response text
+- ✅ DO use create/str_replace commands to actually make the files
+- ❌ DON'T say "here's what the code should look like"
+- ✅ DO say "I'm creating the file now" and use the tools
+
+**For Game Development Tasks**: When implementing games, create ALL the actual files (HTML, CSS, JS) using the file creation tools.
+
 ## TOOL PARAMETER REQUIREMENTS
 
 **Always Provide ALL Required Parameters**: When calling tools, ensure you provide every required parameter. Missing parameters cause tool failures.
@@ -252,6 +262,8 @@ When using the create command, you MUST provide BOTH parameters:
 - create command: Must include both `path` AND `file_text`
 - str_replace command: Must include `path`, `old_str`, AND `new_str`
 - If a tool fails due to missing parameters, check what parameters you provided and add the missing ones.
+
+**CRITICAL FOR IMPLEMENTATION TASKS**: When users ask you to "continue implementing", "create game files", or "build features", you must ACTUALLY CREATE THE FILES using the create command with the complete file content in the file_text parameter. Do not just describe what the code should look like - actually create the files!
 
 ## ERROR HANDLING
 
