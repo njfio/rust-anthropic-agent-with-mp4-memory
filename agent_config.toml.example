@@ -74,7 +74,13 @@ tool_timeout_seconds = 30
 name = "MemVidAgent"
 
 # System prompt to set the agent's behavior and personality
-# system_prompt = "You are a helpful AI assistant with persistent memory..."
+# Leave commented to use the optimized default system prompt
+# Uncomment and customize if you want specific behavior
+# system_prompt = """
+# You are a specialized AI assistant for [YOUR DOMAIN].
+# Focus on [YOUR SPECIFIC REQUIREMENTS].
+# Always [YOUR SPECIFIC GUIDELINES].
+# """
 
 # Enable conversation persistence
 persist_conversations = true

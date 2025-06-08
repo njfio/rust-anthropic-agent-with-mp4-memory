@@ -386,6 +386,16 @@ impl Agent {
     pub fn is_human_in_loop_enabled(&self) -> bool {
         self.config.agent.enable_human_in_loop
     }
+
+    /// Get the effective system prompt being used
+    pub fn get_system_prompt(&self) -> Option<&str> {
+        self.config.agent.system_prompt.as_deref()
+    }
+
+    /// Set a custom system prompt
+    pub fn set_system_prompt<S: Into<String>>(&mut self, prompt: Option<S>) {
+        self.config.agent.system_prompt = prompt.map(|p| p.into());
+    }
 }
 
 impl AgentBuilder {

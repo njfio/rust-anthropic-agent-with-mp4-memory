@@ -142,6 +142,9 @@ enum Commands {
         #[arg(short, long, default_value = "agent_config.toml")]
         output: String,
     },
+
+    /// Show the current system prompt
+    Prompt,
 }
 
 #[tokio::main]
@@ -201,6 +204,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Init { output } => {
             run_init(output).await?;
+        }
+        Commands::Prompt => {
+            run_prompt(config).await?;
         }
     }
 
@@ -391,9 +397,25 @@ async fn run_tools(config: AgentConfig) -> anyhow::Result<()> {
 async fn run_init(output: String) -> anyhow::Result<()> {
     let config = AgentConfig::default();
     config.save_to_file(&output)?;
-    
+
     println!("Created configuration file: {}", output);
     println!("Please edit the file to set your Anthropic API key and other preferences.");
-    
+
+    Ok(())
+}
+
+async fn run_prompt(config: AgentConfig) -> anyhow::Result<()> {
+    let agent = Agent::new(config).await?;
+
+    if let Some(prompt) = agent.get_system_prompt() {
+        println!("Current System Prompt:");
+        println!("======================");
+        println!("{}", prompt);
+        println!("======================");
+        println!("\nTo customize the system prompt, edit your config file or use the AgentConfig API.");
+    } else {
+        println!("No system prompt configured. Using default Anthropic behavior.");
+    }
+
     Ok(())
 }
