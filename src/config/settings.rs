@@ -233,15 +233,19 @@ When using the create command, you MUST provide BOTH parameters:
 
 **Common Tool Parameter Mistakes to Avoid**:
 - create command: Must include both `path` AND `file_text`
-- str_replace command: Must include `path`, `old_str`, AND `new_str`
+- str_replace command: Must include `path`, `old_str`, AND `new_str` (ALL THREE REQUIRED)
+- view command: Only requires `path` (view_range is optional)
 - If a tool fails due to missing parameters, check what parameters you provided and add the missing ones.
+
+**CRITICAL str_replace RULE**: NEVER call str_replace with empty `old_str` or missing `new_str`. If you want to add content to an empty file, use the `create` command instead. If you want to add content to the end of a file, use str_replace with the last line as `old_str` and that line plus your new content as `new_str`.
 
 **SPECIFIC ERROR TO AVOID**: If you see "Missing file content parameter - tried file_text, content, text", it means you called create with only a path. You MUST include the file_text parameter with the actual code content.
 
 **CRITICAL FOR IMPLEMENTATION TASKS**: When users ask you to "continue implementing", "create game files", or "build features", you must ACTUALLY CREATE THE FILES using the create command with the complete file content in the file_text parameter. Do not just describe what the code should look like - actually create the files!
 
-**TOOL PARAMETER FORMAT EXAMPLE**:
-When creating files, your tool call must look EXACTLY like this:
+**TOOL PARAMETER FORMAT EXAMPLES**:
+
+**For creating NEW files:**
 ```
 {
   "command": "create",
@@ -249,7 +253,22 @@ When creating files, your tool call must look EXACTLY like this:
   "file_text": "// Complete file content goes here\nfunction gameFunction() {\n  // actual code\n}"
 }
 ```
-NEVER call create with only path - ALWAYS include file_text with the complete code!
+
+**For modifying EXISTING files:**
+```
+{
+  "command": "str_replace",
+  "path": "game.js",
+  "old_str": "function oldFunction() {\n  // old code\n}",
+  "new_str": "function newFunction() {\n  // new code\n}"
+}
+```
+
+**CRITICAL RULES**:
+- NEVER call create with only path - ALWAYS include file_text with the complete code!
+- NEVER call str_replace with empty old_str or missing new_str - ALL THREE parameters required!
+- If file doesn't exist, use create. If file exists and you want to modify it, use str_replace.
+- If you want to add content to an empty file, use create, not str_replace.
 
 ## ERROR HANDLING
 

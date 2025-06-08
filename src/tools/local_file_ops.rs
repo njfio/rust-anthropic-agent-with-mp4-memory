@@ -176,14 +176,53 @@ impl LocalTextEditorTool {
 
     /// Handle the str_replace command
     async fn handle_str_replace(&self, input: &serde_json::Value) -> Result<ToolResult> {
-        let path_str = extract_string_param(input, "path")?;
-        let old_str = extract_string_param(input, "old_str")?;
-        let new_str = extract_string_param(input, "new_str")?;
-
         info!("🔄 STR_REPLACE operation:");
-        info!("📁 Path: {}", path_str);
-        info!("🔍 Old text: {:?}", old_str);
-        info!("✏️  New text: {:?}", new_str);
+        info!("🔍 ALL PARAMETERS: {}", serde_json::to_string_pretty(input).unwrap_or_else(|_| "Invalid JSON".to_string()));
+
+        // List all available keys in the input
+        if let Some(obj) = input.as_object() {
+            let keys: Vec<&String> = obj.keys().collect();
+            info!("🔑 Available parameter keys: {:?}", keys);
+        }
+
+        let path_str = match extract_string_param(input, "path") {
+            Ok(path) => {
+                info!("📁 Path: {}", path);
+                path
+            },
+            Err(_) => {
+                info!("❌ Missing path parameter");
+                return Ok(ToolResult::error(
+                    "Missing required parameter 'path' for str_replace command. Please provide the file path."
+                ));
+            }
+        };
+
+        let old_str = match extract_string_param(input, "old_str") {
+            Ok(old) => {
+                info!("🔍 Old text: {:?} ({} chars)", old, old.len());
+                old
+            },
+            Err(_) => {
+                info!("❌ Missing old_str parameter");
+                return Ok(ToolResult::error(
+                    "Missing required parameter 'old_str' for str_replace command. Please provide the text to find and replace."
+                ));
+            }
+        };
+
+        let new_str = match extract_string_param(input, "new_str") {
+            Ok(new) => {
+                info!("✏️  New text: {:?} ({} chars)", new, new.len());
+                new
+            },
+            Err(_) => {
+                info!("❌ Missing new_str parameter");
+                return Ok(ToolResult::error(
+                    "Missing required parameter 'new_str' for str_replace command. Please provide the replacement text. Use empty string \"\" if you want to delete the old text."
+                ));
+            }
+        };
 
         let resolved_path = self.resolve_path(&path_str)?;
         info!("📍 Resolved path: {:?}", resolved_path);
