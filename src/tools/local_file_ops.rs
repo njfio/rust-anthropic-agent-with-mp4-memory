@@ -115,6 +115,13 @@ impl LocalTextEditorTool {
     /// Handle the create command (matches Anthropic's interface)
     async fn handle_create(&self, input: &serde_json::Value) -> Result<ToolResult> {
         info!("📝 CREATE operation:");
+        info!("🔍 ALL PARAMETERS: {}", serde_json::to_string_pretty(input).unwrap_or_else(|_| "Invalid JSON".to_string()));
+
+        // List all available keys in the input
+        if let Some(obj) = input.as_object() {
+            let keys: Vec<&String> = obj.keys().collect();
+            info!("🔑 Available parameter keys: {:?}", keys);
+        }
 
         // Try to get path parameter with better error handling
         let path_str = match extract_string_param(input, "path") {
@@ -130,18 +137,21 @@ impl LocalTextEditorTool {
             }
         };
 
-        // Try to get file_text parameter, provide helpful error if missing
-        let file_text = match extract_string_param(input, "file_text") {
-            Ok(text) => {
-                info!("📄 File content length: {} chars", text.len());
-                text
-            },
-            Err(_) => {
-                info!("❌ Missing file_text parameter for create command");
-                return Ok(ToolResult::error(
-                    "Missing required parameter 'file_text' for create command. Please provide the content to write to the file."
-                ));
-            }
+        // Try multiple possible parameter names for file content
+        let file_text = if let Ok(text) = extract_string_param(input, "file_text") {
+            info!("📄 Found file_text parameter: {} chars", text.len());
+            text
+        } else if let Ok(text) = extract_string_param(input, "content") {
+            info!("📄 Found content parameter: {} chars", text.len());
+            text
+        } else if let Ok(text) = extract_string_param(input, "text") {
+            info!("📄 Found text parameter: {} chars", text.len());
+            text
+        } else {
+            info!("❌ Missing file content parameter - tried file_text, content, text");
+            return Ok(ToolResult::error(
+                "Missing required parameter for file content. Please provide 'file_text', 'content', or 'text' parameter with the content to write to the file."
+            ));
         };
 
         let resolved_path = self.resolve_path(&path_str)?;
