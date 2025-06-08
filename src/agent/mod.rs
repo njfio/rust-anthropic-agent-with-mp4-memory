@@ -148,17 +148,38 @@ impl Agent {
 
             // Execute tools and collect results
             let tool_results = self.tool_orchestrator.execute_tools(&response.content).await?;
+            debug!("Tool execution completed: {} tool_use blocks, {} tool_result blocks",
+                response.content.iter().filter(|b| matches!(b, crate::anthropic::models::ContentBlock::ToolUse { .. })).count(),
+                tool_results.len()
+            );
 
-            // Always create tool result message if there were any tool uses
+            // CRITICAL: Always create tool result message if there were any tool uses
             // This ensures every tool_use block has a corresponding tool_result block
+            // The API requires this pairing regardless of whether tools succeed or fail
             let has_tool_uses = response.content.iter().any(|block| {
                 matches!(block, crate::anthropic::models::ContentBlock::ToolUse { .. })
             });
 
-            if has_tool_uses && !tool_results.is_empty() {
+            if has_tool_uses {
+                // If we have tool uses but no results (shouldn't happen), create error results
+                let final_tool_results = if tool_results.is_empty() {
+                    // Create error results for any unmatched tool uses
+                    response.content.iter()
+                        .filter_map(|block| {
+                            if let crate::anthropic::models::ContentBlock::ToolUse { id, .. } = block {
+                                Some(crate::tools::ToolResult::error("Tool execution failed - no result generated".to_string()).to_content_block(id.clone()))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect()
+                } else {
+                    tool_results
+                };
+
                 let tool_result_message = ChatMessage {
                     role: MessageRole::User,
-                    content: tool_results,
+                    content: final_tool_results,
                     id: Some(Uuid::new_v4().to_string()),
                     timestamp: Some(chrono::Utc::now()),
                 };
