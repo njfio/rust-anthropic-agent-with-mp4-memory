@@ -1,5 +1,5 @@
 pub mod simple_memory;
-pub mod synaptic;
+// pub mod synaptic;  // Temporarily disabled due to dependency conflicts
 pub mod search;
 
 use serde::{Deserialize, Serialize};

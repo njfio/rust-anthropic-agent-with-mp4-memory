@@ -431,3 +431,68 @@ impl Tool for SynapticCheckpointTool {
         ))
     }
 }
+
+/// Tool for enhanced analytics with comprehensive memory statistics
+pub struct SynapticEnhancedAnalyticsTool {
+    memory_manager: Arc<Mutex<SynapticMemoryManager>>,
+}
+
+impl SynapticEnhancedAnalyticsTool {
+    pub fn new(memory_manager: Arc<Mutex<SynapticMemoryManager>>) -> Self {
+        Self { memory_manager }
+    }
+}
+
+
+
+#[async_trait]
+impl Tool for SynapticEnhancedAnalyticsTool {
+    fn name(&self) -> &str {
+        "synaptic_enhanced_analytics"
+    }
+
+    fn description(&self) -> Option<&str> {
+        Some("Get enhanced analytics for the synaptic memory system including Phase 5B document processing metrics.")
+    }
+
+    fn definition(&self) -> ToolDefinition {
+        create_tool_definition(
+            "synaptic_enhanced_analytics",
+            "Get enhanced analytics for the synaptic memory system including Phase 5B document processing metrics.",
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "include_memory_breakdown": {
+                        "type": "boolean",
+                        "description": "Include breakdown by memory type",
+                        "default": true
+                    },
+                    "include_document_processing": {
+                        "type": "boolean",
+                        "description": "Include document processing status",
+                        "default": true
+                    }
+                }
+            })
+        )
+    }
+
+    async fn execute(&self, input: Value) -> Result<ToolResult> {
+        let memory_manager = self.memory_manager.lock().await;
+        let analytics = memory_manager.get_enhanced_analytics().await?;
+
+        let analytics_json = serde_json::json!({
+            "total_memories": analytics.total_memories,
+            "memory_breakdown": analytics.memory_breakdown,
+            "total_size": analytics.total_size,
+            "session_id": analytics.session_id,
+            "created_at": analytics.created_at,
+            "document_processing_enabled": analytics.document_processing_enabled,
+            "generated_at": chrono::Utc::now()
+        });
+
+        Ok(ToolResult::success(
+            format!("Retrieved enhanced analytics for synaptic memory system: {}", serde_json::to_string(&analytics_json).unwrap_or_default())
+        ))
+    }
+}

@@ -45,6 +45,7 @@ pub struct SynapticConfig {
     pub enable_distributed: bool,
     /// Enable external integrations (PostgreSQL, Redis, etc.)
     pub enable_integrations: bool,
+
     /// Storage backend configuration
     pub storage_backend: SynapticStorageBackend,
     /// Maximum number of short-term memories
@@ -249,6 +250,38 @@ impl SynapticMemoryManager {
     pub fn config(&self) -> &SynapticConfig {
         &self.config
     }
+
+
+
+    /// Process and store document (Phase 5B document processing)
+    #[cfg(feature = "document-processing")]
+    pub async fn store_document(&self, key: &str, document_path: &str, metadata: Option<DocumentMetadata>) -> Result<()> {
+        let mut memory = self.memory.lock().await;
+        memory.store_document(key, document_path, metadata.map(|m| m.into()))
+            .await
+            .map_err(|e| AgentError::memory(format!("Failed to store document: {}", e)))
+    }
+
+
+
+    /// Get enhanced analytics with comprehensive memory statistics
+    pub async fn get_enhanced_analytics(&self) -> Result<EnhancedAnalytics> {
+        let memory = self.memory.lock().await;
+        let stats = memory.stats();
+
+        Ok(EnhancedAnalytics {
+            total_memories: stats.short_term_count + stats.long_term_count,
+            memory_breakdown: std::collections::HashMap::from([
+                ("short_term".to_string(), stats.short_term_count),
+                ("long_term".to_string(), stats.long_term_count),
+            ]),
+            total_size: stats.total_size,
+            session_id: self.session_id,
+            created_at: self.created_at,
+            embeddings_enabled: false, // Disabled due to dependency conflicts
+            analytics_enabled: self.config.enable_analytics,
+        })
+    }
 }
 
 /// Result from a memory search operation
@@ -288,6 +321,46 @@ pub struct SynapticMemoryStats {
     pub session_id: Uuid,
     pub created_at: DateTime<Utc>,
     pub knowledge_graph_stats: Option<synaptic::memory::knowledge_graph::GraphStats>,
-    #[cfg(feature = "embeddings")]
-    pub embedding_stats: Option<synaptic::memory::embeddings::EmbeddingStats>,
+    // embedding_stats disabled due to dependency conflicts
+}
+
+
+
+/// Metadata for document memories (Phase 5B)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentMetadata {
+    pub file_type: String,
+    pub file_size: u64,
+    pub page_count: Option<u32>,
+    pub author: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+}
+
+/// Enhanced analytics with comprehensive memory statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnhancedAnalytics {
+    pub total_memories: usize,
+    pub memory_breakdown: std::collections::HashMap<String, usize>,
+    pub total_size: usize,
+    pub session_id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub embeddings_enabled: bool,
+    pub analytics_enabled: bool,
+}
+
+// Conversion implementations for synaptic types
+impl From<DocumentMetadata> for synaptic::memory::document::DocumentMetadata {
+    fn from(meta: DocumentMetadata) -> Self {
+        synaptic::memory::document::DocumentMetadata {
+            file_type: meta.file_type,
+            file_size: meta.file_size,
+            page_count: meta.page_count,
+            author: meta.author,
+            title: meta.title,
+            description: meta.description,
+            tags: meta.tags,
+        }
+    }
 }

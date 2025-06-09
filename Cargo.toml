@@ -54,8 +54,8 @@ walkdir = "2.3"
 tempfile = "3.8"
 
 # Memory integration - using rust-synaptic (state-of-the-art AI memory system with FULL POWER!)
-# Using core features that are stable
-synaptic = { git = "https://github.com/njfio/rust-synaptic.git", branch = "main", features = ["embeddings", "analytics", "sql-storage"], default-features = false }
+# Temporarily disabled due to candle-core dependency conflicts - will re-enable with compatible version
+# synaptic = { git = "https://github.com/njfio/rust-synaptic.git", branch = "main", features = ["analytics", "sql-storage"], default-features = false }
 
 # Code analysis integration - using rust-treesitter-agent-code-utility
 rust_tree_sitter = { git = "https://github.com/njfio/rust-treesitter-agent-code-utility.git", branch = "main" }
@@ -96,14 +96,14 @@ text-editor = []
 memory-tools = []
 file-tools = []
 code-analysis = []
-# Full power features for synaptic memory system
-external-integrations = ["synaptic/external-integrations"]
-distributed = ["synaptic/distributed"]
-embeddings = ["synaptic/embeddings"]
-analytics = ["synaptic/analytics"]
-realtime = ["synaptic/realtime"]
-# Combined feature for maximum power
-full-power = ["external-integrations", "distributed", "embeddings", "analytics", "realtime"]
+# Full power features for synaptic memory system (temporarily disabled)
+# external-integrations = ["synaptic/external-integrations"]
+# distributed = ["synaptic/distributed"]
+# embeddings = ["synaptic/embeddings"]  # Disabled due to candle-core conflicts
+# analytics = ["synaptic/analytics"]
+# realtime = ["synaptic/realtime"]
+# Combined feature for maximum stable power (temporarily disabled)
+# full-power = ["external-integrations", "distributed", "analytics", "realtime"]
 
 [profile.release]
 opt-level = 3
