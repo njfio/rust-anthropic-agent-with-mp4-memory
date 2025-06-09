@@ -115,10 +115,26 @@ impl AnthropicClient {
             })?;
 
         let status = response.status();
-        let response_text = response
-            .text()
+
+        // Try to get response as bytes first, then convert to string with better error handling
+        let response_bytes = response
+            .bytes()
             .await
             .map_err(|e| AgentError::Http(e))?;
+
+        let response_text = match String::from_utf8(response_bytes.to_vec()) {
+            Ok(text) => text,
+            Err(e) => {
+                error!("❌ Response contains invalid UTF-8: {}", e);
+                // Try to recover by replacing invalid UTF-8 sequences
+                match String::from_utf8_lossy(&response_bytes).into_owned() {
+                    recovered => {
+                        warn!("🔄 Recovered response text with lossy UTF-8 conversion");
+                        recovered
+                    }
+                }
+            }
+        };
 
         debug!("Received response with status: {}", status);
 

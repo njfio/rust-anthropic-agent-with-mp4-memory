@@ -148,7 +148,7 @@ async fn main() -> anyhow::Result<()> {
     let config = AgentConfig::default()
         .with_anthropic_key("your-api-key")
         .with_memory_path("agent_memory.json")
-        .with_model("claude-opus-4-20250514");
+        .with_model("claude-sonnet-4-20250514");
 
     // Create and use the agent
     let mut agent = Agent::new(config).await?;
@@ -382,7 +382,7 @@ Create a `agent_config.toml` file:
 ```toml
 [anthropic]
 api_key = "your-api-key"
-model = "claude-opus-4-20250514"
+model = "claude-sonnet-4-20250514"
 max_tokens = 4096
 temperature = 0.7
 

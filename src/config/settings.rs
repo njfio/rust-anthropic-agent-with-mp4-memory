@@ -113,7 +113,7 @@ impl Default for AnthropicConfig {
         Self {
             api_key: std::env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
             base_url: "https://api.anthropic.com".to_string(),
-            model: "claude-opus-4-20250514".to_string(),
+            model: "claude-sonnet-4-20250514".to_string(),
             max_tokens: 4096,
             temperature: 0.7,
             timeout_seconds: 300,
