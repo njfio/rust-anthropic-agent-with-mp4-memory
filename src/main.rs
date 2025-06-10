@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use rust_memvid_agent::{Agent, AgentConfig};
-use std::io::{self, Write};
+use rust_memvid_agent::cli::{InteractiveConsole};
+use std::io::{self, Write, BufRead};
 use tracing::{error, info};
 
 #[derive(Parser)]
@@ -46,7 +47,31 @@ enum Commands {
     Chat {
         /// Initial message to send
         message: Option<String>,
-        
+
+        /// Conversation title
+        #[arg(short, long)]
+        title: Option<String>,
+    },
+
+    /// Interactive multi-line prompt mode
+    Interactive {
+        /// Conversation title
+        #[arg(short, long)]
+        title: Option<String>,
+    },
+
+    /// Load prompt from file
+    File {
+        /// Path to file containing the prompt
+        path: String,
+
+        /// Conversation title
+        #[arg(short, long)]
+        title: Option<String>,
+    },
+
+    /// Read prompt from stdin pipe
+    Pipe {
         /// Conversation title
         #[arg(short, long)]
         title: Option<String>,
@@ -186,6 +211,15 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Chat { message, title } => {
             run_chat(config, message, title).await?;
+        }
+        Commands::Interactive { title } => {
+            run_interactive(config, title).await?;
+        }
+        Commands::File { path, title } => {
+            run_file_input(config, path, title).await?;
+        }
+        Commands::Pipe { title } => {
+            run_pipe_input(config, title).await?;
         }
         Commands::Search { query, limit } => {
             run_search(config, query, limit).await?;
@@ -416,6 +450,119 @@ async fn run_prompt(config: AgentConfig) -> anyhow::Result<()> {
     } else {
         println!("No system prompt configured. Using default Anthropic behavior.");
     }
+
+    Ok(())
+}
+
+async fn run_interactive(config: AgentConfig, title: Option<String>) -> anyhow::Result<()> {
+    info!("Starting interactive multi-line session");
+
+    let mut agent = Agent::new(config).await?;
+    agent.start_conversation(title).await?;
+
+    let mut console = InteractiveConsole::new();
+
+    loop {
+        match console.get_multiline_input("Enter your prompt:") {
+            Ok(input) => {
+                if input.trim().is_empty() {
+                    println!("Empty input. Type 'exit' to quit.");
+                    continue;
+                }
+
+                if input.trim() == "exit" || input.trim() == "quit" {
+                    break;
+                }
+
+                println!("\n🤖 Processing your request...\n");
+
+                match agent.chat(input).await {
+                    Ok(response) => {
+                        println!("Agent: {}", response);
+                        println!();
+                    }
+                    Err(e) => {
+                        error!("Error: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Input error: {}", e);
+                break;
+            }
+        }
+    }
+
+    agent.finalize_memory().await?;
+    info!("Interactive session ended");
+
+    Ok(())
+}
+
+async fn run_file_input(config: AgentConfig, path: String, title: Option<String>) -> anyhow::Result<()> {
+    info!("Loading prompt from file: {}", path);
+
+    let input = InteractiveConsole::load_file(&path)?;
+
+    if input.trim().is_empty() {
+        println!("File is empty or contains only whitespace.");
+        return Ok(());
+    }
+
+    println!("📄 Loaded prompt from: {}", path);
+    println!("📝 Content preview: {}...",
+        if input.len() > 100 { &input[..100] } else { &input }
+    );
+    println!("\n🤖 Processing...\n");
+
+    let mut agent = Agent::new(config).await?;
+    agent.start_conversation(title).await?;
+
+    match agent.chat(input).await {
+        Ok(response) => {
+            println!("Agent: {}", response);
+        }
+        Err(e) => {
+            error!("Error: {}", e);
+        }
+    }
+
+    agent.finalize_memory().await?;
+    info!("File input session completed");
+
+    Ok(())
+}
+
+async fn run_pipe_input(config: AgentConfig, title: Option<String>) -> anyhow::Result<()> {
+    info!("Reading prompt from stdin pipe");
+
+    let input = InteractiveConsole::read_from_pipe()?;
+
+    if input.trim().is_empty() {
+        println!("No input received from pipe.");
+        return Ok(());
+    }
+
+    println!("📥 Received input from pipe");
+    println!("📝 Content preview: {}...",
+        if input.len() > 100 { &input[..100] } else { &input }
+    );
+    println!("\n🤖 Processing...\n");
+
+    let mut agent = Agent::new(config).await?;
+    agent.start_conversation(title).await?;
+
+    match agent.chat(input).await {
+        Ok(response) => {
+            println!("Agent: {}", response);
+        }
+        Err(e) => {
+            error!("Error: {}", e);
+        }
+    }
+
+    agent.finalize_memory().await?;
+    info!("Pipe input session completed");
 
     Ok(())
 }

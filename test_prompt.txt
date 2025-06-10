@@ -1,0 +1,10 @@
+Hello! This is a test prompt loaded from a file.
+
+Please tell me:
+1. What model are you using?
+2. What are your current capabilities?
+3. Can you confirm that you're running the enhanced rust_memvid_agent with the new input system?
+
+This demonstrates the file input mode where complex, multi-line prompts can be prepared in advance and loaded into the agent.
+
+Thank you!

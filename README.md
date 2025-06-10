@@ -174,16 +174,24 @@ async fn main() -> anyhow::Result<()> {
 # Set your API key
 export ANTHROPIC_API_KEY="your-api-key"
 
-# Start an interactive chat
-cargo run -- chat
+# 🎯 Enhanced Input Modes
+# Interactive multi-line mode with full editing capabilities
+cargo run -- interactive
 
-# Search memory
+# Load complex prompts from files
+cargo run -- file prompt.txt
+
+# Pipe input for command-line workflows
+echo "Your prompt" | cargo run -- pipe
+cat complex_prompt.txt | cargo run -- pipe
+
+# Traditional chat modes
+cargo run -- chat                    # Interactive chat
+cargo run -- chat "Single message"   # Direct message
+
+# Memory operations
 cargo run -- search "rust programming"
-
-# Save information to memory
 cargo run -- save "Important fact about Rust" --entry-type fact
-
-# Show memory statistics
 cargo run -- stats
 
 # List available tools
