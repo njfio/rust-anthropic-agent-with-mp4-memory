@@ -315,9 +315,13 @@ impl Agent {
                 if let Some(human_input_threshold) = self.config.agent.human_input_after_iterations {
                     if tool_iterations >= human_input_threshold {
                         info!("Human-in-the-loop threshold ({}) reached after {} iterations", human_input_threshold, tool_iterations);
-                        // For now, we'll just log this. In a full implementation, this would pause for human input
-                        // TODO: Implement actual human input mechanism (stdin, web interface, etc.)
-                        warn!("Human input would be requested here: {}", self.config.agent.human_input_prompt);
+                        let prompt = &self.config.agent.human_input_prompt;
+                        if let Ok(input) = self.request_human_input(prompt).await {
+                            if !input.trim().is_empty() {
+                                let user_msg = ChatMessage::user(input);
+                                self.conversation_manager.add_message(user_msg).await?;
+                            }
+                        }
                     }
                 }
             }
@@ -504,18 +508,16 @@ impl Agent {
     /// Request human input during agent execution
     /// This is a placeholder for human-in-the-loop functionality
     pub async fn request_human_input(&self, prompt: &str) -> Result<String> {
-        // For now, this is a placeholder implementation
-        // In a full implementation, this would:
-        // 1. Pause agent execution
-        // 2. Present the prompt to the human user
-        // 3. Wait for human input (via CLI, web interface, etc.)
-        // 4. Return the human's response
+        use std::io::{self, Write};
 
-        warn!("Human input requested: {}", prompt);
-        warn!("Human-in-the-loop not fully implemented yet. Returning default response.");
+        println!("\n{}", prompt);
+        print!("> ");
+        io::stdout().flush().map_err(AgentError::Io)?;
 
-        // Return a default response for now
-        Ok("Human input not available - continuing with agent decision".to_string())
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).map_err(AgentError::Io)?;
+
+        Ok(input.trim().to_string())
     }
 
     /// Set maximum tool iterations
