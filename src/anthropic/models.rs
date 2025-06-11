@@ -305,4 +305,12 @@ impl ChatMessage {
             })
             .collect()
     }
+
+    /// Check if the message has no meaningful content
+    pub fn has_empty_content(&self) -> bool {
+        self.content.iter().all(|block| match block {
+            ContentBlock::Text { text } => text.trim().is_empty(),
+            _ => false,
+        })
+    }
 }
