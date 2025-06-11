@@ -38,6 +38,20 @@ memory_*.json
 agent_memory_frames/
 *_frames/
 
+# Memory databases and synaptic memory
+synaptic_memory/
+test_synaptic_memory.db/
+*_memory.db/
+*.db
+test_memory_dir/
+
+# Test files and generated content
+test_fix.txt
+test_game_*/IMPLEMENTATION_PLAN.md
+test_*.txt
+test_*.html
+test_*.js
+
 # Logs
 *.log
 logs/
