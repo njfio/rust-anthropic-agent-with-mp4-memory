@@ -12,8 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial release of rust-anthropic-agent-with-mp4-memory
 - Complete Anthropic Claude API integration with all latest tools
-- MP4-based persistent memory system using rust-mp4-memory
-- Hybrid memory approach (RAM cache + MP4 persistence)
+ - JSON-based persistent memory system using rust-synaptic
+ - Hybrid memory approach (RAM cache + JSON persistence)
 - Extensible tool system with built-in and custom tool support
 - CLI interface for agent interaction
 - Memory management tools (save, search, stats)
@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Features
 - **Anthropic Integration**: Support for Claude Opus 4, Sonnet 4, and Sonnet 3.7
-- **Memory System**: Persistent storage in MP4 format with semantic search
+ - **Memory System**: Persistent storage in JSON format with synaptic search
 - **Tool Framework**: Easy-to-use trait for custom tool development
 - **CLI Interface**: Interactive chat, memory search, and statistics
 - **Configuration**: Flexible TOML-based configuration with environment overrides
@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Technical Details
 - Built with Rust 1.70+
 - Uses tokio for async runtime
-- Integrates with rust-mp4-memory for video-based storage
+- Integrates with rust-synaptic for JSON-based storage
 - Supports all Anthropic tool types and versions
 - Implements proper tool versioning based on model capabilities
 - Provides type-safe API interactions
