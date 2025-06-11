@@ -9,13 +9,17 @@ use tracing::{debug, info, warn};
 use crate::anthropic::models::ToolDefinition;
 use crate::tools::{create_tool_definition, extract_string_param, Tool, ToolResult};
 use crate::utils::error::{AgentError, Result};
+use crate::utils::audit_logger::{AuditEvent, AuditEventType, AuditSeverity, audit_log};
+use crate::utils::security_headers::{SecurityHeaders, SecurityHeadersConfig};
 
-/// A simple shell command execution tool
+/// A secure shell command execution tool with allowlist-based filtering
 #[derive(Debug, Clone)]
 pub struct ShellCommandTool {
-    /// Whether to allow potentially dangerous commands
-    allow_dangerous: bool,
-    /// List of blocked commands
+    /// Whether to use allowlist (secure) or blocklist (legacy) mode
+    use_allowlist: bool,
+    /// List of allowed commands (when use_allowlist is true)
+    allowed_commands: Vec<String>,
+    /// List of blocked commands (legacy mode only)
     blocked_commands: Vec<String>,
     /// Working directory for commands
     working_dir: Option<std::path::PathBuf>,
@@ -24,11 +28,33 @@ pub struct ShellCommandTool {
 }
 
 impl ShellCommandTool {
-    /// Create a new shell command tool
+    /// Create a new secure shell command tool with allowlist (recommended)
     pub fn new() -> Self {
         Self {
-            allow_dangerous: false,
+            use_allowlist: true,
+            // SECURITY: Default to safe, read-only commands only
+            allowed_commands: vec![
+                "ls".to_string(),
+                "dir".to_string(),
+                "pwd".to_string(),
+                "echo".to_string(),
+                "cat".to_string(),
+                "head".to_string(),
+                "tail".to_string(),
+                "grep".to_string(),
+                "find".to_string(),
+                "wc".to_string(),
+                "sort".to_string(),
+                "uniq".to_string(),
+                "date".to_string(),
+                "whoami".to_string(),
+                "id".to_string(),
+                "uname".to_string(),
+                "which".to_string(),
+                "type".to_string(),
+            ],
             blocked_commands: vec![
+                // Legacy blocklist for backward compatibility
                 "rm".to_string(),
                 "rmdir".to_string(),
                 "del".to_string(),
@@ -43,9 +69,15 @@ impl ShellCommandTool {
         }
     }
 
-    /// Allow dangerous commands (use with caution!)
-    pub fn with_dangerous_commands(mut self) -> Self {
-        self.allow_dangerous = true;
+    /// Switch to legacy blocklist mode (less secure, use with caution!)
+    pub fn with_blocklist_mode(mut self) -> Self {
+        self.use_allowlist = false;
+        self
+    }
+
+    /// Add an allowed command (only works in allowlist mode)
+    pub fn allow_command<S: Into<String>>(mut self, command: S) -> Self {
+        self.allowed_commands.push(command.into());
         self
     }
 
@@ -68,16 +100,28 @@ impl ShellCommandTool {
     }
 
     /// Check if a command is safe to execute
+    /// SECURITY: Uses allowlist by default for maximum security
     fn is_command_safe(&self, command: &str) -> bool {
-        if self.allow_dangerous {
-            return true;
+        // Parse command to get the base command
+        let command_parts: Vec<&str> = command.split_whitespace().collect();
+        let base_command = match command_parts.first() {
+            Some(cmd) => cmd,
+            None => return false,
+        };
+
+        // Check for shell operators that could be used for command injection
+        if command.contains(';') || command.contains('&') || command.contains('|') ||
+           command.contains('`') || command.contains('$') || command.contains('>') ||
+           command.contains('<') {
+            return false;
         }
 
-        let command_parts: Vec<&str> = command.split_whitespace().collect();
-        if let Some(cmd) = command_parts.first() {
-            !self.blocked_commands.iter().any(|blocked| cmd.contains(blocked))
+        if self.use_allowlist {
+            // SECURITY: Allowlist mode - only explicitly allowed commands
+            self.allowed_commands.iter().any(|allowed| base_command == allowed)
         } else {
-            false
+            // Legacy blocklist mode - less secure
+            !self.blocked_commands.iter().any(|blocked| base_command.contains(blocked))
         }
     }
 }
@@ -113,8 +157,22 @@ impl Tool for ShellCommandTool {
         debug!("Executing shell command: {}", command);
 
         if !self.is_command_safe(&command) {
+            // AUDIT: Log blocked command attempt
+            audit_log(AuditEvent::new(
+                AuditEventType::SecurityViolation,
+                AuditSeverity::High,
+                "blocked_command_execution".to_string(),
+            ).with_resource(&command).with_success(false).with_error("Command blocked by security policy"));
+
             return Ok(ToolResult::error("Command blocked for security reasons"));
         }
+
+        // AUDIT: Log command execution attempt
+        audit_log(AuditEvent::new(
+            AuditEventType::CommandExecution,
+            AuditSeverity::Medium,
+            "shell_command_execution".to_string(),
+        ).with_resource(&command));
 
         let mut cmd = if cfg!(target_os = "windows") {
             let mut cmd = Command::new("cmd");
@@ -188,6 +246,8 @@ pub struct HttpRequestTool {
     allowed_domains: Option<Vec<String>>,
     /// Request timeout in seconds
     timeout_seconds: u64,
+    /// Security headers configuration
+    security_headers: SecurityHeaders,
 }
 
 impl HttpRequestTool {
@@ -202,6 +262,7 @@ impl HttpRequestTool {
             client,
             allowed_domains: None,
             timeout_seconds: 30,
+            security_headers: SecurityHeaders::new(),
         })
     }
 
@@ -218,11 +279,19 @@ impl HttpRequestTool {
     }
 
     /// Check if a URL is allowed
+    /// SECURITY: Uses exact domain matching to prevent subdomain bypass attacks
     fn is_url_allowed(&self, url: &str) -> bool {
         if let Some(allowed) = &self.allowed_domains {
             if let Ok(parsed_url) = url::Url::parse(url) {
                 if let Some(domain) = parsed_url.domain() {
-                    return allowed.iter().any(|allowed_domain| domain.contains(allowed_domain));
+                    // SECURITY FIX: Use exact matching or proper subdomain validation
+                    return allowed.iter().any(|allowed_domain| {
+                        // Exact match
+                        domain == allowed_domain ||
+                        // Subdomain match (must end with .allowed_domain)
+                        (domain.ends_with(&format!(".{}", allowed_domain)) &&
+                         allowed_domain.contains('.')) // Only allow subdomain matching for proper domains
+                    });
                 }
             }
             false
@@ -281,8 +350,22 @@ impl Tool for HttpRequestTool {
         debug!("Making HTTP request: {} {}", method, url);
 
         if !self.is_url_allowed(&url) {
+            // AUDIT: Log blocked URL attempt
+            audit_log(AuditEvent::new(
+                AuditEventType::SecurityViolation,
+                AuditSeverity::High,
+                "blocked_http_request".to_string(),
+            ).with_resource(&url).with_success(false).with_error("URL not in allowed domains"));
+
             return Ok(ToolResult::error("URL not allowed"));
         }
+
+        // AUDIT: Log HTTP request attempt
+        audit_log(AuditEvent::new(
+            AuditEventType::NetworkRequest,
+            AuditSeverity::Medium,
+            format!("http_request_{}", method.to_lowercase()),
+        ).with_resource(&url));
 
         let mut request = match method.to_uppercase().as_str() {
             "GET" => self.client.get(&url),
@@ -291,6 +374,12 @@ impl Tool for HttpRequestTool {
             "DELETE" => self.client.delete(&url),
             _ => return Ok(ToolResult::error("Unsupported HTTP method")),
         };
+
+        // Add security headers
+        let security_headers = self.security_headers.build_request_headers();
+        for (name, value) in security_headers.iter() {
+            request = request.header(name, value);
+        }
 
         // Add headers if provided
         if let Some(headers) = input.get("headers").and_then(|v| v.as_object()) {

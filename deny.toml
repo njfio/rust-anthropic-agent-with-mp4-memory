@@ -1,0 +1,118 @@
+# cargo-deny configuration for security and license compliance
+
+[graph]
+# If 1 or more target triples (and optionally, target_features) are specified,
+# only the specified targets will be checked when running `cargo deny check`.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "x86_64-apple-darwin",
+]
+
+[output]
+# When outputting inclusion graphs in diagnostics that include features, this
+# option can be used to specify the depth at which feature edges will be added.
+feature-depth = 1
+
+[advisories]
+# The path where the advisory database is cloned/fetched into
+db-path = "~/.cargo/advisory-db"
+# The url(s) of the advisory databases to use
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# The lint level for security vulnerabilities
+vulnerability = "deny"
+# The lint level for unmaintained crates
+unmaintained = "warn"
+# The lint level for crates that have been yanked from their source registry
+yanked = "warn"
+# The lint level for crates with security notices. Note that as of
+# 2019-12-17 there are no security notice advisories in
+# https://github.com/rustsec/advisory-db
+notice = "warn"
+# A list of advisory IDs to ignore. Note that ignored advisories will still
+# output a note when they are encountered.
+ignore = [
+    # Ignore specific advisories if needed
+    # "RUSTSEC-2020-0001",
+]
+
+[licenses]
+# The confidence threshold for detecting a license from a license text.
+confidence-threshold = 0.8
+# List of explicitly allowed licenses
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "MPL-2.0",
+]
+# List of explicitly disallowed licenses
+deny = [
+    "GPL-2.0",
+    "GPL-3.0",
+    "AGPL-1.0",
+    "AGPL-3.0",
+    "LGPL-2.0",
+    "LGPL-2.1",
+    "LGPL-3.0",
+    "EUPL-1.0",
+    "EUPL-1.1",
+    "EUPL-1.2",
+]
+# Lint level for when multiple versions of the same license are detected
+copyleft = "warn"
+# Confidence threshold for detecting a license from a license text.
+allow-osi-fsf-free = "both"
+# Lint level used when no license is detected
+default = "deny"
+# The confidence threshold for detecting a license from a license text.
+private = { ignore = true, registries = [] }
+
+[licenses.private]
+# If true, ignores workspace crates that aren't published, or are only
+# published to private registries.
+ignore = false
+# One or more private registries that you might publish crates to, if a crate
+# is only published to private registries, and ignore is true, the crate will
+# not have its license(s) checked
+registries = []
+
+[bans]
+# Lint level for when multiple versions of the same crate are detected
+multiple-versions = "warn"
+# Lint level for when a crate version requirement is `*`
+wildcards = "allow"
+# The graph highlighting used when creating dotgraphs for crates
+# with multiple versions
+highlight = "all"
+# The default lint level for `default` features, if not specified in deny.toml
+allow = []
+# List of crates that are allowed. Use with care!
+deny = [
+    # Deny known problematic crates
+    { name = "openssl", version = "*" },  # Prefer rustls
+    { name = "native-tls", version = "*" },  # Prefer rustls
+]
+# Certain crates/versions that will be skipped when doing duplicate detection.
+skip = []
+# Similarly to `skip` allows you to skip certain crates from being checked. Unlike `skip`,
+# `skip-tree` skips the crate and all of its dependencies entirely.
+skip-tree = []
+
+[sources]
+# Lint level for what to happen when a crate from a crate registry that is
+# not in the allow list is encountered
+unknown-registry = "warn"
+# Lint level for what to happen when a crate from a git repository that is not
+# in the allow list is encountered
+unknown-git = "warn"
+# List of URLs for allowed crate registries. Defaults to the crates.io index
+# if not specified. If it is specified but empty, no registries are allowed.
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# List of URLs for allowed Git repositories
+allow-git = []

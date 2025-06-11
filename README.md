@@ -4,7 +4,18 @@
 
 ## Recent Updates
 
-### 🚀 **Production-Ready Agent System** (Latest - December 2024)
+### 🔒 **Enterprise Security Hardening** (Latest - December 2024)
+- **Comprehensive Security Audit**: Complete security assessment and hardening with OWASP Top 10 protection
+- **Advanced Audit Logging**: Enterprise-grade audit trails with structured JSON logging, automatic rotation, and configurable severity levels
+- **Security Headers**: Comprehensive HTTP security headers (CSP, HSTS, X-Frame-Options) with configurable policies for production environments
+- **Automated Security Scanning**: Daily CI/CD security pipeline with cargo-audit, CodeQL, Semgrep, Trivy, and OSSF Scorecard integration
+- **Resource Monitoring**: Real-time memory/CPU monitoring with configurable limits, alerts, and automatic violation detection
+- **Penetration Testing**: Automated security testing framework with OWASP coverage and scheduled vulnerability assessments
+- **Input Validation**: Comprehensive validation for paths, commands, URLs with SSRF protection and injection prevention
+- **Rate Limiting**: Advanced rate limiting with sliding windows, per-tool limits, and configurable thresholds
+- **Dependency Security**: Automated vulnerability scanning, license compliance, and unmaintained dependency detection
+
+### 🚀 **Production-Ready Agent System**
 - **Complete HTTP Connection Optimization**: Enhanced timeout handling (300s), connection pooling, TCP keepalive, and robust retry logic with exponential backoff
 - **Advanced Parameter Validation**: Comprehensive tool parameter checking with detailed error messages and clear guidance for create vs str_replace operations
 - **Enhanced System Prompt**: Implementation-focused behavior with explicit parameter requirements and format examples
@@ -87,6 +98,16 @@
 - **Automated Roadmaps**: Generate comprehensive improvement roadmaps with phases and effort estimation
 - **Cross-reference Intelligence**: Discover hidden connections across different domains and contexts
 - **Adaptive Learning**: System learns from usage patterns to improve recommendations and insights over time
+
+### 🔒 **Enterprise Security Features**
+- **Audit Logging**: Comprehensive audit trails with JSON structured logging, automatic rotation, and configurable severity filtering
+- **Security Headers**: Production-ready HTTP security headers (CSP, HSTS, X-Frame-Options, Permissions-Policy) with strict/relaxed configurations
+- **Input Validation**: Advanced validation for paths, commands, URLs with SSRF protection, injection prevention, and length limits
+- **Rate Limiting**: Sliding window rate limiting with global and per-tool limits, configurable thresholds, and violation tracking
+- **Resource Monitoring**: Real-time memory/CPU monitoring with configurable limits, warning thresholds, and automatic enforcement
+- **Automated Security Scanning**: Daily CI/CD pipeline with cargo-audit, CodeQL, Semgrep, Trivy, and dependency vulnerability scanning
+- **Penetration Testing**: Automated security testing framework with OWASP Top 10 coverage and scheduled assessments
+- **Compliance**: License compliance checking, dependency security scanning, and security best practices enforcement
 
 ### 🏗️ **Robust Architecture**
 - **Type Safety**: Comprehensive type system for all API interactions
@@ -405,8 +426,38 @@ max_chunks = 1000
 enable_text_editor = true
 enable_memory_tools = true
 enable_file_tools = true
-enable_code_execution = true
-enable_web_search = true
+# Security: Dangerous tools disabled by default
+enable_code_execution = false
+enable_web_search = false
+enable_shell_commands = false
+
+# Rate limiting configuration
+[tools.rate_limiting]
+max_requests_per_minute = 100
+per_tool_limiting = true
+window_duration_seconds = 60
+
+# Security configuration
+[tools.security]
+max_file_size = 10485760  # 10MB
+max_path_length = 4096
+max_command_length = 8192
+allowed_domains = []  # Empty = all allowed
+
+# Audit logging
+[audit]
+log_file_path = "audit.log"
+max_file_size = 104857600  # 100MB
+max_files = 10
+minimum_severity = "low"
+
+# Resource monitoring
+[monitoring]
+max_memory_bytes = 2147483648  # 2GB
+max_memory_percentage = 25.0
+max_cpu_percentage = 80.0
+max_threads = 100
+monitoring_interval_seconds = 30
 
 [agent]
 name = "MyAgent"
@@ -421,11 +472,12 @@ max_history_length = 50
 - **Memory Tools**: Search, save, and manage persistent memory
 - **Advanced Memory Analytics**: Knowledge graphs, temporal analysis, content synthesis, and analytics dashboards
 - **Code Analysis**: AI-powered code explanations, security scanning, and refactoring suggestions with Phase 2 advanced intelligence
-- **Text Editor**: View and edit files with full Anthropic text editor support
-- **File System**: Read, write, and list files and directories
-- **HTTP Requests**: Make web requests with domain filtering
-- **Shell Commands**: Execute system commands (with safety restrictions)
+- **Text Editor**: View and edit files with full Anthropic text editor support and security validation
+- **File System**: Read, write, and list files with path traversal protection and size limits
+- **HTTP Requests**: Make web requests with domain filtering, security headers, and SSRF protection
+- **Shell Commands**: Execute system commands with allowlist-based security filtering
 - **UUID Generator**: Generate unique identifiers
+- **Security Tools**: Audit logging, resource monitoring, input validation, and rate limiting
 
 ### Anthropic Server Tools
 
@@ -460,6 +512,9 @@ max_history_length = 50
 # Run all tests
 cargo test
 
+# Run security tests specifically
+cargo test security_tests --lib
+
 # Run with features
 cargo test --features all-tools
 
@@ -467,7 +522,24 @@ cargo test --features all-tools
 cargo run --example basic_agent
 cargo run --example memory_chat
 cargo run --example tool_development
+
+# Security testing
+cargo audit                    # Dependency vulnerability scan
+cargo test --test security    # Security-specific tests
 ```
+
+## 🔒 Security
+
+This project implements comprehensive security measures including:
+
+- **Audit Logging**: All sensitive operations are logged with structured JSON format
+- **Input Validation**: Comprehensive validation prevents path traversal, command injection, and SSRF attacks
+- **Rate Limiting**: Configurable rate limits prevent resource exhaustion
+- **Security Headers**: HTTP requests include security headers (CSP, HSTS, etc.)
+- **Resource Monitoring**: Real-time monitoring prevents resource exhaustion attacks
+- **Automated Scanning**: Daily CI/CD security pipeline with multiple security tools
+
+For security issues, please see [SECURITY.md](SECURITY.md) for our vulnerability reporting process.
 
 ## 🤝 Contributing
 

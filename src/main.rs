@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use rust_memvid_agent::{Agent, AgentConfig};
 use rust_memvid_agent::cli::{InteractiveConsole};
-use std::io::{self, Write, BufRead};
+use std::io::{self, Write};
 use tracing::{error, info};
 
 #[derive(Parser)]
