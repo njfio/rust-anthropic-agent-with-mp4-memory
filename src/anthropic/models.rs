@@ -283,6 +283,11 @@ impl ChatMessage {
             .join("\n")
     }
 
+    /// Check if the message has no content blocks
+    pub fn has_empty_content(&self) -> bool {
+        self.content.is_empty()
+    }
+
     /// Check if the message contains tool uses
     pub fn has_tool_uses(&self) -> bool {
         self.content.iter().any(|block| {
