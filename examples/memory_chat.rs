@@ -25,17 +25,17 @@ async fn main() -> anyhow::Result<()> {
 
     agent.save_to_memory(
         "The user's name is Alice and she works as a software engineer at TechCorp.",
-        MemoryEntryType::Fact
+        "fact"
     ).await?;
 
     agent.save_to_memory(
         "Alice is interested in Rust programming and AI/ML technologies.",
-        MemoryEntryType::Fact
+        "fact"
     ).await?;
 
     agent.save_to_memory(
         "Alice's current project involves building a distributed system using microservices.",
-        MemoryEntryType::Note
+        "note"
     ).await?;
 
     // Start a conversation

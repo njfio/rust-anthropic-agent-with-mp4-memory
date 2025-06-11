@@ -55,19 +55,98 @@ enable_memory_tools = true
 # Enable file system tools (read, write, list)
 enable_file_tools = true
 
-# Enable code execution tool (server-side Python execution)
-enable_code_execution = true
+# SECURITY: Disable potentially dangerous tools by default
+# Enable code execution tool (server-side Python execution) - DISABLED for security
+enable_code_execution = false
 
-# Enable web search tool (server-side web search)
-enable_web_search = true
+# Enable web search tool (server-side web search) - DISABLED for security
+enable_web_search = false
+
+# Enable shell command tool - DISABLED for security
+enable_shell_commands = false
 
 # Timeout for tool execution in seconds
 tool_timeout_seconds = 30
+
+# Rate limiting configuration
+[tools.rate_limiting]
+# Maximum requests per minute (global)
+max_requests_per_minute = 100
+# Enable per-tool rate limiting
+per_tool_limiting = true
+# Rate limit window in seconds
+window_duration_seconds = 60
+
+# Security configuration
+[tools.security]
+# Maximum file size for operations (in bytes)
+max_file_size = 10485760  # 10MB
+# Maximum path length
+max_path_length = 4096
+# Maximum command length
+max_command_length = 8192
+# Allowed domains for HTTP requests (empty = all allowed)
+allowed_domains = []
 
 # Custom tool configurations (advanced users)
 [tools.custom_tools]
 # Example custom tool configuration
 # weather_api_key = "your-weather-api-key"
+
+# Audit logging configuration
+[audit]
+# Path to audit log file
+log_file_path = "audit.log"
+# Maximum size of each log file in bytes (100MB default)
+max_file_size = 104857600
+# Maximum number of log files to retain
+max_files = 10
+# Buffer size for log entries
+buffer_size = 1000
+# Sync interval in seconds
+sync_interval_seconds = 60
+# Minimum severity level to log (low, medium, high, critical)
+minimum_severity = "low"
+
+# Resource monitoring configuration
+[monitoring]
+# Maximum memory usage in bytes (2GB default)
+max_memory_bytes = 2147483648
+# Maximum memory usage as percentage of system memory
+max_memory_percentage = 25.0
+# Maximum CPU usage percentage
+max_cpu_percentage = 80.0
+# Maximum number of threads
+max_threads = 100
+# Memory warning threshold (percentage of max)
+memory_warning_threshold = 0.8
+# CPU warning threshold (percentage of max)
+cpu_warning_threshold = 0.8
+# Monitoring interval in seconds
+monitoring_interval_seconds = 30
+# Whether to enforce limits automatically
+enforce_limits = true
+# Whether to log resource usage
+log_usage = true
+# Whether to audit resource violations
+audit_violations = true
+
+# Security headers configuration
+[security.headers]
+# Content Security Policy
+csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; font-src 'self'; object-src 'none'; media-src 'self'; frame-src 'none';"
+# X-Frame-Options (DENY, SAMEORIGIN, or ALLOW-FROM)
+frame_options = "DENY"
+# Enable X-Content-Type-Options: nosniff
+content_type_options = true
+# Enable X-XSS-Protection
+xss_protection = true
+# HTTP Strict Transport Security
+hsts = "max-age=31536000; includeSubDomains; preload"
+# Referrer Policy
+referrer_policy = "strict-origin-when-cross-origin"
+# Permissions Policy
+permissions_policy = "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), speaker=()"
 
 [agent]
 # Agent name/identifier
