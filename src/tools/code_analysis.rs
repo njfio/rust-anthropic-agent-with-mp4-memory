@@ -256,6 +256,11 @@ impl CodeAnalysisTool {
             "path": path.display().to_string(),
             "summary": {
                 "total_files": result.total_files,
+                "parsed_files": result.parsed_files,
+                "error_files": result.error_files,
+                "parse_success_rate": if result.total_files > 0 {
+                    (result.parsed_files as f64 / result.total_files as f64) * 100.0
+                } else { 0.0 },
                 "total_lines": result.total_lines,
                 "total_symbols": result.files.iter().map(|f| f.symbols.len()).sum::<usize>(),
                 "languages": result.languages.keys().collect::<Vec<_>>(),
@@ -311,6 +316,13 @@ impl CodeAnalysisTool {
             .filter(|f| f["symbols"].as_array().unwrap().len() > 20)
             .count();
 
+        let parsed_files = analysis["summary"]["parsed_files"].as_u64().unwrap_or(0);
+        let parse_success_rate = if total_files > 0 {
+            (parsed_files as f64 / total_files as f64) * 100.0
+        } else {
+            0.0
+        };
+
         let insights = json!({
             "analysis_type": "codebase_insights",
             "path": path.display().to_string(),
@@ -324,7 +336,7 @@ impl CodeAnalysisTool {
                 "complex_files_count": complex_files
             },
             "quality_indicators": {
-                "parse_success_rate": 100.0, // TODO: Calculate actual parse success rate
+                "parse_success_rate": parse_success_rate,
                 "average_file_size": avg_lines_per_file,
                 "complexity_distribution": {
                     "simple": files.len() - complex_files,
@@ -394,16 +406,95 @@ impl CodeAnalysisTool {
     async fn query_patterns(&self, path: &Path, params: &Value) -> Result<Value> {
         let pattern = extract_string_param(params, "pattern")?;
         let language_str = extract_optional_string_param(params, "language").unwrap_or_else(|| "auto".to_string());
-        
-        // For now, return a placeholder - full implementation would require
-        // parsing individual files and running tree-sitter queries
+        // Determine explicit language if provided
+        let lang_override = match language_str.as_str() {
+            "auto" => None,
+            other => Some(self.parse_language(other)?),
+        };
+
+        // Analyze the codebase to get file list
+        let analysis = self.analyze_codebase(path, params).await?;
+        let files = analysis["files"].as_array().unwrap();
+        let root = if path.is_file() { path.parent().unwrap_or(path) } else { path };
+
+        // Precreate query if language is fixed
+        let base_query = if let Some(lang) = lang_override {
+            Some(rust_tree_sitter::Query::new(lang, &pattern)
+                .map_err(|e| AgentError::tool("code_analysis", &format!("Query error: {}", e)))?)
+        } else {
+            None
+        };
+
+        let mut matches_vec = Vec::new();
+
+        for file in files {
+            let rel_path = file["path"].as_str().unwrap();
+            let lang_name = file["language"].as_str().unwrap();
+
+            let language = if let Some(lang) = lang_override {
+                if lang.name().eq_ignore_ascii_case(lang_name) { lang } else { continue } 
+            } else {
+                match self.parse_language(lang_name) {
+                    Ok(l) => l,
+                    Err(_) => continue,
+                }
+            };
+
+            let full_path = root.join(rel_path);
+            let content = match std::fs::read_to_string(&full_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            let parser = rust_tree_sitter::Parser::new(language)
+                .map_err(|e| AgentError::tool("code_analysis", &format!("Parser error: {}", e)))?;
+            let tree = match parser.parse(&content, None) {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+
+            if let Some(ref q) = base_query {
+                let qmatches = q.matches(&tree)
+                    .map_err(|e| AgentError::tool("code_analysis", &format!("Query execution failed: {}", e)))?;
+                for m in qmatches {
+                    for cap in m.captures() {
+                        let node = cap.node();
+                        let start = node.start_position();
+                        matches_vec.push(json!({
+                            "file": rel_path,
+                            "line": start.row + 1,
+                            "column": start.column,
+                            "text": node.text().unwrap_or("")
+                        }));
+                    }
+                }
+            } else {
+                let q = rust_tree_sitter::Query::new(language, &pattern)
+                    .map_err(|e| AgentError::tool("code_analysis", &format!("Query error: {}", e)))?;
+                let qmatches = q.matches(&tree)
+                    .map_err(|e| AgentError::tool("code_analysis", &format!("Query execution failed: {}", e)))?;
+                for m in qmatches {
+                    for cap in m.captures() {
+                        let node = cap.node();
+                        let start = node.start_position();
+                        matches_vec.push(json!({
+                            "file": rel_path,
+                            "line": start.row + 1,
+                            "column": start.column,
+                            "text": node.text().unwrap_or("")
+                        }));
+                    }
+                }
+            }
+        }
+
         Ok(json!({
             "analysis_type": "pattern_query",
             "path": path.display().to_string(),
             "pattern": pattern,
             "language": language_str,
-            "message": "Pattern querying is available - implementation requires file-by-file parsing",
-            "matches": []
+            "match_count": matches_vec.len(),
+            "matches": matches_vec
         }))
     }
 
@@ -440,6 +531,23 @@ impl CodeAnalysisTool {
             }
         }
         text == pattern
+    }
+
+    /// Convert a language name to the rust_tree_sitter Language enum
+    fn parse_language(&self, name: &str) -> Result<rust_tree_sitter::Language> {
+        match name.to_lowercase().as_str() {
+            "rust" => Ok(rust_tree_sitter::Language::Rust),
+            "javascript" | "js" => Ok(rust_tree_sitter::Language::JavaScript),
+            "typescript" | "ts" => Ok(rust_tree_sitter::Language::TypeScript),
+            "python" | "py" => Ok(rust_tree_sitter::Language::Python),
+            "c" => Ok(rust_tree_sitter::Language::C),
+            "cpp" | "c++" | "cxx" | "cc" => Ok(rust_tree_sitter::Language::Cpp),
+            "go" => Ok(rust_tree_sitter::Language::Go),
+            _ => Err(AgentError::invalid_input(format!(
+                "Unsupported language: {}",
+                name
+            ))),
+        }
     }
 
     /// Generate recommendations based on analysis
@@ -2682,4 +2790,40 @@ fn calculate_impact_areas(suggestions: &[Value]) -> Vec<String> {
     }
 
     areas.into_iter().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use tokio::fs;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_parse_success_rate_computed() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("main.rs");
+        fs::write(&file_path, "fn main() {}\n").await.unwrap();
+
+        let tool = CodeAnalysisTool::new();
+        let result = tool.generate_insights(dir.path(), &json!({})).await.unwrap();
+        let rate = result["quality_indicators"]["parse_success_rate"].as_f64().unwrap();
+        assert_eq!(rate, 100.0);
+    }
+
+    #[tokio::test]
+    async fn test_query_patterns_basic() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("lib.rs");
+        fs::write(&file_path, "fn foo() {}\n").await.unwrap();
+
+        let tool = CodeAnalysisTool::new();
+        let params = json!({
+            "pattern": "(function_item) @fn",
+            "language": "rust"
+        });
+        let result = tool.query_patterns(dir.path(), &params).await.unwrap();
+        let matches = result["matches"].as_array().unwrap();
+        assert!(!matches.is_empty());
+    }
 }
