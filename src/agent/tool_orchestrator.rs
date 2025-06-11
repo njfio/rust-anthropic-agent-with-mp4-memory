@@ -25,6 +25,8 @@ pub struct ToolOrchestrator {
     memory_manager: Arc<Mutex<MemoryManager>>,
     /// Anthropic-defined tools
     anthropic_tools: Vec<AnthropicTool>,
+    /// Results returned by Anthropic server-side tools
+    server_tool_results: Vec<ContentBlock>,
 }
 
 impl ToolOrchestrator {
@@ -34,7 +36,13 @@ impl ToolOrchestrator {
             tool_registry: ToolRegistry::new(),
             memory_manager,
             anthropic_tools: Vec::new(),
+            server_tool_results: Vec::new(),
         }
+    }
+
+    /// Retrieve and clear stored server tool results
+    pub fn take_server_tool_results(&mut self) -> Vec<ContentBlock> {
+        std::mem::take(&mut self.server_tool_results)
     }
 
     /// Register built-in tools based on configuration
@@ -165,7 +173,7 @@ impl ToolOrchestrator {
     }
 
     /// Execute tools from content blocks
-    pub async fn execute_tools(&self, content_blocks: &[ContentBlock]) -> Result<Vec<ContentBlock>> {
+    pub async fn execute_tools(&mut self, content_blocks: &[ContentBlock]) -> Result<Vec<ContentBlock>> {
         let mut results = Vec::new();
 
         for block in content_blocks {
@@ -173,11 +181,10 @@ impl ToolOrchestrator {
                 ContentBlock::ToolUse { id, name, input } => {
                     // Check if this is a server-side tool
                     if self.is_server_tool(name) {
-                        debug!("Creating placeholder result for server tool: {} (id: {}) - execution handled by Anthropic", name, id);
-                        // Server tools are executed by Anthropic, but we need to provide a tool_result
-                        // to satisfy the API requirement. The actual result will be provided by Anthropic.
-                        let placeholder_result = ToolResult::success("Server tool execution handled by Anthropic".to_string());
-                        results.push(placeholder_result.to_content_block(id.clone()));
+                        debug!("Server tool requested: {} (id: {}) - waiting for Anthropic to provide result", name, id);
+                        // Do not create a placeholder result. The real result will be
+                        // returned by the server in a subsequent response and will be
+                        // stored when received.
                         continue;
                     }
 
@@ -199,6 +206,20 @@ impl ToolOrchestrator {
                     debug!("Server tool executed: {} (id: {})", name, id);
                     // Server tools are handled by Anthropic, we don't need to execute them
                     // They will appear as results in subsequent API responses
+                }
+                ContentBlock::CodeExecutionToolResult { tool_use_id, content } => {
+                    debug!("Received code execution result for {}", tool_use_id);
+                    self.server_tool_results.push(ContentBlock::CodeExecutionToolResult {
+                        tool_use_id: tool_use_id.clone(),
+                        content: content.clone(),
+                    });
+                }
+                ContentBlock::WebSearchToolResult { tool_use_id, content } => {
+                    debug!("Received web search result for {}", tool_use_id);
+                    self.server_tool_results.push(ContentBlock::WebSearchToolResult {
+                        tool_use_id: tool_use_id.clone(),
+                        content: content.clone(),
+                    });
                 }
                 _ => {
                     // Not a tool use block, skip
