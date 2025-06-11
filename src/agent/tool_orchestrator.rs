@@ -329,7 +329,7 @@ mod tests {
     async fn test_tool_orchestrator_creation() {
         let temp_dir = tempdir().unwrap();
         let config = MemoryConfig {
-            memory_path: temp_dir.path().join("test.mp4"),
+            memory_path: temp_dir.path().join("test.json"),
             index_path: temp_dir.path().join("test.json"),
             ..Default::default()
         };
@@ -344,7 +344,7 @@ mod tests {
     async fn test_builtin_tool_registration() {
         let temp_dir = tempdir().unwrap();
         let config = MemoryConfig {
-            memory_path: temp_dir.path().join("test.mp4"),
+            memory_path: temp_dir.path().join("test.json"),
             index_path: temp_dir.path().join("test.json"),
             ..Default::default()
         };

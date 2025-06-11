@@ -8,7 +8,7 @@ async fn main() -> anyhow::Result<()> {
     // Create agent configuration
     let config = AgentConfig::default()
         .with_anthropic_key(std::env::var("ANTHROPIC_API_KEY")?)
-        .with_memory_path("examples/memory_chat.mp4")
+        .with_memory_path("examples/memory_chat.json")
         .with_model("claude-opus-4-20250514")
         .with_system_prompt(
             "You are a helpful AI assistant with persistent memory. \

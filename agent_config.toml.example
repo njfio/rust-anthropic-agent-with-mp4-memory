@@ -27,11 +27,11 @@ timeout_seconds = 60
 max_retries = 3
 
 [memory]
-# Path to the memory file (MP4 format)
-memory_path = "agent_memory.mp4"
+# Path to the memory file (JSON format)
+memory_path = "agent_memory.json"
 
-# Path to the memory index file (JSON format)
-index_path = "agent_memory.json"
+# Base path for the memory index (synaptic adds extensions)
+index_path = "agent_memory"
 
 # Enable automatic memory saving
 auto_save = true
