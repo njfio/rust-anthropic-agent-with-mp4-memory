@@ -185,7 +185,7 @@ impl InteractiveConsole {
     }
 
     /// Print welcome message
-    fn print_welcome(&self) {
+    pub fn print_welcome(&self) {
         println!("{}", "=".repeat(60).bright_blue());
         println!("{}", "🤖 Rust MemVid Agent - Interactive Console".bright_cyan().bold());
         println!("{}", "=".repeat(60).bright_blue());

@@ -457,10 +457,15 @@ async fn run_prompt(config: AgentConfig) -> anyhow::Result<()> {
 async fn run_interactive(config: AgentConfig, title: Option<String>) -> anyhow::Result<()> {
     info!("Starting interactive multi-line session");
 
+
+
     let mut agent = Agent::new(config).await?;
     agent.start_conversation(title).await?;
 
     let mut console = InteractiveConsole::new();
+    console.print_welcome();
+
+
 
     loop {
         match console.get_multiline_input("Enter your prompt:") {

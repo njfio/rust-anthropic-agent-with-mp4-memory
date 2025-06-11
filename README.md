@@ -35,13 +35,14 @@ A comprehensive AI agent system in Rust that integrates with Anthropic's Claude 
 - **Parameter Validation**: Advanced tool parameter checking with detailed error messages and guidance
 - **Streaming Support**: Architecture ready for streaming responses (HTTP-based implementation complete)
 
-### 💾 **Fast JSON Memory System**
-- **Lightning-Fast Storage**: Simple JSON-based memory with instant read/write operations
-- **Text-Based Search**: Fast search through memory chunks without embedding overhead
-- **Memory Tools**: Built-in tools for saving and searching memory
-- **Conversation History**: Automatic conversation persistence and retrieval
-- **Immediate Persistence**: Changes saved instantly to JSON file for reliability
-- **Simplified Architecture**: Clean, maintainable codebase without complex dependencies
+### 🧠 **Advanced AI Memory System (rust-synaptic)**
+- **State-of-the-Art Memory**: Powered by [rust-synaptic](https://github.com/njfio/rust-synaptic) for intelligent memory management
+- **Knowledge Graphs**: Automatic relationship mapping between memories with intelligent connections
+- **Temporal Tracking**: Time-based memory analysis and pattern recognition
+- **Smart Content Merging**: Automatic deduplication and content optimization
+- **Semantic Search**: Intelligent search with relevance scoring and context understanding
+- **Analytics**: Memory usage insights, performance monitoring, and learning patterns
+- **Incremental Updates**: Efficient memory updates without full reprocessing
 
 ### 🛠️ **Extensible Tool System**
 - **Built-in Tools**: Text editor, file system, memory, and utility tools
@@ -483,13 +484,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - [Anthropic](https://www.anthropic.com/) for the Claude API
-- [rust-mp4-memory](https://github.com/njfio/rust-mp4-memory) for the memory system
+- [rust-synaptic](https://github.com/njfio/rust-synaptic) for the advanced AI memory system
 - [rust-treesitter-agent-code-utility](https://github.com/njfio/rust-treesitter-agent-code-utility) for AI code analysis
 - The Rust community for excellent crates and tools
 
 ## 🔗 Related Projects
 
-- [rust-mp4-memory](https://github.com/njfio/rust-mp4-memory) - MP4-based memory storage
+- [rust-synaptic](https://github.com/njfio/rust-synaptic) - Advanced AI memory system with knowledge graphs
 - [rust-treesitter-agent-code-utility](https://github.com/njfio/rust-treesitter-agent-code-utility) - AI-powered code analysis
 - [Anthropic API](https://docs.anthropic.com/) - Claude AI API documentation
 

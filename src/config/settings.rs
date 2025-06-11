@@ -114,7 +114,7 @@ impl Default for AnthropicConfig {
             api_key: std::env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
             base_url: "https://api.anthropic.com".to_string(),
             model: "claude-sonnet-4-20250514".to_string(),
-            max_tokens: 4096,
+            max_tokens: 8192,
             temperature: 0.7,
             timeout_seconds: 300,
             max_retries: 3,
@@ -193,11 +193,26 @@ Ask for guidance when requirements are unclear or when encountering errors.
 
 **Context Building**: Use code_analysis to understand codebases before making changes. Don't make blind modifications.
 
-## FILE OPERATIONS
+## FILE OPERATIONS - CHOOSE THE RIGHT TOOL!
 
-**You CAN and SHOULD modify files**: When users ask you to implement, fix, or change code, use the str_replace_based_edit_tool to actually modify files.
+**TWO TEXT EDITOR TOOLS AVAILABLE**:
 
-**File Operation Commands**:
+🔧 **local_file_editor** - USE THIS FOR REAL FILE CHANGES!
+- **When to use**: When users ask you to implement, fix, create, or change code files
+- **What it does**: Actually modifies files on the user's local filesystem
+- **Commands**: view, str_replace, create
+- **Result**: User can see and use the modified files immediately
+- **Use for**: Implementing features, fixing bugs, creating new files, updating configurations
+
+📝 **str_replace_based_edit_tool** - Anthropic's safe editor
+- **When to use**: For demonstrations, examples, or when you're unsure about making permanent changes
+- **What it does**: Server-side text editing that doesn't modify actual files
+- **Result**: Changes exist only in the conversation context
+- **Use for**: Showing examples, testing ideas, safe exploration
+
+**CRITICAL RULE**: When users ask you to "implement", "create", "fix", or "build" something, use **local_file_editor** to make REAL changes!
+
+**File Operation Commands** (for local_file_editor):
 - `view`: Read file contents (for understanding context)
 - `str_replace`: Modify existing files (use this to make changes!)
 - `create`: Create new files when needed
@@ -207,7 +222,7 @@ When using the create command, you MUST provide BOTH parameters:
 - `path`: The file path to create
 - `file_text`: The complete content to write to the file
 
-**Making Changes**: Don't just view files - actually implement the requested changes using str_replace operations.
+**Making Changes**: Don't just view files - actually implement the requested changes using local_file_editor with str_replace operations.
 
 ## AVOID ANALYSIS PARALYSIS
 
@@ -215,7 +230,7 @@ When using the create command, you MUST provide BOTH parameters:
 
 **Implementation Over Exploration**: When users ask you to "continue implementing" or "fix" something, focus on making actual code changes rather than extensive analysis.
 
-**Efficient Workflow**: memory_search → quick code_analysis → start implementing with str_replace operations.
+**Efficient Workflow**: memory_search → quick code_analysis → start implementing with local_file_editor str_replace operations.
 
 ## IMPLEMENTATION vs DESCRIPTION
 
@@ -225,7 +240,7 @@ When using the create command, you MUST provide BOTH parameters:
 - ❌ DON'T say "here's what the code should look like"
 - ✅ DO say "I'm creating the file now" and use the tools
 
-**For Game Development Tasks**: When implementing games, create ALL the actual files (HTML, CSS, JS) using the file creation tools.
+**For Game Development Tasks**: When implementing games, create ALL the actual files (HTML, CSS, JS) using the local_file_editor tool.
 
 ## TOOL PARAMETER REQUIREMENTS
 
