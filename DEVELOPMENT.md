@@ -23,7 +23,7 @@ rust_memvid_agent/
 │   │   └── settings.rs            # Configuration structures
 │   ├── memory/                    # Memory system
 │   │   ├── mod.rs                 # Memory manager
-│   │   ├── memvid_wrapper.rs      # MP4 memory wrapper
+│   │   ├── synaptic_backend.rs    # JSON memory backend
 │   │   └── search.rs              # Search functionality
 │   ├── tools/                     # Tool system
 │   │   ├── mod.rs                 # Tool registry and traits
@@ -55,7 +55,7 @@ rust_memvid_agent/
 
 ### Memory System
 - **MemoryManager**: High-level interface for memory operations
-- **MemvidWrapper**: Wrapper around rust-mp4-memory for video-based storage
+- **Synaptic Backend**: Uses the rust-synaptic library with JSON files for persistent storage
 - **SearchResult**: Search functionality with scoring and metadata
 
 ### Tool System
@@ -150,11 +150,11 @@ agent.register_tool(MyCustomTool);
 
 ## Memory Integration
 
-The memory system uses MP4 files to store conversation history and arbitrary data. The integration with rust-mp4-memory provides:
+The memory system stores conversation history and arbitrary data in JSON files using the rust-synaptic library:
 
-- **Persistent Storage**: Conversations and data stored in MP4 format
-- **Semantic Search**: Find relevant information using natural language
-- **Efficient Retrieval**: Fast access to historical context
+- **Persistent Storage**: Conversations and data stored in JSON format
+- **Semantic Search**: Intelligent search powered by rust-synaptic
+- **Efficient Retrieval**: Fast access to historical context without video encoding
 
 ### Memory Operations
 
@@ -179,7 +179,7 @@ api_key = "your-key"
 model = "claude-opus-4-20250514"
 
 [memory]
-memory_path = "agent_memory.mp4"
+memory_path = "agent_memory.json"
 enable_search = true
 
 [tools]
@@ -290,7 +290,7 @@ Key dependencies and their purposes:
 - **serde**: Serialization/deserialization
 - **tracing**: Structured logging
 - **clap**: CLI interface
-- **rust_mem_vid**: MP4 memory storage
+ - **synaptic**: JSON memory storage
 - **anyhow/thiserror**: Error handling
 
 ## Future Enhancements
