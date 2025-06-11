@@ -165,7 +165,7 @@ async fn main() -> anyhow::Result<()> {
     // Create agent with custom tools using the builder pattern
     let mut agent = AgentBuilder::new()
         .with_api_key(std::env::var("ANTHROPIC_API_KEY")?)
-        .with_memory_path("examples/tool_development.mp4")
+        .with_memory_path("examples/tool_development.json")
         .with_model("claude-opus-4-20250514")
         .with_tool(CalculatorTool)
         .with_tool(RandomNumberTool)

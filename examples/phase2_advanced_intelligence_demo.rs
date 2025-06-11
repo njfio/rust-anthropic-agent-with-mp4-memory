@@ -25,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
     // Create configuration with all advanced features enabled
     let config = AgentConfig::default()
         .with_anthropic_key(api_key)
-        .with_memory_path("phase2_demo_memory.mp4")
+        .with_memory_path("phase2_demo_memory.json")
         .with_model("claude-3-5-sonnet-20241022")
         .with_system_prompt(
             "You are an advanced AI assistant with Phase 2 Intelligence capabilities. \
@@ -183,7 +183,7 @@ async fn main() -> anyhow::Result<()> {
     agent.finalize_memory().await?;
     
     info!("🎉 Phase 2 Advanced Intelligence Demo completed successfully!");
-    info!("💾 Memory has been saved to: phase2_demo_memory.mp4");
+    info!("💾 Memory has been saved to: phase2_demo_memory.json");
     
     println!("\n🚀 Phase 2 Advanced Intelligence Demo Complete!");
     println!("✨ The agent demonstrated:");
