@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Roguelike Dungeon Crawler</title>
+    <link rel="icon" href="data:,">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            background: #000;
+        }
+        
+        #gameCanvas {
+            display: block;
+        }
+        
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            color: #fff;
+            pointer-events: none;
+            user-select: none;
+        }
+        
+        #stats {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border: 2px solid #444;
+            border-radius: 5px;
+        }
+        
+        #inventory {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border: 2px solid #444;
+            border-radius: 5px;
+            max-width: 200px;
+        }
+        
+        #messages {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border: 2px solid #444;
+            border-radius: 5px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        
+        .message {
+            margin: 2px 0;
+            font-size: 14px;
+        }
+        
+        .damage { color: #ff6666; }
+        .heal { color: #66ff66; }
+        .item { color: #66ccff; }
+        .level { color: #ffff66; }
+        
+        #gameOver, #levelComplete, #mainMenu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9);
+            padding: 30px;
+            border: 3px solid #666;
+            border-radius: 10px;
+            text-align: center;
+            pointer-events: all;
+        }
+        
+        button {
+            background: #333;
+            color: #fff;
+            border: 2px solid #666;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 16px;
+            border-radius: 5px;
+            transition: all 0.2s;
+        }
+        
+        button:hover {
+            background: #555;
+            border-color: #888;
+        }
+        
+        .upgrade-option {
+            background: rgba(0,0,0,0.8);
+            border: 2px solid #444;
+            padding: 10px;
+            margin: 10px 0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .upgrade-option:hover {
+            border-color: #66ccff;
+            background: rgba(0,0,0,0.9);
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 180px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border: 2px solid #444;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        
+        .health-bar {
+            width: 200px;
+            height: 20px;
+            background: #333;
+            border: 1px solid #666;
+            margin: 5px 0;
+        }
+        
+        .health-fill {
+            height: 100%;
+            background: #ff3333;
+            transition: width 0.3s;
+        }
+        
+        .exp-bar {
+            width: 200px;
+            height: 15px;
+            background: #333;
+            border: 1px solid #666;
+            margin: 5px 0;
+        }
+        
+        .exp-fill {
+            height: 100%;
+            background: #ffaa00;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="ui">
+        <div id="stats">
+            <h3>Stats</h3>
+            <div>Level: <span id="playerLevel">1</span></div>
+            <div>Floor: <span id="dungeonFloor">1</span></div>
+            <div>HP: <span id="playerHP">100</span>/<span id="playerMaxHP">100</span></div>
+            <div class="health-bar">
+                <div class="health-fill" id="healthBar"></div>
+            </div>
+            <div>EXP: <span id="playerExp">0</span>/<span id="expNeeded">100</span></div>
+            <div class="exp-bar">
+                <div class="exp-fill" id="expBar"></div>
+            </div>
+            <div>ATK: <span id="playerAtk">10</span></div>
+            <div>DEF: <span id="playerDef">5</span></div>
+            <div>Gold: <span id="playerGold">0</span></div>
+        </div>
+        
+        <div id="inventory">
+            <h3>Inventory</h3>
+            <div id="inventoryList"></div>
+        </div>
+        
+        <div id="controls">
+            <strong>Controls:</strong><br>
+            WASD/Arrows - Move<br>
+            Space - Attack<br>
+            E - Use Item<br>
+            C - Center Camera<br>
+            Mouse - Look Around
+        </div>
+        
+        <div id="messages"></div>
+    </div>
+    
+    <div id="mainMenu">
+        <h1>3D Roguelike Dungeon Crawler</h1>
+        <p>Explore procedural dungeons, defeat enemies, and grow stronger!</p>
+        <button onclick="startNewRun()">Start New Run</button>
+        <div id="metaUpgrades" style="margin-top: 20px;">
+            <h3>Meta Upgrades (Souls: <span id="totalSouls">0</span>)</h3>
+            <div id="upgradesList"></div>
+        </div>
+    </div>
+    
+    <div id="gameOver" style="display: none;">
+        <h2>Game Over!</h2>
+        <p>You reached floor <span id="finalFloor">1</span></p>
+        <p>Souls earned: <span id="soulsEarned">0</span></p>
+        <button onclick="returnToMenu()">Return to Menu</button>
+    </div>
+    
+    <div id="levelComplete" style="display: none;">
+        <h2>Floor Complete!</h2>
+        <p>Choose an upgrade:</p>
+        <div id="upgradeChoices"></div>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script type="module" src="game_modular.js"></script>
+</body>
+</html>

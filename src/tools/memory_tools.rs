@@ -23,6 +23,174 @@ impl MemorySearchTool {
     pub fn new(memory_manager: Arc<Mutex<MemoryManager>>) -> Self {
         Self { memory_manager }
     }
+
+    /// Format search results with enhanced visual presentation
+    fn format_search_results(query: &str, results: &[crate::memory::MemoryEntry]) -> String {
+        let mut output = String::new();
+
+        // Header with search summary
+        output.push_str("╭─────────────────────────────────────────────────────────────────╮\n");
+        output.push_str(&format!("│ 🔍 Memory Search Results                                        │\n"));
+        output.push_str("├─────────────────────────────────────────────────────────────────┤\n");
+        output.push_str(&format!("│ Query: \"{}\"{}│\n",
+            Self::truncate_text(query, 45),
+            " ".repeat(45_i32.saturating_sub(query.len() as i32).max(0) as usize + 8)
+        ));
+        output.push_str(&format!("│ Found: {} result{}{}│\n",
+            results.len(),
+            if results.len() == 1 { "" } else { "s" },
+            " ".repeat(50_i32.saturating_sub(format!("{} result{}", results.len(), if results.len() == 1 { "" } else { "s" }).len() as i32).max(0) as usize)
+        ));
+        output.push_str("╰─────────────────────────────────────────────────────────────────╯\n\n");
+
+        // Results
+        for (i, entry) in results.iter().enumerate() {
+            let entry_number = i + 1;
+            let content_preview = Self::format_content_preview(&entry.content);
+            let entry_type_display = Self::format_entry_type(&entry.entry_type);
+            let time_display = Self::format_time_ago(&entry.created_at);
+
+            output.push_str(&format!("┌─ Result {} {}\n", entry_number, "─".repeat(55)));
+            output.push_str(&format!("│ 📝 Type: {}\n", entry_type_display));
+            output.push_str(&format!("│ 🕒 Created: {}\n", time_display));
+            output.push_str(&format!("│ 📊 Size: {} characters\n", entry.content.len()));
+            output.push_str("├─ Content ─────────────────────────────────────────────────────\n");
+
+            // Format content with proper line wrapping
+            for line in content_preview.lines() {
+                if line.trim().is_empty() {
+                    output.push_str("│\n");
+                } else {
+                    let wrapped_lines = Self::wrap_text(line, 60);
+                    for wrapped_line in wrapped_lines {
+                        output.push_str(&format!("│ {}\n", wrapped_line));
+                    }
+                }
+            }
+
+            if entry.content.len() > 300 {
+                output.push_str("│ ⋯ (content truncated)\n");
+            }
+
+            output.push_str("└───────────────────────────────────────────────────────────────\n");
+
+            if i < results.len() - 1 {
+                output.push_str("\n");
+            }
+        }
+
+        output.push_str("\n💡 Tip: Use more specific search terms to refine results\n");
+        output
+    }
+
+    /// Format the no results message
+    fn format_no_results(query: &str) -> String {
+        format!(
+            "╭─────────────────────────────────────────────────────────────────╮\n\
+             │ 🔍 Memory Search Results                                        │\n\
+             ├─────────────────────────────────────────────────────────────────┤\n\
+             │ Query: \"{}\"{}│\n\
+             │ Found: 0 results{}│\n\
+             ╰─────────────────────────────────────────────────────────────────╯\n\n\
+             🤔 No memories found matching your search.\n\n\
+             💡 Try:\n\
+             • Using different keywords\n\
+             • Searching for partial words\n\
+             • Using broader terms\n\
+             • Checking if the information was saved to memory",
+            Self::truncate_text(query, 45),
+            " ".repeat(45_i32.saturating_sub(query.len() as i32).max(0) as usize + 8),
+            " ".repeat(50)
+        )
+    }
+
+    /// Format content preview with smart truncation
+    fn format_content_preview(content: &str) -> String {
+        const MAX_PREVIEW_CHARS: usize = 300;
+
+        if content.len() <= MAX_PREVIEW_CHARS {
+            content.to_string()
+        } else {
+            // Try to break at a sentence or word boundary
+            let truncated = &content[..MAX_PREVIEW_CHARS];
+            if let Some(last_sentence) = truncated.rfind('.') {
+                if last_sentence > MAX_PREVIEW_CHARS / 2 {
+                    return format!("{}.", &truncated[..last_sentence]);
+                }
+            }
+            if let Some(last_word) = truncated.rfind(' ') {
+                if last_word > MAX_PREVIEW_CHARS / 2 {
+                    return format!("{}...", &truncated[..last_word]);
+                }
+            }
+            format!("{}...", truncated)
+        }
+    }
+
+    /// Format entry type with appropriate emoji
+    fn format_entry_type(entry_type: &str) -> String {
+        match entry_type.to_lowercase().as_str() {
+            "note" => "📝 Note".to_string(),
+            "code" => "💻 Code".to_string(),
+            "document" => "📄 Document".to_string(),
+            "fact" => "💡 Fact".to_string(),
+            "conversation" => "💬 Conversation".to_string(),
+            _ => format!("📋 {}", entry_type),
+        }
+    }
+
+    /// Format time in a human-readable "time ago" format
+    fn format_time_ago(created_at: &chrono::DateTime<chrono::Utc>) -> String {
+        let now = chrono::Utc::now();
+        let duration = now.signed_duration_since(*created_at);
+
+        if duration.num_days() > 0 {
+            format!("{} days ago ({})", duration.num_days(), created_at.format("%Y-%m-%d %H:%M"))
+        } else if duration.num_hours() > 0 {
+            format!("{} hours ago ({})", duration.num_hours(), created_at.format("%H:%M"))
+        } else if duration.num_minutes() > 0 {
+            format!("{} minutes ago", duration.num_minutes())
+        } else {
+            "Just now".to_string()
+        }
+    }
+
+    /// Truncate text to specified length with ellipsis
+    fn truncate_text(text: &str, max_len: usize) -> String {
+        if text.len() <= max_len {
+            text.to_string()
+        } else {
+            format!("{}...", &text[..max_len.saturating_sub(3)])
+        }
+    }
+
+    /// Wrap text to specified width
+    fn wrap_text(text: &str, width: usize) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut current_line = String::new();
+
+        for word in text.split_whitespace() {
+            if current_line.is_empty() {
+                current_line = word.to_string();
+            } else if current_line.len() + word.len() + 1 <= width {
+                current_line.push(' ');
+                current_line.push_str(word);
+            } else {
+                lines.push(current_line);
+                current_line = word.to_string();
+            }
+        }
+
+        if !current_line.is_empty() {
+            lines.push(current_line);
+        }
+
+        if lines.is_empty() {
+            lines.push(String::new());
+        }
+
+        lines
+    }
 }
 
 #[async_trait]
@@ -61,25 +229,10 @@ impl Tool for MemorySearchTool {
         let search_results = memory_manager.search_memory(&query, limit).await?;
 
         if search_results.is_empty() {
-            return Ok(ToolResult::success("No relevant memories found."));
+            return Ok(ToolResult::success(Self::format_no_results(&query)));
         }
 
-        let mut result_text = format!("Found {} relevant memories:\n\n", search_results.len());
-        
-        for (i, entry) in search_results.iter().enumerate() {
-            result_text.push_str(&format!(
-                "{}. [{}] {}\n   Tags: {}\n   Created: {}\n\n",
-                i + 1,
-                &entry.entry_type,
-                if entry.content.len() > 200 {
-                    format!("{}...", &entry.content[..200])
-                } else {
-                    entry.content.clone()
-                },
-                "no tags", // Simple memory doesn't have tags
-                entry.created_at.format("%Y-%m-%d %H:%M:%S")
-            ));
-        }
+        let result_text = Self::format_search_results(&query, &search_results);
 
         info!("Memory search completed: {} results", search_results.len());
         Ok(ToolResult::success(result_text))
@@ -187,6 +340,40 @@ impl MemoryStatsTool {
     pub fn new(memory_manager: Arc<Mutex<MemoryManager>>) -> Self {
         Self { memory_manager }
     }
+
+    /// Format memory statistics with enhanced visual presentation
+    fn format_memory_stats(stats: &crate::memory::MemoryStats) -> String {
+        let memory_size_mb = stats.memory_file_size as f64 / 1024.0 / 1024.0;
+        let index_size_kb = stats.index_file_size as f64 / 1024.0;
+
+        format!(
+            "╭─────────────────────────────────────────────────────────────────╮\n\
+             │ 📊 Memory System Statistics                                     │\n\
+             ├─────────────────────────────────────────────────────────────────┤\n\
+             │                                                                 │\n\
+             │ 📝 Content Statistics:                                          │\n\
+             │   • Total chunks: {:>8}                                      │\n\
+             │   • Total conversations: {:>8}                               │\n\
+             │   • Total memories: {:>8}                                    │\n\
+             │                                                                 │\n\
+             │ 💾 Storage Information:                                         │\n\
+             │   • Memory file size: {:>8.2} MB                             │\n\
+             │   • Index file size: {:>8.2} KB                              │\n\
+             │                                                                 │\n\
+             │ 🎯 System Health:                                               │\n\
+             │   • Status: {}                                        │\n\
+             │   • Performance: {}                                   │\n\
+             ╰─────────────────────────────────────────────────────────────────╯\n\n\
+             💡 Memory system is actively storing and indexing your interactions",
+            stats.total_chunks,
+            stats.total_conversations,
+            stats.total_memories,
+            memory_size_mb,
+            index_size_kb,
+            if stats.total_chunks > 0 { "🟢 Active" } else { "🟡 Empty" },
+            if memory_size_mb < 100.0 { "🟢 Optimal" } else if memory_size_mb < 500.0 { "🟡 Good" } else { "🟠 Large" }
+        )
+    }
 }
 
 #[async_trait]
@@ -209,19 +396,7 @@ impl Tool for MemoryStatsTool {
         let memory_manager = self.memory_manager.lock().await;
         let stats = memory_manager.get_stats().await?;
 
-        let stats_text = format!(
-            "Memory System Statistics:\n\
-            • Total chunks: {}\n\
-            • Total conversations: {}\n\
-            • Total memories: {}\n\
-            • Memory file size: {:.2} MB\n\
-            • Index file size: {:.2} KB",
-            stats.total_chunks,
-            stats.total_conversations,
-            stats.total_memories,
-            stats.memory_file_size as f64 / 1024.0 / 1024.0,
-            stats.index_file_size as f64 / 1024.0
-        );
+        let stats_text = Self::format_memory_stats(&stats);
 
         Ok(ToolResult::success(stats_text))
     }
@@ -245,6 +420,137 @@ impl ConversationSearchTool {
     /// Create a new conversation search tool
     pub fn new(memory_manager: Arc<Mutex<MemoryManager>>) -> Self {
         Self { memory_manager }
+    }
+
+    /// Format conversation search results with enhanced visual presentation
+    fn format_conversation_results(query: &str, conversations: &[crate::memory::Conversation]) -> String {
+        let mut output = String::new();
+
+        // Header with search summary
+        output.push_str("╭─────────────────────────────────────────────────────────────────╮\n");
+        output.push_str(&format!("│ 💬 Conversation Search Results                                 │\n"));
+        output.push_str("├─────────────────────────────────────────────────────────────────┤\n");
+        output.push_str(&format!("│ Query: \"{}\"{}│\n",
+            Self::truncate_text(query, 45),
+            " ".repeat(45_i32.saturating_sub(query.len() as i32).max(0) as usize + 8)
+        ));
+        output.push_str(&format!("│ Found: {} conversation{}{}│\n",
+            conversations.len(),
+            if conversations.len() == 1 { "" } else { "s" },
+            " ".repeat(44_i32.saturating_sub(format!("{} conversation{}", conversations.len(), if conversations.len() == 1 { "" } else { "s" }).len() as i32).max(0) as usize)
+        ));
+        output.push_str("╰─────────────────────────────────────────────────────────────────╯\n\n");
+
+        // Results
+        for (i, conversation) in conversations.iter().enumerate() {
+            let conversation_number = i + 1;
+            let time_display = Self::format_time_ago(&conversation.created_at);
+            let message_count = conversation.messages.len();
+
+            output.push_str(&format!("┌─ Conversation {} {}\n", conversation_number, "─".repeat(50)));
+            output.push_str(&format!("│ 🕒 Created: {}\n", time_display));
+            output.push_str(&format!("│ 💬 Messages: {}\n", message_count));
+            output.push_str(&format!("│ 🆔 ID: {}\n", conversation.id));
+
+            if let Some(title) = &conversation.title {
+                output.push_str(&format!("│ 📝 Title: {}\n", Self::truncate_text(title, 50)));
+            }
+
+            // Show preview of first few messages
+            if !conversation.messages.is_empty() {
+                output.push_str("├─ Message Preview ────────────────────────────────────────────\n");
+
+                for (msg_idx, message) in conversation.messages.iter().take(2).enumerate() {
+                    let (role_emoji, role_name) = match message.role {
+                        crate::anthropic::models::MessageRole::User => ("👤", "User"),
+                        crate::anthropic::models::MessageRole::Assistant => ("🤖", "Assistant"),
+                        crate::anthropic::models::MessageRole::System => ("💭", "System"),
+                    };
+
+                    output.push_str(&format!("│ {} {}: ", role_emoji, role_name));
+
+                    // Extract text content from message
+                    let content_text = Self::extract_message_text(&message.content);
+                    let preview = Self::truncate_text(&content_text, 45);
+                    output.push_str(&format!("{}\n", preview));
+
+                    if msg_idx == 0 && conversation.messages.len() > 2 {
+                        output.push_str("│   ⋯\n");
+                    }
+                }
+
+                if conversation.messages.len() > 2 {
+                    output.push_str(&format!("│ (and {} more messages)\n", conversation.messages.len() - 2));
+                }
+            }
+
+            output.push_str("└───────────────────────────────────────────────────────────────\n");
+
+            if i < conversations.len() - 1 {
+                output.push_str("\n");
+            }
+        }
+
+        output.push_str("\n💡 Tip: Use specific keywords from conversations to find them faster\n");
+        output
+    }
+
+    /// Format the no conversation results message
+    fn format_no_conversation_results(query: &str) -> String {
+        format!(
+            "╭─────────────────────────────────────────────────────────────────╮\n\
+             │ 💬 Conversation Search Results                                 │\n\
+             ├─────────────────────────────────────────────────────────────────┤\n\
+             │ Query: \"{}\"{}│\n\
+             │ Found: 0 conversations{}│\n\
+             ╰─────────────────────────────────────────────────────────────────╯\n\n\
+             🤔 No conversations found matching your search.\n\n\
+             💡 Try:\n\
+             • Using keywords from past discussions\n\
+             • Searching for topics you've talked about\n\
+             • Using broader search terms\n\
+             • Checking if conversations were saved",
+            Self::truncate_text(query, 45),
+            " ".repeat(45_i32.saturating_sub(query.len() as i32).max(0) as usize + 8),
+            " ".repeat(44)
+        )
+    }
+
+    /// Extract text content from message content blocks
+    fn extract_message_text(content: &[crate::anthropic::models::ContentBlock]) -> String {
+        content
+            .iter()
+            .filter_map(|block| match block {
+                crate::anthropic::models::ContentBlock::Text { text } => Some(text.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// Format time in a human-readable "time ago" format
+    fn format_time_ago(created_at: &chrono::DateTime<chrono::Utc>) -> String {
+        let now = chrono::Utc::now();
+        let duration = now.signed_duration_since(*created_at);
+
+        if duration.num_days() > 0 {
+            format!("{} days ago ({})", duration.num_days(), created_at.format("%Y-%m-%d %H:%M"))
+        } else if duration.num_hours() > 0 {
+            format!("{} hours ago ({})", duration.num_hours(), created_at.format("%H:%M"))
+        } else if duration.num_minutes() > 0 {
+            format!("{} minutes ago", duration.num_minutes())
+        } else {
+            "Just now".to_string()
+        }
+    }
+
+    /// Truncate text to specified length with ellipsis
+    fn truncate_text(text: &str, max_len: usize) -> String {
+        if text.len() <= max_len {
+            text.to_string()
+        } else {
+            format!("{}...", &text[..max_len.saturating_sub(3)])
+        }
     }
 }
 
@@ -284,20 +590,10 @@ impl Tool for ConversationSearchTool {
         let conversations = memory_manager.search_conversations(&query, limit).await?;
 
         if conversations.is_empty() {
-            return Ok(ToolResult::success("No relevant conversations found."));
+            return Ok(ToolResult::success(Self::format_no_conversation_results(&query)));
         }
 
-        let mut result_text = format!("Found {} relevant conversations:\n\n", conversations.len());
-        
-        for (i, conversation) in conversations.iter().enumerate() {
-            result_text.push_str(&format!(
-                "{}. {}\n   Created: {}\n   Messages: {}\n\n",
-                i + 1,
-                format!("{} messages", conversation.messages.len()),
-                conversation.created_at.format("%Y-%m-%d %H:%M:%S"),
-                conversation.messages.len()
-            ));
-        }
+        let result_text = Self::format_conversation_results(&query, &conversations);
 
         info!("Conversation search completed: {} results", conversations.len());
         Ok(ToolResult::success(result_text))

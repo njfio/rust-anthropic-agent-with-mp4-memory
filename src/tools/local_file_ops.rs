@@ -114,49 +114,118 @@ impl LocalTextEditorTool {
 
     /// Handle the create command (matches Anthropic's interface)
     async fn handle_create(&self, input: &serde_json::Value) -> Result<ToolResult> {
+        info!("📝 CREATE operation:");
+        info!("🔍 ALL PARAMETERS: {}", serde_json::to_string_pretty(input).unwrap_or_else(|_| "Invalid JSON".to_string()));
+
+        // List all available keys in the input
+        if let Some(obj) = input.as_object() {
+            let keys: Vec<&String> = obj.keys().collect();
+            info!("🔑 Available parameter keys: {:?}", keys);
+        }
+
         // Try to get path parameter with better error handling
         let path_str = match extract_string_param(input, "path") {
-            Ok(path) => path,
+            Ok(path) => {
+                info!("📁 Path: {}", path);
+                path
+            },
             Err(_) => {
+                info!("❌ Missing path parameter");
                 return Ok(ToolResult::error(
                     "Missing required parameter 'path' for create command. Please provide the file path."
                 ));
             }
         };
 
-        // Try to get file_text parameter, provide helpful error if missing
-        let file_text = match extract_string_param(input, "file_text") {
-            Ok(text) => text,
-            Err(_) => {
-                return Ok(ToolResult::error(
-                    "Missing required parameter 'file_text' for create command. Please provide the content to write to the file."
-                ));
-            }
+        // Try multiple possible parameter names for file content
+        let file_text = if let Ok(text) = extract_string_param(input, "file_text") {
+            info!("📄 Found file_text parameter: {} chars", text.len());
+            text
+        } else if let Ok(text) = extract_string_param(input, "content") {
+            info!("📄 Found content parameter: {} chars", text.len());
+            text
+        } else if let Ok(text) = extract_string_param(input, "text") {
+            info!("📄 Found text parameter: {} chars", text.len());
+            text
+        } else {
+            info!("❌ Missing file content parameter - tried file_text, content, text");
+            return Ok(ToolResult::error(
+                "Missing required parameter for file content. Please provide 'file_text', 'content', or 'text' parameter with the content to write to the file."
+            ));
         };
 
         let resolved_path = self.resolve_path(&path_str)?;
+        info!("📍 Resolved path: {:?}", resolved_path);
 
         if resolved_path.exists() {
+            info!("❌ File already exists");
             return Ok(ToolResult::error(format!("File already exists: {}", path_str)));
         }
 
         // Create parent directories if they don't exist
         if let Some(parent) = resolved_path.parent() {
+            info!("📂 Creating parent directories: {:?}", parent);
             fs::create_dir_all(parent)?;
         }
 
         fs::write(&resolved_path, file_text)?;
-        info!("Successfully created file: {:?}", resolved_path);
+        info!("✅ Successfully created file: {:?}", resolved_path);
+        info!("💾 File written successfully!");
         Ok(ToolResult::success(format!("File created successfully at {}", path_str)))
     }
 
     /// Handle the str_replace command
     async fn handle_str_replace(&self, input: &serde_json::Value) -> Result<ToolResult> {
-        let path_str = extract_string_param(input, "path")?;
-        let old_str = extract_string_param(input, "old_str")?;
-        let new_str = extract_string_param(input, "new_str")?;
+        info!("🔄 STR_REPLACE operation:");
+        info!("🔍 ALL PARAMETERS: {}", serde_json::to_string_pretty(input).unwrap_or_else(|_| "Invalid JSON".to_string()));
+
+        // List all available keys in the input
+        if let Some(obj) = input.as_object() {
+            let keys: Vec<&String> = obj.keys().collect();
+            info!("🔑 Available parameter keys: {:?}", keys);
+        }
+
+        let path_str = match extract_string_param(input, "path") {
+            Ok(path) => {
+                info!("📁 Path: {}", path);
+                path
+            },
+            Err(_) => {
+                info!("❌ Missing path parameter");
+                return Ok(ToolResult::error(
+                    "Missing required parameter 'path' for str_replace command. Please provide the file path."
+                ));
+            }
+        };
+
+        let old_str = match extract_string_param(input, "old_str") {
+            Ok(old) => {
+                info!("🔍 Old text: {:?} ({} chars)", old, old.len());
+                old
+            },
+            Err(_) => {
+                info!("❌ Missing old_str parameter");
+                return Ok(ToolResult::error(
+                    "Missing required parameter 'old_str' for str_replace command. Please provide the text to find and replace."
+                ));
+            }
+        };
+
+        let new_str = match extract_string_param(input, "new_str") {
+            Ok(new) => {
+                info!("✏️  New text: {:?} ({} chars)", new, new.len());
+                new
+            },
+            Err(_) => {
+                info!("❌ Missing new_str parameter");
+                return Ok(ToolResult::error(
+                    "Missing required parameter 'new_str' for str_replace command. Please provide the replacement text. Use empty string \"\" if you want to delete the old text."
+                ));
+            }
+        };
 
         let resolved_path = self.resolve_path(&path_str)?;
+        info!("📍 Resolved path: {:?}", resolved_path);
 
         if !resolved_path.exists() {
             return Ok(ToolResult::error("File not found"));
@@ -166,17 +235,24 @@ impl LocalTextEditorTool {
         let matches = content.matches(&old_str).count();
 
         match matches {
-            0 => Ok(ToolResult::error("No match found for replacement")),
+            0 => {
+                info!("❌ No match found for replacement");
+                Ok(ToolResult::error("No match found for replacement"))
+            },
             1 => {
                 let new_content = content.replace(&old_str, &new_str);
                 fs::write(&resolved_path, new_content)?;
-                info!("Successfully replaced text in {:?}", resolved_path);
+                info!("✅ Successfully replaced text in {:?}", resolved_path);
+                info!("💾 File written successfully!");
                 Ok(ToolResult::success("Successfully replaced text at exactly one location"))
             }
-            n => Ok(ToolResult::error(format!(
-                "Found {} matches for replacement text. Please provide more context to make a unique match.",
-                n
-            ))),
+            n => {
+                info!("⚠️  Found {} matches for replacement text", n);
+                Ok(ToolResult::error(format!(
+                    "Found {} matches for replacement text. Please provide more context to make a unique match.",
+                    n
+                )))
+            },
         }
     }
 }
@@ -225,11 +301,12 @@ impl Tool for LocalTextEditorTool {
 
     async fn execute(&self, input: serde_json::Value) -> Result<ToolResult> {
         // Debug: Log the full input to see what parameters we're receiving
-        debug!("Local text editor tool received input: {}", serde_json::to_string_pretty(&input).unwrap_or_else(|_| "Invalid JSON".to_string()));
+        info!("🔧 LOCAL TEXT EDITOR TOOL CALLED");
+        info!("📥 Input received: {}", serde_json::to_string_pretty(&input).unwrap_or_else(|_| "Invalid JSON".to_string()));
 
         let command = extract_string_param(&input, "command")?;
 
-        debug!("Executing local file operation: {}", command);
+        info!("⚡ Executing local file operation: {}", command);
 
         match command.as_str() {
             "view" => self.handle_view(&input).await,

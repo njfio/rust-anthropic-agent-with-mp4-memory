@@ -3,6 +3,7 @@ use serde_json::json;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
+
 use crate::anthropic::models::{ChatRequest, ChatResponse};
 use crate::config::AnthropicConfig;
 use crate::utils::error::{AgentError, Result};
@@ -19,6 +20,10 @@ impl AnthropicClient {
     pub fn new(config: AnthropicConfig) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_seconds))
+            .connect_timeout(Duration::from_secs(30))
+            .tcp_keepalive(Duration::from_secs(60))
+            .pool_idle_timeout(Duration::from_secs(90))
+            .pool_max_idle_per_host(10)
             .build()
             .map_err(|e| AgentError::config(format!("Failed to create HTTP client: {}", e)))?;
 
@@ -65,6 +70,11 @@ impl AnthropicClient {
     async fn send_chat_request(&self, request: &ChatRequest) -> Result<ChatResponse> {
         debug!("Sending chat request to Anthropic API");
 
+        // Log the complete request payload
+        let request_json = serde_json::to_string_pretty(&request)
+            .unwrap_or_else(|_| "Failed to serialize request".to_string());
+        info!("🚀 ANTHROPIC REQUEST PAYLOAD:\n{}", request_json);
+
         // Check if streaming is enabled
         if request.stream == Some(true) {
             warn!("Streaming is enabled but not yet implemented, falling back to non-streaming");
@@ -88,19 +98,48 @@ impl AnthropicClient {
         let mut modified_request = request.clone();
         modified_request.stream = None; // Disable streaming until implemented
 
+        info!("📡 Sending HTTP request to Anthropic API...");
         let response = req_builder
             .json(&modified_request)
             .send()
             .await
-            .map_err(|e| AgentError::Http(e))?;
+            .map_err(|e| {
+                error!("❌ HTTP request failed: {}", e);
+                if e.is_timeout() {
+                    AgentError::anthropic_api("Request timed out - consider increasing timeout_seconds in config".to_string())
+                } else if e.is_connect() {
+                    AgentError::anthropic_api("Connection failed - check internet connection and API endpoint".to_string())
+                } else {
+                    AgentError::Http(e)
+                }
+            })?;
 
         let status = response.status();
-        let response_text = response
-            .text()
+
+        // Try to get response as bytes first, then convert to string with better error handling
+        let response_bytes = response
+            .bytes()
             .await
             .map_err(|e| AgentError::Http(e))?;
 
+        let response_text = match String::from_utf8(response_bytes.to_vec()) {
+            Ok(text) => text,
+            Err(e) => {
+                error!("❌ Response contains invalid UTF-8: {}", e);
+                // Try to recover by replacing invalid UTF-8 sequences
+                match String::from_utf8_lossy(&response_bytes).into_owned() {
+                    recovered => {
+                        warn!("🔄 Recovered response text with lossy UTF-8 conversion");
+                        recovered
+                    }
+                }
+            }
+        };
+
         debug!("Received response with status: {}", status);
+
+        // Log the complete response payload
+        info!("📥 ANTHROPIC RESPONSE PAYLOAD:\n{}", response_text);
 
         if !status.is_success() {
             return self.handle_error_response(status, &response_text);
@@ -209,7 +248,7 @@ impl AnthropicClient {
     }
 
     /// Create a streaming chat request (placeholder for future implementation)
-    pub async fn chat_stream(&self, _request: ChatRequest) -> Result<()> {
+    pub async fn chat_stream(&self, _request: ChatRequest) -> Result<ChatResponse> {
         // TODO: Implement streaming support
         Err(AgentError::config(
             "Streaming is not yet implemented".to_string(),

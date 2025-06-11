@@ -2,6 +2,8 @@ use async_trait::async_trait;
 use serde_json::json;
 use std::collections::HashMap;
 use std::process::Command;
+use std::time::Duration;
+use tokio::time::timeout;
 use tracing::{debug, info, warn};
 
 use crate::anthropic::models::ToolDefinition;
@@ -17,6 +19,8 @@ pub struct ShellCommandTool {
     blocked_commands: Vec<String>,
     /// Working directory for commands
     working_dir: Option<std::path::PathBuf>,
+    /// Command timeout in seconds
+    timeout_seconds: u64,
 }
 
 impl ShellCommandTool {
@@ -35,6 +39,7 @@ impl ShellCommandTool {
                 "chown".to_string(),
             ],
             working_dir: None,
+            timeout_seconds: 30, // Default 30 second timeout
         }
     }
 
@@ -47,6 +52,12 @@ impl ShellCommandTool {
     /// Set working directory
     pub fn with_working_dir<P: Into<std::path::PathBuf>>(mut self, dir: P) -> Self {
         self.working_dir = Some(dir.into());
+        self
+    }
+
+    /// Set command timeout in seconds
+    pub fn with_timeout(mut self, timeout_seconds: u64) -> Self {
+        self.timeout_seconds = timeout_seconds;
         self
     }
 
@@ -119,11 +130,15 @@ impl Tool for ShellCommandTool {
             cmd.current_dir(working_dir);
         }
 
-        match cmd.output() {
-            Ok(output) => {
+        // Execute command with timeout
+        let timeout_duration = Duration::from_secs(self.timeout_seconds);
+        let output_future = tokio::task::spawn_blocking(move || cmd.output());
+
+        match timeout(timeout_duration, output_future).await {
+            Ok(Ok(Ok(output))) => {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                
+
                 let result = if output.status.success() {
                     if stdout.is_empty() && stderr.is_empty() {
                         "Command executed successfully (no output)".to_string()
@@ -133,16 +148,24 @@ impl Tool for ShellCommandTool {
                         format!("STDOUT:\n{}\n\nSTDERR:\n{}", stdout, stderr)
                     }
                 } else {
-                    format!("Command failed with exit code: {:?}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}", 
+                    format!("Command failed with exit code: {:?}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
                            output.status.code(), stdout, stderr)
                 };
 
                 info!("Shell command executed: {} (success: {})", command, output.status.success());
                 Ok(ToolResult::success(result))
             }
-            Err(e) => {
+            Ok(Ok(Err(e))) => {
                 warn!("Failed to execute shell command: {}", e);
                 Ok(ToolResult::error(format!("Failed to execute command: {}", e)))
+            }
+            Ok(Err(e)) => {
+                warn!("Shell command task failed: {}", e);
+                Ok(ToolResult::error(format!("Command execution task failed: {}", e)))
+            }
+            Err(_) => {
+                warn!("Shell command timed out after {} seconds: {}", self.timeout_seconds, command);
+                Ok(ToolResult::error(format!("Command timed out after {} seconds", self.timeout_seconds)))
             }
         }
     }

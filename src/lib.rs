@@ -37,6 +37,7 @@
 
 pub mod agent;
 pub mod anthropic;
+pub mod cli;
 pub mod config;
 pub mod memory;
 pub mod tools;

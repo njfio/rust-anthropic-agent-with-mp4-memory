@@ -1,21 +1,24 @@
-pub mod simple_memory;
+// Using rust-synaptic directly as the memory system
 pub mod search;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use crate::anthropic::models::ChatMessage;
 use crate::config::MemoryConfig;
 use crate::utils::error::{AgentError, Result};
 
-pub use simple_memory::SimpleMemory;
 pub use search::SearchResult;
 
-/// Memory manager for the agent system
-#[derive(Debug)]
+// Re-export synaptic types for convenience
+pub use synaptic::{AgentMemory, MemoryConfig as SynapticConfig, MemoryStats as SynapticStats, StorageBackend};
+
+/// Memory manager for the agent system using rust-synaptic
 pub struct MemoryManager {
-    /// Simple JSON-based memory storage
-    memory: SimpleMemory,
+    /// Synaptic AI memory system
+    memory: Arc<Mutex<AgentMemory>>,
     /// Configuration
     config: MemoryConfig,
     /// Current conversation ID
@@ -45,12 +48,48 @@ pub struct MemoryEntry {
 }
 
 impl MemoryManager {
-    /// Create a new memory manager
+    /// Create a new memory manager with synaptic
     pub async fn new(config: MemoryConfig) -> Result<Self> {
-        let memory = SimpleMemory::new(&config.memory_path, &config.index_path).await?;
+        // Convert our config to synaptic config
+        let synaptic_config = SynapticConfig {
+            storage_backend: StorageBackend::File {
+                path: config.memory_path.to_string_lossy().to_string(),
+            },
+            session_id: Some(Uuid::new_v4()),
+            checkpoint_interval: 100,
+            max_short_term_memories: 10000,
+            max_long_term_memories: 100000,
+            similarity_threshold: 0.7,
+            enable_knowledge_graph: true,
+            enable_temporal_tracking: true,
+            enable_advanced_management: true,
+            #[cfg(feature = "embeddings")]
+            enable_embeddings: false, // Disable embeddings to avoid candle-core conflicts
+            #[cfg(feature = "distributed")]
+            enable_distributed: false, // Start with distributed disabled for simplicity
+            #[cfg(feature = "distributed")]
+            distributed_config: None,
+            enable_analytics: true,
+            analytics_config: None,
+            enable_integrations: false, // Disable integrations to avoid external dependencies
+            integrations_config: None,
+            enable_security: false, // Start with security disabled for simplicity
+            security_config: None,
+            #[cfg(feature = "multimodal")]
+            enable_multimodal: false,
+            #[cfg(feature = "multimodal")]
+            multimodal_config: None,
+            #[cfg(feature = "cross-platform")]
+            enable_cross_platform: false,
+            #[cfg(feature = "cross-platform")]
+            cross_platform_config: None,
+        };
+
+        let memory = AgentMemory::new(synaptic_config).await
+            .map_err(|e| AgentError::memory(format!("Failed to create synaptic memory: {}", e)))?;
 
         Ok(Self {
-            memory,
+            memory: Arc::new(Mutex::new(memory)),
             config,
             current_conversation_id: None,
             current_conversation: None,
@@ -84,19 +123,21 @@ impl MemoryManager {
             return Err(AgentError::memory("No active conversation".to_string()));
         };
 
-        // Save the conversation to memory
+        // Save the conversation to synaptic memory
         self.save_conversation(conversation_to_save).await?;
         Ok(())
     }
 
     /// Get a conversation by ID
     pub async fn get_conversation(&self, conversation_id: &str) -> Result<Option<Conversation>> {
-        // Search for the conversation in memory using a more specific search
-        let search_results = self.memory.search(&format!("conversation_id:{}", conversation_id), 10).await?;
+        // Search for the conversation in synaptic memory
+        let memory = self.memory.lock().await;
+        let search_results = memory.search(&format!("conversation_id:{}", conversation_id), 10).await
+            .map_err(|e| AgentError::memory(format!("Failed to search conversations: {}", e)))?;
 
         // Look through results to find the exact conversation
         for result in search_results {
-            if let Ok(conversation) = serde_json::from_str::<Conversation>(&result.content) {
+            if let Ok(conversation) = serde_json::from_str::<Conversation>(&result.entry.value) {
                 if conversation.id == conversation_id {
                     return Ok(Some(conversation));
                 }
@@ -106,14 +147,16 @@ impl MemoryManager {
         Ok(None)
     }
 
-    /// Save a conversation to memory
+    /// Save a conversation to synaptic memory
     async fn save_conversation(&mut self, conversation: Conversation) -> Result<()> {
         // Serialize the conversation to JSON
         let content = serde_json::to_string(&conversation)
             .map_err(|e| AgentError::memory(format!("Failed to serialize conversation: {}", e)))?;
 
-        // Store the full conversation JSON
-        self.memory.add_chunk(content).await?;
+        // Store the full conversation JSON in synaptic memory
+        let mut memory = self.memory.lock().await;
+        memory.store(&format!("conversation:{}", conversation.id), &content).await
+            .map_err(|e| AgentError::memory(format!("Failed to store conversation: {}", e)))?;
 
         // Also create a searchable text representation
         let searchable_content = format!(
@@ -126,17 +169,21 @@ impl MemoryManager {
                 .join(" ")
         );
 
-        self.memory.add_chunk(searchable_content).await?;
+        memory.store(&format!("conversation_search:{}", conversation.id), &searchable_content).await
+            .map_err(|e| AgentError::memory(format!("Failed to store conversation search data: {}", e)))?;
+
         Ok(())
     }
 
     /// Search conversations
     pub async fn search_conversations(&self, query: &str, limit: usize) -> Result<Vec<Conversation>> {
-        let search_results = self.memory.search(query, limit).await?;
+        let memory = self.memory.lock().await;
+        let search_results = memory.search(query, limit).await
+            .map_err(|e| AgentError::memory(format!("Failed to search conversations: {}", e)))?;
         let mut conversations = Vec::new();
 
         for result in search_results {
-            if let Ok(conversation) = serde_json::from_str::<Conversation>(&result.content) {
+            if let Ok(conversation) = serde_json::from_str::<Conversation>(&result.entry.value) {
                 conversations.push(conversation);
             }
         }
@@ -156,11 +203,13 @@ impl MemoryManager {
         };
 
         // Serialize the memory entry to JSON
-        let content = serde_json::to_string(&entry)
+        let serialized_content = serde_json::to_string(&entry)
             .map_err(|e| AgentError::memory(format!("Failed to serialize memory entry: {}", e)))?;
 
-        // Store the full memory entry JSON
-        self.memory.add_chunk(content).await?;
+        // Store the full memory entry JSON in synaptic memory
+        let mut memory = self.memory.lock().await;
+        memory.store(&format!("memory:{}", memory_id), &serialized_content).await
+            .map_err(|e| AgentError::memory(format!("Failed to store memory entry: {}", e)))?;
 
         // Also create a searchable text representation
         let searchable_content = format!(
@@ -170,17 +219,21 @@ impl MemoryManager {
             entry.content
         );
 
-        self.memory.add_chunk(searchable_content).await?;
+        memory.store(&format!("memory_search:{}", memory_id), &searchable_content).await
+            .map_err(|e| AgentError::memory(format!("Failed to store memory search data: {}", e)))?;
+
         Ok(memory_id)
     }
 
     /// Search memory entries
     pub async fn search_memory(&self, query: &str, limit: usize) -> Result<Vec<MemoryEntry>> {
-        let search_results = self.memory.search(query, limit).await?;
+        let memory = self.memory.lock().await;
+        let search_results = memory.search(query, limit).await
+            .map_err(|e| AgentError::memory(format!("Failed to search memory entries: {}", e)))?;
         let mut entries = Vec::new();
 
         for result in search_results {
-            if let Ok(entry) = serde_json::from_str::<MemoryEntry>(&result.content) {
+            if let Ok(entry) = serde_json::from_str::<MemoryEntry>(&result.entry.value) {
                 entries.push(entry);
             }
         }
@@ -190,7 +243,19 @@ impl MemoryManager {
 
     /// Search memory and return raw search results
     pub async fn search_raw(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        self.memory.search(query, limit).await
+        let memory = self.memory.lock().await;
+        let synaptic_results = memory.search(query, limit).await
+            .map_err(|e| AgentError::memory(format!("Failed to search memory: {}", e)))?;
+
+        // Convert synaptic results to our SearchResult format
+        let results = synaptic_results.into_iter().enumerate().map(|(i, result)| SearchResult {
+            content: result.entry.value,
+            score: result.relevance_score as f32,
+            chunk_id: i,
+            metadata: None,
+        }).collect();
+
+        Ok(results)
     }
 
     /// Get current conversation
@@ -205,26 +270,43 @@ impl MemoryManager {
 
     /// Get memory statistics
     pub async fn get_stats(&self) -> Result<MemoryStats> {
-        let stats = self.memory.get_stats().await?;
+        let memory = self.memory.lock().await;
+        let synaptic_stats = memory.stats();
+
         Ok(MemoryStats {
-            total_chunks: stats.total_chunks,
+            total_chunks: synaptic_stats.short_term_count + synaptic_stats.long_term_count,
             total_conversations: self.count_conversations().await?,
             total_memories: self.count_memories().await?,
-            memory_file_size: stats.file_size_bytes,
-            index_file_size: 0, // No separate index file for JSON storage
+            memory_file_size: synaptic_stats.total_size as u64,
+            index_file_size: 0, // Synaptic handles indexing internally
         })
     }
 
     /// Count conversations in memory
     async fn count_conversations(&self) -> Result<usize> {
-        let results = self.memory.search("conversation_id:", 1000).await?;
+        let memory = self.memory.lock().await;
+        let results = memory.search("conversation_id:", 1000).await
+            .map_err(|e| AgentError::memory(format!("Failed to count conversations: {}", e)))?;
         Ok(results.len())
     }
 
     /// Count memory entries
     async fn count_memories(&self) -> Result<usize> {
-        let results = self.memory.search("memory_id:", 1000).await?;
+        let memory = self.memory.lock().await;
+        let results = memory.search("memory_id:", 1000).await
+            .map_err(|e| AgentError::memory(format!("Failed to count memories: {}", e)))?;
         Ok(results.len())
+    }
+}
+
+impl std::fmt::Debug for MemoryManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MemoryManager")
+            .field("config", &self.config)
+            .field("current_conversation_id", &self.current_conversation_id)
+            .field("current_conversation", &self.current_conversation)
+            .field("memory", &"<AgentMemory>")
+            .finish()
     }
 }
 

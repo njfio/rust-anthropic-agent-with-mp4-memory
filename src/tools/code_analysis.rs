@@ -39,7 +39,7 @@ impl Tool for CodeAnalysisTool {
                             "test_coverage", "missing_tests", "test_quality", "coverage_gaps",
                             "dependency_scan", "security_deps", "outdated_deps", "license_check"
                         ],
-                        "description": "Type of code analysis to perform - includes Phase 2 Advanced Intelligence features"
+                        "description": "Analysis type"
                     },
                     "path": {
                         "type": "string",
@@ -48,20 +48,20 @@ impl Tool for CodeAnalysisTool {
                     "language": {
                         "type": "string",
                         "enum": ["rust", "javascript", "typescript", "go", "python", "c", "cpp", "auto"],
-                        "description": "Programming language (auto-detect if not specified) - now includes TypeScript and Go"
+                        "description": "Programming language"
                     },
                     "pattern": {
                         "type": "string",
-                        "description": "Tree-sitter query pattern for pattern matching"
+                        "description": "Query pattern"
                     },
                     "symbol_name": {
                         "type": "string",
-                        "description": "Symbol name pattern for symbol search (supports wildcards)"
+                        "description": "Symbol name pattern"
                     },
                     "symbol_type": {
                         "type": "string",
                         "enum": ["function", "class", "struct", "enum", "variable", "all"],
-                        "description": "Type of symbol to search for"
+                        "description": "Symbol type"
                     },
                     "max_depth": {
                         "type": "integer",
