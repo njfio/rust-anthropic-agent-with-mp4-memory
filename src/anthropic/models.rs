@@ -283,11 +283,6 @@ impl ChatMessage {
             .join("\n")
     }
 
-    /// Check if the message has no content blocks
-    pub fn has_empty_content(&self) -> bool {
-        self.content.is_empty()
-    }
-
     /// Check if the message contains tool uses
     pub fn has_tool_uses(&self) -> bool {
         self.content.iter().any(|block| {
@@ -299,16 +294,6 @@ impl ChatMessage {
     }
 
     /// Get all tool uses in the message
-
-    /// Check if the message has empty content
-    pub fn has_empty_content(&self) -> bool {
-        self.content.is_empty() || 
-        self.content.iter().all(|block| match block {
-            ContentBlock::Text { text } => text.trim().is_empty(),
-            _ => false,
-        })
-    }
-
     pub fn get_tool_uses(&self) -> Vec<&ContentBlock> {
         self.content
             .iter()
@@ -323,7 +308,6 @@ impl ChatMessage {
 
     /// Check if the message has no meaningful content
     pub fn has_empty_content(&self) -> bool {
-
         if self.content.is_empty() {
             return true;
         }
@@ -331,10 +315,6 @@ impl ChatMessage {
         self.content.iter().all(|block| match block {
             ContentBlock::Text { text } => text.trim().is_empty(),
             ContentBlock::ToolResult { content, .. } => content.trim().is_empty(),
-
-        self.content.iter().all(|block| match block {
-            ContentBlock::Text { text } => text.trim().is_empty(),
-
             _ => false,
         })
     }
