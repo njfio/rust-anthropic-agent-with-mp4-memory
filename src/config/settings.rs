@@ -39,9 +39,9 @@ pub struct AnthropicConfig {
 /// Memory system configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryConfig {
-    /// Path to the memory file (MP4)
+    /// Path to the memory file (JSON)
     pub memory_path: PathBuf,
-    /// Path to the memory index file
+    /// Base path for the memory index (synaptic will append extensions)
     pub index_path: PathBuf,
     /// Enable automatic memory saving
     pub auto_save: bool,
@@ -125,8 +125,8 @@ impl Default for AnthropicConfig {
 impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
-            memory_path: PathBuf::from("agent_memory.mp4"),
-            index_path: PathBuf::from("agent_memory"), // Base path - library will add .metadata and .vector extensions
+            memory_path: PathBuf::from("agent_memory.json"),
+            index_path: PathBuf::from("agent_memory"), // Base path - synaptic memory will add .metadata and .vector extensions
             auto_save: true,
             max_conversations: 1000,
             enable_search: true,
@@ -314,7 +314,7 @@ impl AgentConfig {
     pub fn with_memory_path<P: Into<PathBuf>>(mut self, path: P) -> Self {
         let path = path.into();
         self.memory.memory_path = path.clone();
-        // Use base path without extension - rust-mp4-memory will add .metadata and .vector
+        // Use base path without extension - synaptic memory will add .metadata and .vector
         if let Some(stem) = path.file_stem() {
             self.memory.index_path = path.with_file_name(stem);
         } else {

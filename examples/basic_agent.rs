@@ -8,7 +8,7 @@ async fn main() -> anyhow::Result<()> {
     // Create agent configuration
     let config = AgentConfig::default()
         .with_anthropic_key(std::env::var("ANTHROPIC_API_KEY")?)
-        .with_memory_path("examples/basic_memory.mp4")
+        .with_memory_path("examples/basic_memory.json")
         .with_model("claude-opus-4-20250514");
 
     // Create the agent

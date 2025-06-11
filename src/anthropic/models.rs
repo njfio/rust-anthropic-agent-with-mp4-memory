@@ -308,6 +308,7 @@ impl ChatMessage {
 
     /// Check if the message has no meaningful content
     pub fn has_empty_content(&self) -> bool {
+
         if self.content.is_empty() {
             return true;
         }
@@ -315,6 +316,10 @@ impl ChatMessage {
         self.content.iter().all(|block| match block {
             ContentBlock::Text { text } => text.trim().is_empty(),
             ContentBlock::ToolResult { content, .. } => content.trim().is_empty(),
+
+        self.content.iter().all(|block| match block {
+            ContentBlock::Text { text } => text.trim().is_empty(),
+
             _ => false,
         })
     }

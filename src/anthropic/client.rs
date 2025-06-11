@@ -247,12 +247,138 @@ impl AnthropicClient {
         }
     }
 
-    /// Create a streaming chat request (placeholder for future implementation)
-    pub async fn chat_stream(&self, _request: ChatRequest) -> Result<ChatResponse> {
-        // TODO: Implement streaming support
-        Err(AgentError::config(
-            "Streaming is not yet implemented".to_string(),
-        ))
+    /// Create a streaming chat request using Server-Sent Events
+    pub async fn chat_stream(&self, request: ChatRequest) -> Result<ChatResponse> {
+        use futures_util::StreamExt;
+
+        let url = format!("{}/v1/messages", self.config.base_url);
+        let mut req_builder = self
+            .client
+            .post(&url)
+            .header("x-api-key", &self.config.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json");
+
+        if self.needs_beta_headers(&request) {
+            let beta_headers = self.get_beta_headers(&request);
+            req_builder = req_builder.header("anthropic-beta", beta_headers);
+        }
+
+        let mut streaming_request = request.clone();
+        streaming_request.stream = Some(true);
+
+        let response = req_builder
+            .json(&streaming_request)
+            .send()
+            .await
+            .map_err(AgentError::Http)?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return self.handle_error_response(status, &body);
+        }
+
+        let mut stream = response.bytes_stream();
+        let mut buffer = Vec::new();
+        let mut chat_response: Option<ChatResponse> = None;
+        let mut content_text = String::new();
+        let mut usage: Option<crate::anthropic::models::Usage> = None;
+
+        while let Some(chunk) = stream.next().await {
+            let bytes = chunk.map_err(AgentError::Http)?;
+            buffer.extend_from_slice(&bytes);
+            while let Some(pos) = buffer.iter().position(|&b| b == b'\n') {
+                let line = buffer.drain(..=pos).collect::<Vec<u8>>();
+                let line = String::from_utf8_lossy(&line);
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let trimmed = trimmed.strip_prefix("data:").unwrap_or(trimmed).trim();
+                if trimmed.is_empty() || trimmed == "[DONE]" {
+                    continue;
+                }
+                let value: serde_json::Value = match serde_json::from_str(trimmed) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Failed to parse streaming JSON: {}", e);
+                        continue;
+                    }
+                };
+                match value.get("type").and_then(|v| v.as_str()) {
+                    Some("message_start") => {
+                        if let Some(msg) = value.get("message") {
+                            let id = msg
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string();
+                            let model = msg
+                                .get("model")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string();
+                            let role = msg
+                                .get("role")
+                                .cloned()
+                                .map_or(Ok(crate::anthropic::models::MessageRole::Assistant), serde_json::from_value)
+                                .unwrap_or(crate::anthropic::models::MessageRole::Assistant);
+                            let stop_reason = msg
+                                .get("stop_reason")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string();
+                            chat_response = Some(ChatResponse {
+                                id,
+                                model,
+                                role,
+                                content: Vec::new(),
+                                stop_reason,
+                                usage: crate::anthropic::models::Usage {
+                                    input_tokens: 0,
+                                    output_tokens: 0,
+                                    cache_read_input_tokens: None,
+                                    cache_creation_input_tokens: None,
+                                    server_tool_use: None,
+                                },
+                                container: None,
+                            });
+                        }
+                    }
+                    Some("content_block_delta") => {
+                        if let Some(delta) = value.get("delta") {
+                            if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
+                                content_text.push_str(text);
+                            }
+                        }
+                    }
+                    Some("message_delta") => {
+                        if usage.is_none() {
+                            if let Some(u) = value.get("usage") {
+                                match serde_json::from_value::<crate::anthropic::models::Usage>(u.clone()) {
+                                    Ok(u) => usage = Some(u),
+                                    Err(e) => error!("Failed to parse usage: {}", e),
+                                }
+                            }
+                        }
+                    }
+                    Some("message_stop") => {
+                        // nothing to do
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        let mut resp = chat_response
+            .ok_or_else(|| AgentError::anthropic_api("No message_start event".to_string()))?;
+        resp.content
+            .push(crate::anthropic::models::ContentBlock::Text { text: content_text });
+        if let Some(u) = usage {
+            resp.usage = u;
+        }
+        Ok(resp)
     }
 
     /// Test the API connection
@@ -290,5 +416,83 @@ impl AnthropicClient {
 
         self.config = config;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::net::TcpListener;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use std::time::Duration;
+
+    async fn write_chunk(socket: &mut tokio::net::TcpStream, data: &str) {
+        let header = format!("{:X}\r\n", data.len());
+        socket.write_all(header.as_bytes()).await.unwrap();
+        socket.write_all(data.as_bytes()).await.unwrap();
+        socket.write_all(b"\r\n").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_chat_stream() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = socket.read(&mut buf).await;
+
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n",
+                )
+                .await
+                .unwrap();
+
+            write_chunk(&mut socket, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"1\",\"model\":\"test\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":\"stop\"}}\n\n").await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            write_chunk(&mut socket, "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hello \"}}\n\n").await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            write_chunk(&mut socket, "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"world\"}}\n\n").await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            write_chunk(&mut socket, "data: {\"type\":\"message_delta\",\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}\n\n").await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            write_chunk(&mut socket, "data: {\"type\":\"message_stop\"}\n\n").await;
+            socket.write_all(b"0\r\n\r\n").await.unwrap();
+        });
+
+        let config = AnthropicConfig {
+            api_key: "test".into(),
+            base_url: format!("http://{}", addr),
+            model: "test".into(),
+            max_tokens: 10,
+            temperature: 0.0,
+            timeout_seconds: 30,
+            max_retries: 0,
+        };
+        let client = AnthropicClient::new(config).unwrap();
+
+        let request = ChatRequest {
+            model: "test".into(),
+            max_tokens: 10,
+            messages: vec![crate::anthropic::models::ApiMessage::user("Hi")],
+            system: None,
+            tools: None,
+            tool_choice: None,
+            temperature: Some(0.0),
+            stream: Some(true),
+        };
+
+        let response = client.chat_stream(request).await.unwrap();
+        let content = match &response.content[0] {
+            crate::anthropic::models::ContentBlock::Text { text } => text.clone(),
+            _ => String::new(),
+        };
+        assert_eq!(content, "Hello world");
+        assert_eq!(response.usage.input_tokens, 1);
+        assert_eq!(response.usage.output_tokens, 2);
+
+        server.await.unwrap();
     }
 }

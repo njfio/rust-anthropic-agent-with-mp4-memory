@@ -618,7 +618,7 @@ mod tests {
     async fn test_memory_search_tool() {
         let temp_dir = tempdir().unwrap();
         let config = MemoryConfig {
-            memory_path: temp_dir.path().join("test.mp4"),
+            memory_path: temp_dir.path().join("test.json"),
             index_path: temp_dir.path().join("test.json"),
             ..Default::default()
         };
@@ -639,7 +639,7 @@ mod tests {
     async fn test_memory_save_tool() {
         let temp_dir = tempdir().unwrap();
         let config = MemoryConfig {
-            memory_path: temp_dir.path().join("test.mp4"),
+            memory_path: temp_dir.path().join("test.json"),
             index_path: temp_dir.path().join("test.json"),
             ..Default::default()
         };
