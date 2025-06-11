@@ -1,6 +1,6 @@
 # Rust MemVid Agent 🦀🤖
 
-A comprehensive AI agent system in Rust that integrates with Anthropic's Claude API and uses JSON-based memory powered by the rust-synaptic library for persistent conversations and context.
+
 
 ## Recent Updates
 
@@ -15,7 +15,7 @@ A comprehensive AI agent system in Rust that integrates with Anthropic's Claude 
 - **File Operation Excellence**: Flawless create and str_replace operations with proper parameter handling
 
 ### ⚡ **Fast JSON Memory System**
-- **Removed slow memvid dependency**: Replaced the previous video-based memory system with fast JSON storage
+
 - **Simple JSON Storage**: Lightning-fast memory operations using simple JSON file persistence
 - **Instant Memory Access**: No video encoding/decoding overhead - immediate read/write operations
 - **Simplified Architecture**: Clean, maintainable codebase without complex video processing dependencies

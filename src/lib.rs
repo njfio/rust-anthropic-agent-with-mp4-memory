@@ -1,13 +1,13 @@
 //! # Rust MemVid Agent
 //!
 //! A comprehensive AI agent system in Rust that integrates with Anthropic's Claude API
-//! and uses MP4-based memory storage for persistent conversations and context.
+//! and uses JSON-based synaptic memory for persistent conversations and context.
 //!
 //! ## Features
 //!
 //! - **Full Anthropic API Integration**: Support for all latest tools including code execution,
 //!   web search, and text editor tools
-//! - **MP4 Memory Storage**: Persistent memory using rust-mp4-memory for conversation history
+//! - **Synaptic JSON Memory**: Persistent memory using the synaptic library for conversation history
 //!   and semantic search
 //! - **Extensible Tool System**: Built-in tools and framework for custom tool development
 //! - **Async/Await Architecture**: High-performance async operations throughout
@@ -23,7 +23,7 @@
 //!     // Initialize the agent with memory
 //!     let config = AgentConfig::default()
 //!         .with_anthropic_key("your-api-key")
-//!         .with_memory_path("agent_memory.mp4");
+//!         .with_memory_path("agent_memory.json");
 //!     
 //!     let mut agent = Agent::new(config).await?;
 //!     

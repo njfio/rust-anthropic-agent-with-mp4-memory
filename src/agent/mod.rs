@@ -156,7 +156,11 @@ impl Agent {
         let mut recent_tool_calls: Vec<String> = Vec::new(); // Track recent tool calls for loop detection
 
         while response.content.iter().any(|block| {
-            matches!(block, crate::anthropic::models::ContentBlock::ToolUse { .. })
+            matches!(
+                block,
+                crate::anthropic::models::ContentBlock::ToolUse { .. }
+                    | crate::anthropic::models::ContentBlock::ServerToolUse { .. }
+            )
         }) && tool_iterations < max_tool_iterations {
             tool_iterations += 1;
             debug!("Processing tool calls (iteration {})", tool_iterations);
@@ -164,10 +168,12 @@ impl Agent {
             // Check for infinite loops - detect if we're repeating the same tool calls
             let current_tool_calls: Vec<String> = response.content.iter()
                 .filter_map(|block| {
-                    if let crate::anthropic::models::ContentBlock::ToolUse { name, input, .. } = block {
-                        Some(format!("{}:{}", name, serde_json::to_string(input).unwrap_or_default()))
-                    } else {
-                        None
+                    match block {
+                        crate::anthropic::models::ContentBlock::ToolUse { name, input, .. } |
+                        crate::anthropic::models::ContentBlock::ServerToolUse { name, input, .. } => {
+                            Some(format!("{}:{}", name, serde_json::to_string(input).unwrap_or_default()))
+                        }
+                        _ => None,
                     }
                 })
                 .collect();
@@ -181,7 +187,9 @@ impl Agent {
                 // Create error results for the repeated tool calls to satisfy API requirements
                 let loop_error_results: Vec<_> = response.content.iter()
                     .filter_map(|block| {
-                        if let crate::anthropic::models::ContentBlock::ToolUse { id, name, input } = block {
+                        if let crate::anthropic::models::ContentBlock::ToolUse { id, name, input }
+                            | crate::anthropic::models::ContentBlock::ServerToolUse { id, name, input } = block
+                        {
                             let missing_params = if name == "local_file_editor" {
                                 let has_command = input.get("command").is_some();
                                 let has_path = input.get("path").is_some();
@@ -262,7 +270,11 @@ impl Agent {
                 }
             };
             info!("Tool execution completed: {} tool_use blocks, {} tool_result blocks",
-                response.content.iter().filter(|b| matches!(b, crate::anthropic::models::ContentBlock::ToolUse { .. })).count(),
+                response.content.iter().filter(|b| matches!(
+                    b,
+                    crate::anthropic::models::ContentBlock::ToolUse { .. }
+                        | crate::anthropic::models::ContentBlock::ServerToolUse { .. }
+                )).count(),
                 tool_results.len()
             );
 
@@ -270,7 +282,11 @@ impl Agent {
             // This ensures every tool_use block has a corresponding tool_result block
             // The API requires this pairing regardless of whether tools succeed or fail
             let has_tool_uses = response.content.iter().any(|block| {
-                matches!(block, crate::anthropic::models::ContentBlock::ToolUse { .. })
+                matches!(
+                    block,
+                    crate::anthropic::models::ContentBlock::ToolUse { .. }
+                        | crate::anthropic::models::ContentBlock::ServerToolUse { .. }
+                )
             });
 
             if has_tool_uses {
@@ -315,9 +331,13 @@ impl Agent {
                 if let Some(human_input_threshold) = self.config.agent.human_input_after_iterations {
                     if tool_iterations >= human_input_threshold {
                         info!("Human-in-the-loop threshold ({}) reached after {} iterations", human_input_threshold, tool_iterations);
-                        // For now, we'll just log this. In a full implementation, this would pause for human input
-                        // TODO: Implement actual human input mechanism (stdin, web interface, etc.)
-                        warn!("Human input would be requested here: {}", self.config.agent.human_input_prompt);
+                        let prompt = &self.config.agent.human_input_prompt;
+                        if let Ok(input) = self.request_human_input(prompt).await {
+                            if !input.trim().is_empty() {
+                                let user_msg = ChatMessage::user(input);
+                                self.conversation_manager.add_message(user_msg).await?;
+                            }
+                        }
                     }
                 }
             }
@@ -367,7 +387,11 @@ impl Agent {
 
         // Check if the final response has tool uses that need results
         let final_has_tool_uses = response.content.iter().any(|block| {
-            matches!(block, crate::anthropic::models::ContentBlock::ToolUse { .. })
+            matches!(
+                block,
+                crate::anthropic::models::ContentBlock::ToolUse { .. }
+                    | crate::anthropic::models::ContentBlock::ServerToolUse { .. }
+            )
         });
         info!("Final response has tool uses: {}", final_has_tool_uses);
 
@@ -378,7 +402,11 @@ impl Agent {
 
             // Count the unprocessed tool calls
             let tool_use_count = response.content.iter()
-                .filter(|block| matches!(block, crate::anthropic::models::ContentBlock::ToolUse { .. }))
+                .filter(|block| matches!(
+                    block,
+                    crate::anthropic::models::ContentBlock::ToolUse { .. }
+                        | crate::anthropic::models::ContentBlock::ServerToolUse { .. }
+                ))
                 .count();
 
             // Instead of creating placeholder results, return a detailed error
@@ -504,18 +532,16 @@ impl Agent {
     /// Request human input during agent execution
     /// This is a placeholder for human-in-the-loop functionality
     pub async fn request_human_input(&self, prompt: &str) -> Result<String> {
-        // For now, this is a placeholder implementation
-        // In a full implementation, this would:
-        // 1. Pause agent execution
-        // 2. Present the prompt to the human user
-        // 3. Wait for human input (via CLI, web interface, etc.)
-        // 4. Return the human's response
+        use std::io::{self, Write};
 
-        warn!("Human input requested: {}", prompt);
-        warn!("Human-in-the-loop not fully implemented yet. Returning default response.");
+        println!("\n{}", prompt);
+        print!("> ");
+        io::stdout().flush().map_err(AgentError::Io)?;
 
-        // Return a default response for now
-        Ok("Human input not available - continuing with agent decision".to_string())
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).map_err(AgentError::Io)?;
+
+        Ok(input.trim().to_string())
     }
 
     /// Set maximum tool iterations
