@@ -182,9 +182,9 @@ impl ToolOrchestrator {
                     // Check if this is a server-side tool
                     if self.is_server_tool(name) {
                         debug!("Server tool requested: {} (id: {}) - waiting for Anthropic to provide result", name, id);
-                        // Do not create a placeholder result. The real result will be
-                        // returned by the server in a subsequent response and will be
-                        // stored when received.
+                        // Server tools are executed by Anthropic. When the
+                        // result is streamed back it will be captured in a
+                        // subsequent response and stored in `server_tool_results`.
                         continue;
                     }
 
