@@ -259,7 +259,7 @@ impl Agent {
             // Execute tools and collect results
             info!("Executing tools for iteration {}...", tool_iterations);
             let tool_execution_future = self.tool_orchestrator.execute_tools(&response.content);
-            let tool_results = match tokio::time::timeout(std::time::Duration::from_secs(120), tool_execution_future).await {
+            let mut tool_results = match tokio::time::timeout(std::time::Duration::from_secs(120), tool_execution_future).await {
                 Ok(result) => {
                     info!("Tool execution completed successfully");
                     result?
@@ -269,6 +269,13 @@ impl Agent {
                     return Err(AgentError::tool("memory_stats", "Tool execution timed out - this may indicate a performance issue or infinite loop"));
                 }
             };
+            // Include any server tool results that may have been returned by the API
+            let mut server_results = self.tool_orchestrator.take_server_tool_results();
+            if !server_results.is_empty() {
+                debug!("Received {} server tool results", server_results.len());
+                tool_results.extend(server_results);
+            }
+
             info!("Tool execution completed: {} tool_use blocks, {} tool_result blocks",
                 response.content.iter().filter(|b| matches!(
                     b,
