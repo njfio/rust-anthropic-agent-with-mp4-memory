@@ -257,7 +257,8 @@ impl AnthropicClient {
             .post(&url)
             .header("x-api-key", &self.config.api_key)
             .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json");
+            .header("content-type", "application/json")
+            .header("accept", "text/event-stream");
 
         if self.needs_beta_headers(&request) {
             let beta_headers = self.get_beta_headers(&request);
@@ -492,6 +493,67 @@ mod tests {
         assert_eq!(content, "Hello world");
         assert_eq!(response.usage.input_tokens, 1);
         assert_eq!(response.usage.output_tokens, 2);
+
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_chat_stream_single_chunk() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = socket.read(&mut buf).await;
+
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n",
+                )
+                .await
+                .unwrap();
+
+            write_chunk(&mut socket, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"1\",\"model\":\"test\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":\"stop\"}}\n\n").await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            write_chunk(&mut socket, "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hi\"}}\n\n").await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            write_chunk(&mut socket, "data: {\"type\":\"message_delta\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}\n\n").await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            write_chunk(&mut socket, "data: {\"type\":\"message_stop\"}\n\n").await;
+            socket.write_all(b"0\r\n\r\n").await.unwrap();
+        });
+
+        let config = AnthropicConfig {
+            api_key: "test".into(),
+            base_url: format!("http://{}", addr),
+            model: "test".into(),
+            max_tokens: 10,
+            temperature: 0.0,
+            timeout_seconds: 30,
+            max_retries: 0,
+        };
+        let client = AnthropicClient::new(config).unwrap();
+
+        let request = ChatRequest {
+            model: "test".into(),
+            max_tokens: 10,
+            messages: vec![crate::anthropic::models::ApiMessage::user("Hi")],
+            system: None,
+            tools: None,
+            tool_choice: None,
+            temperature: Some(0.0),
+            stream: Some(true),
+        };
+
+        let response = client.chat_stream(request).await.unwrap();
+        let content = match &response.content[0] {
+            crate::anthropic::models::ContentBlock::Text { text } => text.clone(),
+            _ => String::new(),
+        };
+        assert_eq!(content, "Hi");
+        assert_eq!(response.usage.input_tokens, 1);
+        assert_eq!(response.usage.output_tokens, 1);
 
         server.await.unwrap();
     }
