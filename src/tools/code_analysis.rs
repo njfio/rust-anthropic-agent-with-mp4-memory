@@ -283,8 +283,7 @@ impl CodeAnalysisTool {
                             "name": symbol.name,
                             "kind": symbol.kind,
                             "start_line": symbol.start_line,
-                            "end_line": symbol.end_line,
-                            "is_public": symbol.is_public
+                            "end_line": symbol.end_line
                         })
                     }).collect::<Vec<_>>()
                 })
@@ -384,8 +383,7 @@ impl CodeAnalysisTool {
                     "file": file_path,
                     "name": name,
                     "kind": kind,
-                    "line": symbol["start_line"],
-                    "is_public": symbol["is_public"]
+                    "line": symbol["start_line"]
                 }));
             }
         }
@@ -616,10 +614,7 @@ impl CodeAnalysisTool {
                     let name = symbol["name"].as_str().unwrap();
                     let kind = symbol["kind"].as_str().unwrap();
                     let line = symbol["start_line"].as_u64().unwrap();
-                    let is_public = symbol["is_public"].as_bool().unwrap_or(false);
-
-                    let visibility = if is_public { "public" } else { "private" };
-                    explanation.push_str(&format!("\n   - {} {} `{}` (line {})", visibility, kind, name, line));
+                    explanation.push_str(&format!("\n   - {} `{}` (line {})", kind, name, line));
                 }
 
                 if symbols.len() > (if detailed { 10 } else { 3 }) {
@@ -669,17 +664,16 @@ impl CodeAnalysisTool {
             for symbol in symbols {
                 let name = symbol["name"].as_str().unwrap();
                 let kind = symbol["kind"].as_str().unwrap();
-                let is_public = symbol["is_public"].as_bool().unwrap_or(false);
 
                 // Check for potential security issues
-                if name.to_lowercase().contains("password") && is_public {
+                if name.to_lowercase().contains("password") {
                     security_issues.push(json!({
                         "severity": "high",
                         "type": "exposed_credential",
                         "file": file_path,
                         "symbol": name,
                         "line": symbol["start_line"],
-                        "description": "Public symbol contains 'password' - potential credential exposure"
+                        "description": "Symbol contains 'password' - potential credential exposure"
                     }));
                 }
 
@@ -694,28 +688,23 @@ impl CodeAnalysisTool {
                     }));
                 }
 
-                if kind == "function" && name.starts_with("test_") && is_public {
+                if kind == "function" && name.starts_with("test_") {
                     security_issues.push(json!({
                         "severity": "low",
-                        "type": "exposed_test",
+                        "type": "test_function",
                         "file": file_path,
                         "symbol": name,
                         "line": symbol["start_line"],
-                        "description": "Public test function - consider making private"
+                        "description": "Test function detected - ensure proper isolation"
                     }));
                 }
             }
 
             if compliance {
                 // Add compliance assessment
-                let public_symbols = symbols.iter().filter(|s| s["is_public"].as_bool().unwrap_or(false)).count();
                 let total_symbols = symbols.len();
-
-                if total_symbols > 0 {
-                    let public_ratio = public_symbols as f64 / total_symbols as f64;
-                    if public_ratio > 0.8 {
-                        compliance_notes.push(format!("File {} has high public API exposure ({:.1}%)", file_path, public_ratio * 100.0));
-                    }
+                if total_symbols > 50 {
+                    compliance_notes.push(format!("File {} has high symbol count ({}) - consider refactoring", file_path, total_symbols));
                 }
             }
         }
