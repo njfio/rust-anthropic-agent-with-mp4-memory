@@ -39,9 +39,9 @@ pub struct AnthropicConfig {
 /// Memory system configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryConfig {
-    /// Path to the memory file (JSON)
+    /// Path to the JSON memory file used by rust-synaptic
     pub memory_path: PathBuf,
-    /// Base path for the memory index (synaptic will append extensions)
+    /// Base path for the synaptic index (extensions are appended automatically)
     pub index_path: PathBuf,
     /// Enable automatic memory saving
     pub auto_save: bool,
@@ -126,7 +126,7 @@ impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
             memory_path: PathBuf::from("agent_memory.json"),
-            index_path: PathBuf::from("agent_memory"), // Base path - synaptic memory will add .metadata and .vector extensions
+            index_path: PathBuf::from("agent_memory"), // Base path - synaptic adds .metadata and .vector files
             auto_save: true,
             max_conversations: 1000,
             enable_search: true,
@@ -310,7 +310,8 @@ impl AgentConfig {
         self
     }
 
-    /// Set the memory path
+    /// Set the path to the JSON memory file. The synaptic index will reuse
+    /// the same base name with `.metadata` and `.vector` extensions.
     pub fn with_memory_path<P: Into<PathBuf>>(mut self, path: P) -> Self {
         let path = path.into();
         self.memory.memory_path = path.clone();

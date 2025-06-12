@@ -6,7 +6,7 @@ use tracing::{error, info};
 
 #[derive(Parser)]
 #[command(name = "memvid-agent")]
-#[command(about = "AI agent with MP4 memory and Anthropic integration")]
+#[command(about = "AI agent with synaptic JSON memory and Anthropic integration")]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
