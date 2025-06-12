@@ -27,10 +27,10 @@ timeout_seconds = 60
 max_retries = 3
 
 [memory]
-# Path to the memory file (JSON format)
+# Path to the JSON memory file used by rust-synaptic
 memory_path = "agent_memory.json"
 
-# Base path for the memory index (synaptic adds extensions)
+# Base path for the synaptic index (extensions like .metadata are appended)
 index_path = "agent_memory"
 
 # Enable automatic memory saving
