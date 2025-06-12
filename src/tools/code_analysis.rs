@@ -318,7 +318,7 @@ impl CodeAnalysisTool {
 
         let parsed_files = analysis["summary"]["parsed_files"].as_u64().unwrap_or(0);
         let parse_success_rate = if total_files > 0 {
-            (parsed_files as f64 / total_files as f64) * 100.0
+            (parsed_files as f64 * 100.0) / total_files as f64
         } else {
             0.0
         };
@@ -2802,12 +2802,16 @@ mod tests {
     #[tokio::test]
     async fn test_parse_success_rate_computed() {
         let dir = tempdir().unwrap();
-        let file_path = dir.path().join("main.rs");
-        fs::write(&file_path, "fn main() {}\n").await.unwrap();
+        let file1 = dir.path().join("main.rs");
+        let file2 = dir.path().join("lib.rs");
+        fs::write(&file1, "fn main() {}\n").await.unwrap();
+        fs::write(&file2, "pub fn helper() {}\n").await.unwrap();
 
         let tool = CodeAnalysisTool::new();
         let result = tool.generate_insights(dir.path(), &json!({})).await.unwrap();
+        let parsed = result["metrics"]["total_files"].as_u64().unwrap();
         let rate = result["quality_indicators"]["parse_success_rate"].as_f64().unwrap();
+        assert_eq!(parsed, 2);
         assert_eq!(rate, 100.0);
     }
 
@@ -2815,15 +2819,15 @@ mod tests {
     async fn test_query_patterns_basic() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("lib.rs");
-        fs::write(&file_path, "fn foo() {}\n").await.unwrap();
+        fs::write(&file_path, "fn foo() {}\nfn bar() {}\n").await.unwrap();
 
         let tool = CodeAnalysisTool::new();
         let params = json!({
-            "pattern": "(function_item) @fn",
+            "pattern": "(function_item name: (identifier) @name)",
             "language": "rust"
         });
         let result = tool.query_patterns(dir.path(), &params).await.unwrap();
         let matches = result["matches"].as_array().unwrap();
-        assert!(!matches.is_empty());
+        assert_eq!(matches.len(), 2);
     }
 }
