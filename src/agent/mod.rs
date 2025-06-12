@@ -314,7 +314,23 @@ impl Agent {
                         id: Some(Uuid::new_v4().to_string()),
                         timestamp: Some(chrono::Utc::now()),
                     };
-                    self.conversation_manager.add_message(tool_result_message).await?;
+                    self.conversation_manager
+                        .add_message(tool_result_message)
+                        .await?;
+
+                    // Capture optional follow-up instructions from the user
+                    if self.config.agent.enable_human_in_loop
+                        && self.config.agent.human_input_after_iterations.is_none()
+                    {
+                        if let Ok(extra) =
+                            self.request_human_input(&self.config.agent.human_input_prompt).await
+                        {
+                            if !extra.trim().is_empty() {
+                                let msg = ChatMessage::user(extra);
+                                self.conversation_manager.add_message(msg).await?;
+                            }
+                        }
+                    }
                 } else {
                     warn!("Skipping tool result message with empty content");
                 }
@@ -533,6 +549,13 @@ impl Agent {
     /// This is a placeholder for human-in-the-loop functionality
     pub async fn request_human_input(&self, prompt: &str) -> Result<String> {
         use std::io::{self, Write};
+        use crossterm::terminal;
+
+        // If raw mode is enabled (e.g., interactive chat), temporarily disable it
+        let was_raw = terminal::is_raw_mode_enabled().unwrap_or(false);
+        if was_raw {
+            let _ = terminal::disable_raw_mode();
+        }
 
         println!("\n{}", prompt);
         print!("> ");
@@ -540,6 +563,10 @@ impl Agent {
 
         let mut input = String::new();
         io::stdin().read_line(&mut input).map_err(AgentError::Io)?;
+
+        if was_raw {
+            let _ = terminal::enable_raw_mode();
+        }
 
         Ok(input.trim().to_string())
     }
