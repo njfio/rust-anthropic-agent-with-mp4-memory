@@ -36,6 +36,14 @@ struct Cli {
     #[arg(long)]
     enable_human_in_loop: bool,
 
+    /// Prompt shown when the agent requests human guidance
+    #[arg(long)]
+    human_input_prompt: Option<String>,
+
+    /// Auto-pause for human input after this many tool iterations
+    #[arg(long)]
+    human_input_after: Option<usize>,
+
     /// Verbose logging
     #[arg(short, long)]
     verbose: bool,
@@ -206,6 +214,12 @@ async fn main() -> anyhow::Result<()> {
     }
     if cli.enable_human_in_loop {
         config.agent.enable_human_in_loop = true;
+    }
+    if let Some(prompt) = cli.human_input_prompt {
+        config.agent.human_input_prompt = prompt;
+    }
+    if let Some(after) = cli.human_input_after {
+        config.agent.human_input_after_iterations = Some(after);
     }
 
     match cli.command {
