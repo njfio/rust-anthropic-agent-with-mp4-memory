@@ -292,7 +292,7 @@ impl PluginLoader {
     /// Load a plugin from a path
     pub async fn load_from_path(&self, plugin_path: PathBuf) -> Result<Box<dyn Plugin>> {
         // Check cache first
-        if let Some(cached_plugin) = self.cache.get(&plugin_path) {
+        if let Some(_cached_plugin) = self.cache.get(&plugin_path) {
             debug!("Loading plugin from cache: {}", plugin_path.display());
             // Note: In a real implementation, we'd need to clone the plugin properly
             // For now, we'll reload it

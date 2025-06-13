@@ -71,8 +71,8 @@ pub async fn init_with_logging(level: tracing::Level) -> Result<()> {
 
 #[cfg(test)]
 mod security_tests {
-    use super::*;
-    use crate::tools::custom_tools::{ShellCommandTool, HttpRequestTool};
+    
+    use crate::tools::custom_tools::ShellCommandTool;
     use crate::tools::local_file_ops::LocalTextEditorTool;
     use crate::tools::Tool;
     use crate::utils::validation::{validate_path, validate_command, validate_url};

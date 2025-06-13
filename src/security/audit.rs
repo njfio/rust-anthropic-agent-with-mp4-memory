@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+use tracing::info;
 
 use crate::utils::error::{AgentError, Result};
 use super::{AuditConfig, AuditLogLevel, AuditStorageBackend, SecurityEvent};

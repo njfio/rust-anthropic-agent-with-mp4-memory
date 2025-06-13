@@ -9,7 +9,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::utils::error::{AgentError, Result};
-use super::{JwtConfig, JwtAlgorithm, SecurityEvent, PasswordPolicyConfig};
+use super::{JwtConfig, JwtAlgorithm, PasswordPolicyConfig};
 
 /// Authentication service trait
 #[async_trait]

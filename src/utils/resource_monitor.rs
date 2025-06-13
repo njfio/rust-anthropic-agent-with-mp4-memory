@@ -264,7 +264,7 @@ impl ResourceMonitor {
         start_time: Instant,
     ) -> Result<()> {
         // Get process information
-        let pid = std::process::id();
+        let _pid = std::process::id();
         
         // Read memory usage from /proc/self/status (Linux) or use cross-platform method
         let memory_usage = Self::get_memory_usage()?;

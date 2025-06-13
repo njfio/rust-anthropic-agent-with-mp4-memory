@@ -1,6 +1,6 @@
 use super::*;
 use super::authentication::*;
-use super::authorization::{self, AuthorizationService, RbacAuthorizationService, Role, Permission};
+use super::authorization::{AuthorizationService, RbacAuthorizationService, Role};
 use super::encryption::*;
 use super::audit::*;
 use super::session::*;
@@ -8,7 +8,6 @@ use super::policy::{self, PolicyEngine, SimplePolicyEngine, SecurityPolicy};
 use super::rate_limiting::*;
 use super::middleware::*;
 use std::collections::HashMap;
-use std::time::SystemTime;
 
 /// Create test security configuration
 fn create_test_security_config() -> SecurityConfig {
@@ -132,7 +131,7 @@ async fn test_security_context_roles_and_permissions() {
 #[tokio::test]
 async fn test_jwt_authentication_service_creation() {
     let config = create_test_security_config();
-    let service = JwtAuthenticationService::new(config.jwt.clone(), config.password_policy);
+    let _service = JwtAuthenticationService::new(config.jwt.clone(), config.password_policy);
 
     // Service should be created successfully
     // We can't access private fields, so just test that it was created
@@ -231,7 +230,7 @@ async fn test_user_authentication() {
     let user_data = create_test_user_data();
     
     // Register user
-    let user = service.register_user(user_data.clone()).await.unwrap();
+    let _user = service.register_user(user_data.clone()).await.unwrap();
     
     // Authenticate with correct credentials
     let auth_result = service.authenticate(&user_data.username, &user_data.password).await;
@@ -776,7 +775,7 @@ async fn test_security_middleware_header_validation() {
     middleware_config.require_authentication = false; // Disable auth for this test
     let middleware = SecurityMiddleware::new(manager, middleware_config);
 
-    let mut headers = HashMap::new();
+    let headers = HashMap::new();
     // Missing User-Agent header (required by default config)
 
     let request = HttpRequest {

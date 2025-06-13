@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::anthropic::{AnthropicClient, ChatMessage, ChatRequest, MessageRole};
 use crate::config::AgentConfig;
 use crate::memory::MemoryManager;
-use crate::security::{SecurityManager, SecurityContext, SecurityEvent};
+use crate::security::SecurityManager;
 use crate::utils::error::{AgentError, Result};
 
 pub use conversation::ConversationManager;
@@ -310,7 +310,7 @@ impl Agent {
                 }
             };
             // Include any server tool results that may have been returned by the API
-            let mut server_results = self.tool_orchestrator.take_server_tool_results();
+            let server_results = self.tool_orchestrator.take_server_tool_results();
             if !server_results.is_empty() {
                 debug!("Received {} server tool results", server_results.len());
                 tool_results.extend(server_results);

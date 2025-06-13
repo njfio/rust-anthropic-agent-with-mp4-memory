@@ -10,7 +10,7 @@ use crate::anthropic::models::ToolDefinition;
 use crate::tools::{create_tool_definition, extract_string_param, Tool, ToolResult};
 use crate::utils::error::{AgentError, Result};
 use crate::utils::audit_logger::{AuditEvent, AuditEventType, AuditSeverity, audit_log};
-use crate::utils::security_headers::{SecurityHeaders, SecurityHeadersConfig};
+use crate::utils::security_headers::SecurityHeaders;
 
 /// A secure shell command execution tool with allowlist-based filtering
 #[derive(Debug, Clone)]

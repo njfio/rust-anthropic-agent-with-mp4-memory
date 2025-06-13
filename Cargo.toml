@@ -123,6 +123,9 @@ analytics = ["synaptic/analytics"]
 realtime = ["synaptic/realtime"]
 # Combined feature for maximum stable power
 full-power = ["external-integrations", "distributed", "analytics", "realtime", "embeddings"]
+# Additional features for future expansion
+multimodal = []
+cross-platform = []
 
 [profile.release]
 opt-level = 3

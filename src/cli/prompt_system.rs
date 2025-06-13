@@ -2,15 +2,8 @@ use std::env;
 use std::fs;
 use std::io::{self, Write, BufRead, BufReader};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use tempfile::NamedTempFile;
-use crossterm::{
-    cursor,
-    event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
-    execute,
-    style::{Color, Print, ResetColor, SetForegroundColor},
-    terminal::{self, ClearType},
-};
 use crate::utils::error::{AgentError, Result};
 
 /// Enhanced prompt system with multiple input modes

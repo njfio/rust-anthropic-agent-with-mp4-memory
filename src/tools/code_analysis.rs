@@ -880,7 +880,7 @@ impl CodeAnalysisTool {
         info!("Performing advanced AI analysis for: {}", path.display());
 
         // Configuration for advanced AI analysis
-        let config = json!({
+        let _config = json!({
             "enable_concept_recognition": semantic,
             "enable_pattern_detection": patterns,
             "confidence_threshold": confidence_threshold,
@@ -1212,7 +1212,7 @@ impl CodeAnalysisTool {
     }
 
     /// Dependency scanning
-    async fn dependency_scan(&self, path: &Path, params: &Value) -> Result<Value> {
+    async fn dependency_scan(&self, path: &Path, _params: &Value) -> Result<Value> {
         info!("Performing dependency scan for: {}", path.display());
 
         let dependencies = self.scan_dependencies(path).await?;
@@ -1228,7 +1228,7 @@ impl CodeAnalysisTool {
     }
 
     /// Security dependencies check
-    async fn security_deps(&self, path: &Path, params: &Value) -> Result<Value> {
+    async fn security_deps(&self, path: &Path, _params: &Value) -> Result<Value> {
         info!("Checking security dependencies for: {}", path.display());
 
         let dependencies = self.scan_dependencies(path).await?;
@@ -1244,7 +1244,7 @@ impl CodeAnalysisTool {
     }
 
     /// Outdated dependencies check
-    async fn outdated_deps(&self, path: &Path, params: &Value) -> Result<Value> {
+    async fn outdated_deps(&self, path: &Path, _params: &Value) -> Result<Value> {
         info!("Checking outdated dependencies for: {}", path.display());
 
         let dependencies = self.scan_dependencies(path).await?;
@@ -1260,7 +1260,7 @@ impl CodeAnalysisTool {
     }
 
     /// License compliance check
-    async fn license_check(&self, path: &Path, params: &Value) -> Result<Value> {
+    async fn license_check(&self, path: &Path, _params: &Value) -> Result<Value> {
         info!("Performing license compliance check for: {}", path.display());
 
         let dependencies = self.scan_dependencies(path).await?;
@@ -2298,7 +2298,7 @@ impl CodeAnalysisTool {
         recommendations
     }
 
-    fn provide_pattern_implementation_guidance(&self, files: &[Value]) -> Vec<Value> {
+    fn provide_pattern_implementation_guidance(&self, _files: &[Value]) -> Vec<Value> {
         let mut guidance = Vec::new();
 
         guidance.push(json!({
@@ -2326,7 +2326,7 @@ impl CodeAnalysisTool {
         guidance
     }
 
-    fn explain_pattern_benefits(&self, files: &[Value]) -> Vec<Value> {
+    fn explain_pattern_benefits(&self, _files: &[Value]) -> Vec<Value> {
         vec![
             json!({
                 "pattern": "MVC",
@@ -2995,7 +2995,7 @@ impl CodeAnalysisTool {
         })
     }
 
-    fn generate_test_recommendations(&self, files: &[Value]) -> Vec<String> {
+    fn generate_test_recommendations(&self, _files: &[Value]) -> Vec<String> {
         vec![
             "🧪 Add unit tests for all public functions".to_string(),
             "🔄 Implement integration tests for critical workflows".to_string(),
@@ -3033,7 +3033,7 @@ impl CodeAnalysisTool {
         candidates
     }
 
-    fn suggest_test_implementations(&self, files: &[Value]) -> Vec<Value> {
+    fn suggest_test_implementations(&self, _files: &[Value]) -> Vec<Value> {
         vec![
             json!({
                 "test_type": "Unit Tests",
@@ -3048,7 +3048,7 @@ impl CodeAnalysisTool {
         ]
     }
 
-    fn detect_flaky_tests(&self, files: &[Value]) -> Vec<Value> {
+    fn detect_flaky_tests(&self, _files: &[Value]) -> Vec<Value> {
         // Simplified flaky test detection
         vec![
             json!({
@@ -3059,7 +3059,7 @@ impl CodeAnalysisTool {
         ]
     }
 
-    fn suggest_test_improvements(&self, files: &[Value]) -> Vec<String> {
+    fn suggest_test_improvements(&self, _files: &[Value]) -> Vec<String> {
         vec![
             "🎯 Use descriptive test names that explain the scenario".to_string(),
             "🔧 Implement proper test setup and teardown".to_string(),
@@ -3097,7 +3097,7 @@ impl CodeAnalysisTool {
             .collect()
     }
 
-    fn suggest_gap_remediation(&self, files: &[Value]) -> Vec<String> {
+    fn suggest_gap_remediation(&self, _files: &[Value]) -> Vec<String> {
         vec![
             "🎯 Start with testing public API functions".to_string(),
             "🔄 Add tests for error handling paths".to_string(),
@@ -3212,7 +3212,7 @@ impl CodeAnalysisTool {
 
     fn parse_complex_cargo_dependency(&self, name: &str, spec: &str) -> Option<(String, DependencyInfo)> {
         let mut version = "unknown".to_string();
-        let mut features = None;
+        let features = None;
         let mut optional = false;
         let mut git = None;
         let mut path = None;
@@ -3458,7 +3458,7 @@ impl CodeAnalysisTool {
     fn calculate_dependency_depth(&self, dependencies: &[Value]) -> u32 {
         // Simplified depth calculation
         let direct_deps = dependencies.iter().filter(|d| d["type"] == "direct").count();
-        let dev_deps = dependencies.iter().filter(|d| d["type"] == "dev").count();
+        let _dev_deps = dependencies.iter().filter(|d| d["type"] == "dev").count();
 
         // Estimate depth based on number of dependencies
         match direct_deps {
@@ -3592,7 +3592,7 @@ impl CodeAnalysisTool {
         patterns
     }
 
-    fn suggest_dependency_optimizations(&self, dependencies: &[Value]) -> Vec<String> {
+    fn suggest_dependency_optimizations(&self, _dependencies: &[Value]) -> Vec<String> {
         vec![
             "📦 Remove unused dependencies".to_string(),
             "⬆️ Update to latest stable versions".to_string(),
@@ -3972,7 +3972,7 @@ impl CodeAnalysisTool {
         license_analysis["issues"].as_array().unwrap_or(&vec![]).clone()
     }
 
-    fn categorize_dependency_vulnerabilities(&self, vulnerabilities: &[Value]) -> Value {
+    fn categorize_dependency_vulnerabilities(&self, _vulnerabilities: &[Value]) -> Value {
         json!({
             "critical": 0,
             "high": 0,
@@ -3981,7 +3981,7 @@ impl CodeAnalysisTool {
         })
     }
 
-    fn generate_dependency_remediation(&self, vulnerabilities: &[Value]) -> Vec<String> {
+    fn generate_dependency_remediation(&self, _vulnerabilities: &[Value]) -> Vec<String> {
         vec![
             "🔒 Update vulnerable dependencies immediately".to_string(),
             "🔍 Run regular security audits".to_string(),
@@ -4022,7 +4022,7 @@ impl CodeAnalysisTool {
         Ok(outdated)
     }
 
-    fn generate_update_recommendations(&self, outdated: &[Value]) -> Vec<String> {
+    fn generate_update_recommendations(&self, _outdated: &[Value]) -> Vec<String> {
         vec![
             "⬆️ Update dependencies in order of importance".to_string(),
             "🧪 Test thoroughly after updates".to_string(),
