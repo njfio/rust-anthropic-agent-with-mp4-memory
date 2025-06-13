@@ -1,5 +1,6 @@
 // Using rust-synaptic directly as the memory system
 pub mod search;
+pub mod compression;
 
 #[cfg(test)]
 mod tests;

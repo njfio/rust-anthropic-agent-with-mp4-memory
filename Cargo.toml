@@ -93,6 +93,7 @@ base64ct = "=1.6.0"
 native-tls = "=0.2.11"
 # Updated to fix RUSTSEC-2024-0421: Punycode labels vulnerability
 idna = ">=1.0.0"
+flate2 = "1.1.2"
 
 [dev-dependencies]
 criterion = "0.5"
