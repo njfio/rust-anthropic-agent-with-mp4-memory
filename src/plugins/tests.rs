@@ -256,7 +256,7 @@ async fn test_plugin_registry_register_plugin() {
     let metadata = create_test_metadata();
     let config = create_test_config();
 
-    let result = registry.register_plugin(metadata.clone(), config).await;
+    let result = registry.register_plugin(metadata.clone(), config, None).await;
     assert!(result.is_ok());
 
     let retrieved = registry.get_plugin(&metadata.id);
@@ -271,11 +271,11 @@ async fn test_plugin_registry_duplicate_registration() {
     let config = create_test_config();
 
     // First registration should succeed
-    let result1 = registry.register_plugin(metadata.clone(), config.clone()).await;
+    let result1 = registry.register_plugin(metadata.clone(), config.clone(), None).await;
     assert!(result1.is_ok());
 
     // Second registration should fail
-    let result2 = registry.register_plugin(metadata, config).await;
+    let result2 = registry.register_plugin(metadata, config, None).await;
     assert!(result2.is_err());
 }
 
@@ -286,7 +286,7 @@ async fn test_plugin_registry_unregister_plugin() {
     let config = create_test_config();
 
     // Register plugin
-    registry.register_plugin(metadata.clone(), config).await.unwrap();
+    registry.register_plugin(metadata.clone(), config, None).await.unwrap();
     assert!(registry.get_plugin(&metadata.id).is_some());
 
     // Unregister plugin
@@ -301,7 +301,7 @@ async fn test_plugin_registry_search_by_capability() {
     let metadata = create_test_metadata();
     let config = create_test_config();
 
-    registry.register_plugin(metadata, config).await.unwrap();
+    registry.register_plugin(metadata, config, None).await.unwrap();
 
     let results = registry.search_by_capability("test");
     assert_eq!(results.len(), 1);
@@ -317,7 +317,7 @@ async fn test_plugin_registry_search_plugins() {
     let metadata = create_test_metadata();
     let config = create_test_config();
 
-    registry.register_plugin(metadata, config).await.unwrap();
+    registry.register_plugin(metadata, config, None).await.unwrap();
 
     let results = registry.search_plugins("Test");
     assert_eq!(results.len(), 1);

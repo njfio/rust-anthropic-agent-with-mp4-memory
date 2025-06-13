@@ -136,7 +136,7 @@ impl AdvancedPluginManager {
         };
 
         // Register in registry
-        self.registry.write().await.register_plugin(metadata, config.clone()).await?;
+        self.registry.write().await.register_plugin(metadata, config.clone(), Some(plugin_path.clone())).await?;
 
         // Load the plugin
         self.load_plugin_from_path(plugin_path, Some(config)).await?;

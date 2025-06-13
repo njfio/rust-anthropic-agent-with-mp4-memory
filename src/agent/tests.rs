@@ -47,6 +47,7 @@ mod tests {
                 human_input_prompt: "Test prompt".to_string(),
                 human_input_after_iterations: None,
             },
+            security: None, // No security for tests
         }
     }
 

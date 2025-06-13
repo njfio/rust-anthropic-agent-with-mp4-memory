@@ -41,6 +41,7 @@ pub mod cli;
 pub mod config;
 pub mod memory;
 pub mod plugins;
+pub mod security;
 pub mod tools;
 pub mod utils;
 // pub mod security;  // Temporarily disabled until files are created

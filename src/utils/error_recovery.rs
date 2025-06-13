@@ -412,7 +412,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_exponential_backoff_success() {
-        let config = ErrorRecoveryConfig::default();
+        let mut config = ErrorRecoveryConfig::default();
+        // Ensure we have enough retries for the test
+        config.default_strategy = RecoveryStrategy::ExponentialBackoff {
+            max_retries: 5,
+            base_delay: Duration::from_millis(1),
+            max_delay: Duration::from_millis(10),
+        };
         let manager = ErrorRecoveryManager::new(config);
 
         let call_count = Arc::new(AtomicUsize::new(0));
@@ -430,12 +436,12 @@ mod tests {
         };
 
         let result = manager.execute_with_recovery("test_operation", operation).await;
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "Expected success but got error: {:?}", result.err());
         assert_eq!(result.unwrap(), "Success");
 
-        // Should have made at least 3 attempts (could be more due to timing)
+        // Should have made exactly 3 attempts (fails on 0, 1, succeeds on 2)
         let final_count = call_count.load(Ordering::SeqCst);
-        assert!(final_count >= 3, "Expected at least 3 attempts, got {}", final_count);
+        assert_eq!(final_count, 3, "Expected exactly 3 attempts, got {}", final_count);
     }
 
     #[tokio::test]

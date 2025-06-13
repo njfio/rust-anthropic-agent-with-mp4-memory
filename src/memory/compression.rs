@@ -336,29 +336,29 @@ impl MemoryCompressor {
         Ok(decompressed)
     }
 
-    /// LZ4 compression (placeholder - would need lz4 crate)
+    /// LZ4 compression
     fn compress_lz4(&self, data: &[u8]) -> Result<Vec<u8>> {
-        // For now, fall back to GZIP
-        // In a real implementation, you would use the lz4 crate
-        self.compress_gzip(data)
+        // Use lz4_flex for reliable compression with size prepending
+        Ok(lz4_flex::compress_prepend_size(data))
     }
 
-    /// LZ4 decompression (placeholder)
+    /// LZ4 decompression
     fn decompress_lz4(&self, data: &[u8]) -> Result<Vec<u8>> {
-        // For now, fall back to GZIP
-        self.decompress_gzip(data)
+        // Use lz4_flex for reliable decompression with size prepended
+        lz4_flex::decompress_size_prepended(data)
+            .map_err(|e| AgentError::tool("compression", &format!("LZ4 decompression failed: {}", e)))
     }
 
-    /// ZSTD compression (placeholder - would need zstd crate)
+    /// ZSTD compression
     fn compress_zstd(&self, data: &[u8]) -> Result<Vec<u8>> {
-        // For now, fall back to GZIP
-        self.compress_gzip(data)
+        zstd::bulk::compress(data, 3) // Level 3 for good balance of speed and compression
+            .map_err(|e| AgentError::tool("compression", &format!("ZSTD compression failed: {}", e)))
     }
 
-    /// ZSTD decompression (placeholder)
+    /// ZSTD decompression
     fn decompress_zstd(&self, data: &[u8]) -> Result<Vec<u8>> {
-        // For now, fall back to GZIP
-        self.decompress_gzip(data)
+        zstd::bulk::decompress(data, 1024 * 1024 * 100) // 100MB max decompressed size
+            .map_err(|e| AgentError::tool("compression", &format!("ZSTD decompression failed: {}", e)))
     }
 
     /// Dictionary-based compression
@@ -683,5 +683,106 @@ mod tests {
         assert_eq!(stats.original_size, deserialized.original_size);
         assert_eq!(stats.compressed_size, deserialized.compressed_size);
         assert_eq!(stats.algorithm_used, deserialized.algorithm_used);
+    }
+
+    #[tokio::test]
+    async fn test_memory_compressor_lz4_compression() {
+        let config = CompressionConfig {
+            algorithm: CompressionAlgorithm::Lz4,
+            adaptive: false,
+            min_size_threshold: 10,
+            ..Default::default()
+        };
+        let mut compressor = MemoryCompressor::new(config);
+
+        // Use highly repetitive data that should compress well
+        let data = b"This is a longer text that should be compressed using LZ4 algorithm for testing purposes. ".repeat(20);
+        let (compressed, stats) = compressor.compress(&data).unwrap();
+
+        assert_eq!(stats.algorithm_used, CompressionAlgorithm::Lz4);
+        // LZ4 should compress repetitive data well
+        assert!(stats.compressed_size < stats.original_size,
+                "LZ4 should compress repetitive data: {} >= {}", stats.compressed_size, stats.original_size);
+        assert!(stats.compression_ratio < 1.0);
+
+        // Test decompression
+        let decompressed = compressor.decompress(&compressed, CompressionAlgorithm::Lz4).unwrap();
+        assert_eq!(data, decompressed);
+    }
+
+    #[tokio::test]
+    async fn test_memory_compressor_zstd_compression() {
+        let config = CompressionConfig {
+            algorithm: CompressionAlgorithm::Zstd,
+            adaptive: false,
+            min_size_threshold: 10,
+            ..Default::default()
+        };
+        let mut compressor = MemoryCompressor::new(config);
+
+        // Use highly repetitive data that should compress well
+        let data = b"This is a longer text that should be compressed using ZSTD algorithm for testing purposes. ".repeat(30);
+        let (compressed, stats) = compressor.compress(&data).unwrap();
+
+        assert_eq!(stats.algorithm_used, CompressionAlgorithm::Zstd);
+        // ZSTD should compress repetitive data very well
+        assert!(stats.compressed_size < stats.original_size,
+                "ZSTD should compress repetitive data: {} >= {}", stats.compressed_size, stats.original_size);
+        assert!(stats.compression_ratio < 1.0);
+
+        // Test decompression
+        let decompressed = compressor.decompress(&compressed, CompressionAlgorithm::Zstd).unwrap();
+        assert_eq!(data, decompressed);
+    }
+
+    #[tokio::test]
+    async fn test_compression_algorithm_comparison() {
+        let test_data = b"This is a longer test string that should compress well with all algorithms. It contains repetitive patterns and common words that compression algorithms can take advantage of. ".repeat(50);
+
+        // Test GZIP
+        let mut gzip_compressor = MemoryCompressor::new(CompressionConfig {
+            algorithm: CompressionAlgorithm::Gzip,
+            adaptive: false,
+            min_size_threshold: 10,
+            ..Default::default()
+        });
+        let (gzip_compressed, gzip_stats) = gzip_compressor.compress(&test_data).unwrap();
+
+        // Test LZ4
+        let mut lz4_compressor = MemoryCompressor::new(CompressionConfig {
+            algorithm: CompressionAlgorithm::Lz4,
+            adaptive: false,
+            min_size_threshold: 10,
+            ..Default::default()
+        });
+        let (lz4_compressed, lz4_stats) = lz4_compressor.compress(&test_data).unwrap();
+
+        // Test ZSTD
+        let mut zstd_compressor = MemoryCompressor::new(CompressionConfig {
+            algorithm: CompressionAlgorithm::Zstd,
+            adaptive: false,
+            min_size_threshold: 10,
+            ..Default::default()
+        });
+        let (zstd_compressed, zstd_stats) = zstd_compressor.compress(&test_data).unwrap();
+
+        // All should compress the data
+        assert!(gzip_stats.compressed_size < test_data.len());
+        assert!(lz4_stats.compressed_size < test_data.len());
+        assert!(zstd_stats.compressed_size < test_data.len());
+
+        // All should decompress correctly
+        let gzip_decompressed = gzip_compressor.decompress(&gzip_compressed, CompressionAlgorithm::Gzip).unwrap();
+        let lz4_decompressed = lz4_compressor.decompress(&lz4_compressed, CompressionAlgorithm::Lz4).unwrap();
+        let zstd_decompressed = zstd_compressor.decompress(&zstd_compressed, CompressionAlgorithm::Zstd).unwrap();
+
+        assert_eq!(test_data, gzip_decompressed);
+        assert_eq!(test_data, lz4_decompressed);
+        assert_eq!(test_data, zstd_decompressed);
+
+        println!("Compression ratios for {} bytes:", test_data.len());
+        println!("GZIP: {:.2}%", gzip_stats.compression_ratio * 100.0);
+        println!("LZ4:  {:.2}%", lz4_stats.compression_ratio * 100.0);
+        println!("ZSTD: {:.2}%", zstd_stats.compression_ratio * 100.0);
     }
 }

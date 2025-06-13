@@ -14,6 +14,8 @@ pub struct PluginRegistry {
     plugins: HashMap<String, PluginMetadata>,
     /// Plugin configurations
     configs: HashMap<String, PluginConfig>,
+    /// Plugin installation paths
+    install_paths: HashMap<String, PathBuf>,
     /// Registry file path
     registry_path: Option<PathBuf>,
 }
@@ -71,6 +73,7 @@ impl PluginRegistry {
         Self {
             plugins: HashMap::new(),
             configs: HashMap::new(),
+            install_paths: HashMap::new(),
             registry_path: None,
         }
     }
@@ -80,17 +83,18 @@ impl PluginRegistry {
         Self {
             plugins: HashMap::new(),
             configs: HashMap::new(),
+            install_paths: HashMap::new(),
             registry_path: Some(registry_path),
         }
     }
 
     /// Register a plugin in the registry
-    pub async fn register_plugin(&mut self, metadata: PluginMetadata, config: PluginConfig) -> Result<()> {
+    pub async fn register_plugin(&mut self, metadata: PluginMetadata, config: PluginConfig, install_path: Option<PathBuf>) -> Result<()> {
         let plugin_id = metadata.id.clone();
-        
+
         // Validate plugin metadata
         self.validate_plugin_metadata(&metadata)?;
-        
+
         // Check for conflicts
         if self.plugins.contains_key(&plugin_id) {
             return Err(AgentError::plugin(format!("Plugin already registered: {}", plugin_id)));
@@ -99,6 +103,11 @@ impl PluginRegistry {
         // Register the plugin
         self.plugins.insert(plugin_id.clone(), metadata);
         self.configs.insert(plugin_id.clone(), config);
+
+        // Store install path if provided
+        if let Some(path) = install_path {
+            self.install_paths.insert(plugin_id.clone(), path);
+        }
 
         info!("Registered plugin: {}", plugin_id);
 
@@ -118,6 +127,7 @@ impl PluginRegistry {
 
         self.plugins.remove(plugin_id);
         self.configs.remove(plugin_id);
+        self.install_paths.remove(plugin_id);
 
         info!("Unregistered plugin: {}", plugin_id);
 
@@ -137,6 +147,11 @@ impl PluginRegistry {
     /// Get plugin configuration by ID
     pub fn get_config(&self, plugin_id: &str) -> Option<&PluginConfig> {
         self.configs.get(plugin_id)
+    }
+
+    /// Get plugin install path by ID
+    pub fn get_install_path(&self, plugin_id: &str) -> Option<&PathBuf> {
+        self.install_paths.get(plugin_id)
     }
 
     /// List all registered plugins
@@ -277,7 +292,8 @@ impl PluginRegistry {
 
                 for (plugin_id, entry) in registry_data {
                     self.plugins.insert(plugin_id.clone(), entry.metadata);
-                    self.configs.insert(plugin_id, entry.config);
+                    self.configs.insert(plugin_id.clone(), entry.config);
+                    self.install_paths.insert(plugin_id, entry.install_path);
                 }
 
                 info!("Loaded {} plugins from registry", self.plugins.len());
@@ -293,10 +309,14 @@ impl PluginRegistry {
 
             for (plugin_id, metadata) in &self.plugins {
                 if let Some(config) = self.configs.get(plugin_id) {
+                    let install_path = self.install_paths.get(plugin_id)
+                        .cloned()
+                        .unwrap_or_else(|| PathBuf::from(""));
+
                     let entry = PluginRegistryEntry {
                         metadata: metadata.clone(),
                         config: config.clone(),
-                        install_path: PathBuf::from(""), // TODO: Track actual install paths
+                        install_path,
                         installed_at: chrono::Utc::now(),
                         updated_at: chrono::Utc::now(),
                         status: PluginStatus::Installed,

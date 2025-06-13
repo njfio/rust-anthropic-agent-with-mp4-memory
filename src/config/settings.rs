@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use crate::security::SecurityConfig;
 use crate::utils::error::{AgentError, Result};
 
 /// Main configuration for the agent system
@@ -15,6 +16,8 @@ pub struct AgentConfig {
     pub tools: ToolConfig,
     /// General agent settings
     pub agent: AgentSettings,
+    /// Security configuration (optional)
+    pub security: Option<SecurityConfig>,
 }
 
 /// Anthropic API configuration
@@ -104,6 +107,7 @@ impl Default for AgentConfig {
             memory: MemoryConfig::default(),
             tools: ToolConfig::default(),
             agent: AgentSettings::default(),
+            security: None, // Security is optional by default
         }
     }
 }

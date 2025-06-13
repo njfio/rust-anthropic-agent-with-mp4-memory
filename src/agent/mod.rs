@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::anthropic::{AnthropicClient, ChatMessage, ChatRequest, MessageRole};
 use crate::config::AgentConfig;
 use crate::memory::MemoryManager;
+use crate::security::{SecurityManager, SecurityContext, SecurityEvent};
 use crate::utils::error::{AgentError, Result};
 
 pub use conversation::ConversationManager;
@@ -32,6 +33,8 @@ pub struct Agent {
     tool_orchestrator: ToolOrchestrator,
     /// Conversation manager
     conversation_manager: ConversationManager,
+    /// Security manager
+    security_manager: Option<Arc<SecurityManager>>,
     /// Current conversation ID
     current_conversation_id: Option<String>,
 }
@@ -78,12 +81,29 @@ impl Agent {
         // Create conversation manager
         let conversation_manager = ConversationManager::new(memory_manager.clone());
 
+        // Initialize security manager if security config is provided
+        let security_manager = if let Some(security_config) = &config.security {
+            match SecurityManager::new(security_config.clone()).await {
+                Ok(sm) => {
+                    info!("Security manager initialized successfully");
+                    Some(Arc::new(sm))
+                }
+                Err(e) => {
+                    warn!("Failed to initialize security manager: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             config,
             anthropic_client,
             memory_manager,
             tool_orchestrator,
             conversation_manager,
+            security_manager,
             current_conversation_id: None,
         })
     }
