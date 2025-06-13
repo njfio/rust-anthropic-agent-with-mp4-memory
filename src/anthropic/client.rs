@@ -2,16 +2,17 @@ use reqwest::Client;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
-
 use crate::anthropic::models::{ChatRequest, ChatResponse};
 use crate::config::AnthropicConfig;
 use crate::utils::error::{AgentError, Result};
+use crate::utils::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 
 /// HTTP client for the Anthropic API
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct AnthropicClient {
     client: Client,
     config: AnthropicConfig,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl AnthropicClient {
@@ -26,17 +27,41 @@ impl AnthropicClient {
             .build()
             .map_err(|e| AgentError::config(format!("Failed to create HTTP client: {}", e)))?;
 
-        Ok(Self { client, config })
+        // Configure circuit breaker based on API characteristics
+        let circuit_config = CircuitBreakerConfig {
+            failure_threshold: 5,
+            recovery_timeout: Duration::from_secs(60),
+            success_threshold: 3,
+            failure_window: Duration::from_secs(300),
+        };
+        let circuit_breaker = CircuitBreaker::new(circuit_config);
+
+        Ok(Self {
+            client,
+            config,
+            circuit_breaker,
+        })
     }
 
     /// Send a chat request to the Anthropic API
     pub async fn chat(&self, request: ChatRequest) -> Result<ChatResponse> {
+        // Check circuit breaker before attempting request
+        if !self.circuit_breaker.can_execute().await {
+            return Err(AgentError::anthropic_api(
+                "Circuit breaker is open - API requests are temporarily blocked due to repeated failures".to_string()
+            ));
+        }
+
         let mut retries = 0;
         let max_retries = self.config.max_retries;
 
         loop {
             match self.send_chat_request(&request).await {
-                Ok(response) => return Ok(response),
+                Ok(response) => {
+                    // Record success with circuit breaker
+                    self.circuit_breaker.record_success().await;
+                    return Ok(response);
+                },
                 Err(e) if retries < max_retries && e.is_retryable() => {
                     retries += 1;
 
@@ -60,7 +85,11 @@ impl AnthropicClient {
                     );
                     tokio::time::sleep(final_delay).await;
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    // Record failure with circuit breaker
+                    self.circuit_breaker.record_failure().await;
+                    return Err(e);
+                },
             }
         }
     }
@@ -410,12 +439,26 @@ impl AnthropicClient {
         if config.timeout_seconds != self.config.timeout_seconds {
             self.client = Client::builder()
                 .timeout(Duration::from_secs(config.timeout_seconds))
+                .connect_timeout(Duration::from_secs(30))
+                .tcp_keepalive(Duration::from_secs(60))
+                .pool_idle_timeout(Duration::from_secs(90))
+                .pool_max_idle_per_host(10)
                 .build()
                 .map_err(|e| AgentError::config(format!("Failed to create HTTP client: {}", e)))?;
         }
 
         self.config = config;
         Ok(())
+    }
+
+    /// Get circuit breaker statistics
+    pub async fn get_circuit_breaker_stats(&self) -> crate::utils::circuit_breaker::CircuitBreakerStats {
+        self.circuit_breaker.get_stats().await
+    }
+
+    /// Reset the circuit breaker (useful for testing or manual recovery)
+    pub async fn reset_circuit_breaker(&self) {
+        self.circuit_breaker.reset().await;
     }
 }
 
