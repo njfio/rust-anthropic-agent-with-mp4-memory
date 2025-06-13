@@ -273,4 +273,89 @@ mod tests {
         assert!(extract_string_param(&input, "missing").is_err());
         assert!(extract_optional_string_param(&input, "missing").is_none());
     }
+
+    // Integration tests for tool system
+    use crate::tools::custom_tools::UuidGeneratorTool;
+
+    #[tokio::test]
+    async fn test_tool_registry_basic_operations() {
+        let mut registry = ToolRegistry::new();
+        assert_eq!(registry.len(), 0);
+        assert!(registry.is_empty());
+
+        let uuid_tool = UuidGeneratorTool;
+        registry.register(uuid_tool);
+
+        assert_eq!(registry.len(), 1);
+        assert!(!registry.is_empty());
+        assert!(registry.has_tool("generate_uuid"));
+
+        let tool_names = registry.tool_names();
+        assert_eq!(tool_names.len(), 1);
+        assert_eq!(tool_names[0], "generate_uuid");
+    }
+
+    #[tokio::test]
+    async fn test_uuid_generator_tool_execution() {
+        let uuid_tool = UuidGeneratorTool;
+
+        assert_eq!(uuid_tool.name(), "generate_uuid");
+        assert!(uuid_tool.description().is_some());
+
+        let result = uuid_tool.execute(json!({})).await;
+        assert!(result.is_ok());
+
+        let tool_result = result.unwrap();
+        assert!(!tool_result.is_error);
+        assert_eq!(tool_result.content.len(), 36); // Standard UUID length
+    }
+
+    #[tokio::test]
+    async fn test_tool_registry_execution() {
+        let mut registry = ToolRegistry::new();
+        let uuid_tool = UuidGeneratorTool;
+        registry.register(uuid_tool);
+
+        // Test executing tool by name
+        let result = registry.execute("generate_uuid", json!({})).await;
+        assert!(result.is_ok());
+
+        let tool_result = result.unwrap();
+        assert!(!tool_result.is_error);
+        assert_eq!(tool_result.content.len(), 36);
+
+        // Test executing non-existent tool
+        let result = registry.execute("non_existent_tool", json!({})).await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tool_registry_management() {
+        let mut registry = ToolRegistry::new();
+
+        // Test initial state
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+
+        // Register a tool
+        registry.register(UuidGeneratorTool);
+        assert!(!registry.is_empty());
+        assert_eq!(registry.len(), 1);
+        assert!(registry.has_tool("generate_uuid"));
+
+        // Test tool definitions
+        let definitions = registry.get_definitions();
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0].name, "generate_uuid");
+
+        // Test removing tool
+        let removed = registry.remove("generate_uuid");
+        assert!(removed.is_some());
+        assert!(registry.is_empty());
+
+        // Test clearing
+        registry.register(UuidGeneratorTool);
+        registry.clear();
+        assert!(registry.is_empty());
+    }
 }
