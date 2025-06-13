@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{Agent, AgentBuilder};
+    use crate::AgentBuilder;
     use crate::config::{AgentConfig, AnthropicConfig, MemoryConfig, ToolConfig};
     use crate::config::settings::AgentSettings;
     use tempfile::TempDir;

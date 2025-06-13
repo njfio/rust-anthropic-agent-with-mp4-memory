@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::thread;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// Resource usage statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]

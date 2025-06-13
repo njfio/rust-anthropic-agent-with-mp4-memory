@@ -4,7 +4,7 @@ use tracing::{debug, info};
 
 use crate::anthropic::models::ChatMessage;
 use crate::memory::MemoryManager;
-use crate::utils::error::{AgentError, Result};
+use crate::utils::error::Result;
 
 /// Manages conversations and their persistence
 #[derive(Debug)]

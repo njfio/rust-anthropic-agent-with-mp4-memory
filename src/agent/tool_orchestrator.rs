@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use crate::anthropic::models::{ContentBlock, ToolDefinition};
 use crate::anthropic::tools::AnthropicTool;
@@ -14,7 +14,7 @@ use crate::tools::{
     memory_tools::{ConversationSearchTool, MemorySearchTool, MemorySaveTool, MemoryStatsTool},
     Tool, ToolRegistry, ToolResult,
 };
-use crate::utils::error::{AgentError, Result};
+use crate::utils::error::Result;
 
 /// Orchestrates tool execution and management
 #[derive(Debug)]

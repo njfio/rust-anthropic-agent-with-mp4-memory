@@ -1,5 +1,4 @@
-use reqwest::{Client, RequestBuilder};
-use serde_json::json;
+use reqwest::Client;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 

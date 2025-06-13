@@ -10,7 +10,7 @@ use crate::tools::{
     create_tool_definition, extract_optional_int_param, extract_optional_string_param,
     extract_string_param, Tool, ToolResult,
 };
-use crate::utils::error::{AgentError, Result};
+use crate::utils::error::Result;
 
 /// Tool for searching through the agent's memory
 #[derive(Debug, Clone)]

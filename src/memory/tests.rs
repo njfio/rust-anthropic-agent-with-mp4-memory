@@ -2,7 +2,7 @@
 mod tests {
     use crate::memory::MemoryManager;
     use crate::config::MemoryConfig;
-    use crate::anthropic::models::{ChatMessage, MessageRole};
+    use crate::anthropic::models::ChatMessage;
     use tempfile::TempDir;
     use std::collections::HashMap;
 
