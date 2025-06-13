@@ -40,6 +40,7 @@ pub mod anthropic;
 pub mod cli;
 pub mod config;
 pub mod memory;
+pub mod plugins;
 pub mod tools;
 pub mod utils;
 // pub mod security;  // Temporarily disabled until files are created

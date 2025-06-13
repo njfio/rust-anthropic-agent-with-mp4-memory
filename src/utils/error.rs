@@ -46,6 +46,10 @@ pub enum AgentError {
     #[error("Rate limit exceeded: {message}")]
     RateLimit { message: String },
 
+    /// Plugin system errors
+    #[error("Plugin error: {message}")]
+    Plugin { message: String },
+
     /// Generic errors
     #[error("Agent error: {0}")]
     Generic(#[from] anyhow::Error),
@@ -98,6 +102,13 @@ impl AgentError {
     /// Create a new rate limit error
     pub fn rate_limit<S: Into<String>>(message: S) -> Self {
         Self::RateLimit {
+            message: message.into(),
+        }
+    }
+
+    /// Create a new plugin error
+    pub fn plugin<S: Into<String>>(message: S) -> Self {
+        Self::Plugin {
             message: message.into(),
         }
     }
