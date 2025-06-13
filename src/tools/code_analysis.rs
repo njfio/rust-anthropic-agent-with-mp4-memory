@@ -2410,23 +2410,212 @@ impl CodeAnalysisTool {
     }
 
     fn suggest_performance_optimizations(&self, files: &[Value]) -> Vec<Value> {
-        vec![
-            json!({
-                "optimization": "Use efficient data structures",
-                "description": "Replace Vec with HashMap for frequent lookups",
-                "impact": "high"
-            }),
-            json!({
-                "optimization": "Implement caching",
-                "description": "Cache expensive computations",
-                "impact": "medium"
-            }),
-            json!({
-                "optimization": "Optimize loops",
-                "description": "Use iterators instead of index-based loops",
-                "impact": "low"
-            })
-        ]
+        let mut optimizations = Vec::new();
+
+        for file in files {
+            let content = file["content"].as_str().unwrap_or("");
+            let file_path = file["path"].as_str().unwrap_or("unknown");
+
+            // Analyze for performance anti-patterns
+            optimizations.extend(self.analyze_data_structure_usage(content, file_path));
+            optimizations.extend(self.analyze_loop_patterns(content, file_path));
+            optimizations.extend(self.analyze_memory_usage(content, file_path));
+            optimizations.extend(self.analyze_io_patterns(content, file_path));
+            optimizations.extend(self.analyze_algorithm_complexity(content, file_path));
+        }
+
+        // Sort by impact (high -> medium -> low)
+        optimizations.sort_by(|a, b| {
+            let impact_order = |impact: &str| match impact {
+                "critical" => 0,
+                "high" => 1,
+                "medium" => 2,
+                "low" => 3,
+                _ => 4,
+            };
+            let a_impact = a["impact"].as_str().unwrap_or("low");
+            let b_impact = b["impact"].as_str().unwrap_or("low");
+            impact_order(a_impact).cmp(&impact_order(b_impact))
+        });
+
+        optimizations
+    }
+
+    fn analyze_data_structure_usage(&self, content: &str, file_path: &str) -> Vec<Value> {
+        let mut suggestions = Vec::new();
+
+        // Check for inefficient Vec usage patterns
+        if content.contains("vec.iter().find(") && content.matches("vec.iter().find(").count() > 2 {
+            suggestions.push(json!({
+                "optimization": "Replace Vec with HashMap for lookups",
+                "description": "Multiple Vec::find() calls detected. Consider using HashMap for O(1) lookups",
+                "file": file_path,
+                "impact": "high",
+                "pattern": "vec.iter().find()",
+                "suggestion": "Use HashMap<K, V> or BTreeMap<K, V> for frequent key-based lookups",
+                "estimated_improvement": "O(n) -> O(1) lookup time"
+            }));
+        }
+
+        // Check for String concatenation in loops
+        if content.contains("for ") && content.contains("push_str(") {
+            suggestions.push(json!({
+                "optimization": "Use String capacity pre-allocation",
+                "description": "String concatenation in loop detected. Pre-allocate capacity to avoid reallocations",
+                "file": file_path,
+                "impact": "medium",
+                "pattern": "String concatenation in loop",
+                "suggestion": "Use String::with_capacity() or consider using format! macro",
+                "estimated_improvement": "Reduced memory allocations"
+            }));
+        }
+
+        // Check for unnecessary cloning
+        if content.matches(".clone()").count() > 5 {
+            suggestions.push(json!({
+                "optimization": "Reduce unnecessary cloning",
+                "description": "Excessive cloning detected. Consider using references or Cow<T>",
+                "file": file_path,
+                "impact": "medium",
+                "pattern": "Frequent .clone() calls",
+                "suggestion": "Use &T references, Rc<T>, or Cow<T> where appropriate",
+                "estimated_improvement": "Reduced memory usage and allocation overhead"
+            }));
+        }
+
+        suggestions
+    }
+
+    fn analyze_loop_patterns(&self, content: &str, file_path: &str) -> Vec<Value> {
+        let mut suggestions = Vec::new();
+
+        // Check for index-based loops that could use iterators
+        if content.contains("for i in 0..") && content.contains("[i]") {
+            suggestions.push(json!({
+                "optimization": "Use iterators instead of index-based loops",
+                "description": "Index-based loop detected. Iterators are more idiomatic and often faster",
+                "file": file_path,
+                "impact": "low",
+                "pattern": "for i in 0..len",
+                "suggestion": "Use .iter(), .enumerate(), or .zip() methods",
+                "estimated_improvement": "Better performance and bounds checking elimination"
+            }));
+        }
+
+        // Check for nested loops that might benefit from different algorithms
+        let nested_loop_count = content.matches("for ").count();
+        if nested_loop_count > 2 && content.contains("for ") && content.lines().any(|line| line.trim().starts_with("for ")) {
+            suggestions.push(json!({
+                "optimization": "Consider algorithmic improvements for nested loops",
+                "description": "Multiple nested loops detected. Consider if algorithm can be optimized",
+                "file": file_path,
+                "impact": "high",
+                "pattern": "Nested loops",
+                "suggestion": "Consider using hash maps, sorting, or other algorithms to reduce complexity",
+                "estimated_improvement": "Potential O(n²) -> O(n log n) or O(n) improvement"
+            }));
+        }
+
+        suggestions
+    }
+
+    fn analyze_memory_usage(&self, content: &str, file_path: &str) -> Vec<Value> {
+        let mut suggestions = Vec::new();
+
+        // Check for large stack allocations
+        if content.contains("Vec::with_capacity(") {
+            let capacity_matches: Vec<&str> = content.matches("Vec::with_capacity(").collect();
+            if capacity_matches.len() > 3 {
+                suggestions.push(json!({
+                    "optimization": "Consider using Box<[T]> for large allocations",
+                    "description": "Multiple large Vec allocations detected",
+                    "file": file_path,
+                    "impact": "medium",
+                    "pattern": "Large Vec allocations",
+                    "suggestion": "Use Box<[T]> for fixed-size data or consider streaming processing",
+                    "estimated_improvement": "Reduced memory fragmentation"
+                }));
+            }
+        }
+
+        // Check for potential memory leaks (missing Drop implementations)
+        if content.contains("Box::new(") && !content.contains("impl Drop") {
+            suggestions.push(json!({
+                "optimization": "Implement proper resource cleanup",
+                "description": "Manual memory management detected without Drop implementation",
+                "file": file_path,
+                "impact": "high",
+                "pattern": "Manual memory management",
+                "suggestion": "Implement Drop trait for proper resource cleanup",
+                "estimated_improvement": "Prevent memory leaks and resource exhaustion"
+            }));
+        }
+
+        suggestions
+    }
+
+    fn analyze_io_patterns(&self, content: &str, file_path: &str) -> Vec<Value> {
+        let mut suggestions = Vec::new();
+
+        // Check for synchronous I/O in async context
+        if content.contains("async fn") && (content.contains("std::fs::read") || content.contains("std::fs::write")) {
+            suggestions.push(json!({
+                "optimization": "Use async I/O operations",
+                "description": "Synchronous I/O detected in async function",
+                "file": file_path,
+                "impact": "high",
+                "pattern": "Blocking I/O in async context",
+                "suggestion": "Use tokio::fs or async-std for non-blocking I/O",
+                "estimated_improvement": "Better async runtime utilization"
+            }));
+        }
+
+        // Check for multiple small file operations
+        if content.matches("File::open").count() > 3 {
+            suggestions.push(json!({
+                "optimization": "Batch file operations",
+                "description": "Multiple file operations detected",
+                "file": file_path,
+                "impact": "medium",
+                "pattern": "Multiple file operations",
+                "suggestion": "Consider batching operations or using memory-mapped files",
+                "estimated_improvement": "Reduced system call overhead"
+            }));
+        }
+
+        suggestions
+    }
+
+    fn analyze_algorithm_complexity(&self, content: &str, file_path: &str) -> Vec<Value> {
+        let mut suggestions = Vec::new();
+
+        // Check for potential O(n²) algorithms
+        if content.contains("sort()") && content.contains("for ") {
+            suggestions.push(json!({
+                "optimization": "Consider more efficient sorting algorithms",
+                "description": "Sorting operation in loop context detected",
+                "file": file_path,
+                "impact": "high",
+                "pattern": "Sorting in loop",
+                "suggestion": "Sort once outside loop or use different data structure",
+                "estimated_improvement": "Reduced algorithmic complexity"
+            }));
+        }
+
+        // Check for linear search patterns that could use binary search
+        if content.contains("iter().find(") && content.contains("sort") {
+            suggestions.push(json!({
+                "optimization": "Use binary search for sorted data",
+                "description": "Linear search on potentially sorted data",
+                "file": file_path,
+                "impact": "medium",
+                "pattern": "Linear search on sorted data",
+                "suggestion": "Use binary_search() or binary_search_by() for O(log n) lookup",
+                "estimated_improvement": "O(n) -> O(log n) search time"
+            }));
+        }
+
+        suggestions
     }
 
     fn calculate_performance_score(&self, hotspots: &[Value]) -> f64 {
@@ -2435,36 +2624,313 @@ impl CodeAnalysisTool {
     }
 
     fn suggest_algorithmic_improvements(&self, files: &[Value]) -> Vec<String> {
-        vec![
-            "🚀 Consider using binary search for sorted data".to_string(),
-            "📊 Implement lazy loading for large datasets".to_string(),
-            "⚡ Use parallel processing for CPU-intensive tasks".to_string(),
-            "🔄 Implement connection pooling for database operations".to_string()
-        ]
+        let mut improvements = Vec::new();
+
+        for file in files {
+            let content = file["content"].as_str().unwrap_or("");
+            let file_path = file["path"].as_str().unwrap_or("unknown");
+
+            // Analyze for algorithmic improvements
+            improvements.extend(self.analyze_sorting_algorithms(content, file_path));
+            improvements.extend(self.analyze_search_algorithms(content, file_path));
+            improvements.extend(self.analyze_data_processing_patterns(content, file_path));
+            improvements.extend(self.analyze_concurrency_opportunities(content, file_path));
+        }
+
+        // Remove duplicates and limit to most impactful suggestions
+        improvements.sort();
+        improvements.dedup();
+        improvements.truncate(10);
+
+        improvements
+    }
+
+    fn analyze_sorting_algorithms(&self, content: &str, file_path: &str) -> Vec<String> {
+        let mut suggestions = Vec::new();
+
+        if content.contains(".sort()") {
+            suggestions.push(format!("🚀 {} Consider using sort_unstable() for better performance when stability isn't required", file_path));
+        }
+
+        if content.contains("sort_by(") && content.contains("cmp(") {
+            suggestions.push(format!("📊 {} Use sort_by_key() instead of sort_by() when comparing by a single field", file_path));
+        }
+
+        if content.matches("sort").count() > 2 {
+            suggestions.push(format!("⚡ {} Multiple sorting operations detected - consider sorting once and maintaining order", file_path));
+        }
+
+        suggestions
+    }
+
+    fn analyze_search_algorithms(&self, content: &str, file_path: &str) -> Vec<String> {
+        let mut suggestions = Vec::new();
+
+        if content.contains("iter().find(") && content.contains("sort") {
+            suggestions.push(format!("🔍 {} Use binary_search() on sorted data instead of linear search", file_path));
+        }
+
+        if content.matches("iter().find(").count() > 3 {
+            suggestions.push(format!("📈 {} Multiple linear searches detected - consider using HashMap or BTreeMap", file_path));
+        }
+
+        if content.contains("contains(") && content.contains("Vec") {
+            suggestions.push(format!("🗂️ {} Use HashSet for membership testing instead of Vec::contains()", file_path));
+        }
+
+        suggestions
+    }
+
+    fn analyze_data_processing_patterns(&self, content: &str, file_path: &str) -> Vec<String> {
+        let mut suggestions = Vec::new();
+
+        if content.contains("collect::<Vec<_>>()") && content.contains("iter()") {
+            suggestions.push(format!("🔄 {} Consider using iterator chains without intermediate collections", file_path));
+        }
+
+        if content.matches("map(").count() > 2 && content.contains("collect()") {
+            suggestions.push(format!("⚡ {} Chain multiple map operations before collecting", file_path));
+        }
+
+        if content.contains("filter(") && content.contains("map(") {
+            suggestions.push(format!("🎯 {} Use filter_map() to combine filtering and mapping", file_path));
+        }
+
+        if content.contains("for ") && content.contains("push(") {
+            suggestions.push(format!("📊 {} Consider using iterator methods instead of manual loops", file_path));
+        }
+
+        suggestions
+    }
+
+    fn analyze_concurrency_opportunities(&self, content: &str, file_path: &str) -> Vec<String> {
+        let mut suggestions = Vec::new();
+
+        if content.contains("for ") && (content.contains("expensive") || content.contains("compute") || content.contains("process")) {
+            suggestions.push(format!("🚀 {} Consider using rayon for parallel processing of independent operations", file_path));
+        }
+
+        if content.contains("async fn") && content.contains("await") && content.matches("await").count() > 3 {
+            suggestions.push(format!("⚡ {} Use join! or select! for concurrent async operations", file_path));
+        }
+
+        if content.contains("Mutex") && content.contains("lock()") {
+            suggestions.push(format!("🔒 {} Consider using RwLock for read-heavy workloads", file_path));
+        }
+
+        if content.contains("Arc<Mutex<") {
+            suggestions.push(format!("🔄 {} Consider using channels for communication instead of shared state", file_path));
+        }
+
+        suggestions
     }
 
     fn suggest_memory_optimizations(&self, files: &[Value]) -> Vec<String> {
-        vec![
-            "💾 Use references instead of cloning large objects".to_string(),
-            "🗑️ Implement proper resource cleanup".to_string(),
-            "📦 Use Box<T> for large stack allocations".to_string(),
-            "🔄 Consider using Cow<T> for copy-on-write scenarios".to_string()
-        ]
+        let mut optimizations = Vec::new();
+
+        for file in files {
+            let content = file["content"].as_str().unwrap_or("");
+            let file_path = file["path"].as_str().unwrap_or("unknown");
+
+            // Analyze for memory optimization opportunities
+            optimizations.extend(self.analyze_allocation_patterns(content, file_path));
+            optimizations.extend(self.analyze_ownership_patterns(content, file_path));
+            optimizations.extend(self.analyze_collection_usage(content, file_path));
+            optimizations.extend(self.analyze_string_handling(content, file_path));
+        }
+
+        // Remove duplicates and prioritize
+        optimizations.sort();
+        optimizations.dedup();
+        optimizations.truncate(12);
+
+        optimizations
+    }
+
+    fn analyze_allocation_patterns(&self, content: &str, file_path: &str) -> Vec<String> {
+        let mut suggestions = Vec::new();
+
+        if content.matches("Box::new(").count() > 3 {
+            suggestions.push(format!("📦 {} Consider using stack allocation or pre-allocated pools for frequent Box allocations", file_path));
+        }
+
+        if content.contains("Vec::new()") && content.contains("push(") {
+            suggestions.push(format!("📏 {} Use Vec::with_capacity() when final size is known", file_path));
+        }
+
+        if content.contains("String::new()") && content.contains("push_str(") {
+            suggestions.push(format!("📝 {} Use String::with_capacity() for string building", file_path));
+        }
+
+        if content.matches("vec!").count() > 5 {
+            suggestions.push(format!("🗂️ {} Consider using arrays or const slices for static data", file_path));
+        }
+
+        suggestions
+    }
+
+    fn analyze_ownership_patterns(&self, content: &str, file_path: &str) -> Vec<String> {
+        let mut suggestions = Vec::new();
+
+        if content.matches(".clone()").count() > 5 {
+            suggestions.push(format!("💾 {} Reduce cloning by using references (&T) or Rc<T>/Arc<T>", file_path));
+        }
+
+        if content.contains("to_owned()") || content.contains("to_string()") {
+            suggestions.push(format!("🔄 {} Consider using Cow<str> for conditional ownership", file_path));
+        }
+
+        if content.contains("Arc<") && content.contains("clone()") {
+            suggestions.push(format!("🔗 {} Arc cloning is cheap - avoid unnecessary intermediate variables", file_path));
+        }
+
+        if content.contains("Rc<RefCell<") {
+            suggestions.push(format!("🔒 {} Consider redesigning to avoid interior mutability", file_path));
+        }
+
+        suggestions
+    }
+
+    fn analyze_collection_usage(&self, content: &str, file_path: &str) -> Vec<String> {
+        let mut suggestions = Vec::new();
+
+        if content.contains("HashMap::new()") && !content.contains("with_capacity") {
+            suggestions.push(format!("🗺️ {} Use HashMap::with_capacity() when size is predictable", file_path));
+        }
+
+        if content.contains("BTreeMap") && content.contains("get(") && content.matches("get(").count() > 3 {
+            suggestions.push(format!("🌳 {} Consider HashMap for better lookup performance if ordering isn't needed", file_path));
+        }
+
+        if content.contains("Vec") && content.contains("remove(0)") {
+            suggestions.push(format!("📋 {} Use VecDeque for efficient front removal", file_path));
+        }
+
+        if content.contains("HashSet") && content.contains("iter().collect()") {
+            suggestions.push(format!("🎯 {} Use from_iter() or extend() instead of iter().collect()", file_path));
+        }
+
+        suggestions
+    }
+
+    fn analyze_string_handling(&self, content: &str, file_path: &str) -> Vec<String> {
+        let mut suggestions = Vec::new();
+
+        if content.contains("format!(") && content.contains("&format!(") {
+            suggestions.push(format!("📝 {} Avoid temporary String allocation in format! chains", file_path));
+        }
+
+        if content.matches("String::from(").count() > 3 {
+            suggestions.push(format!("🔤 {} Use &str when possible, String only when ownership is needed", file_path));
+        }
+
+        if content.contains("split(") && content.contains("collect()") {
+            suggestions.push(format!("✂️ {} Consider using split() iterator directly instead of collecting", file_path));
+        }
+
+        if content.contains("replace(") && content.contains("replace(") {
+            suggestions.push(format!("🔄 {} Chain string operations or use regex for complex replacements", file_path));
+        }
+
+        suggestions
     }
 
     fn generate_benchmarking_suggestions(&self, files: &[Value]) -> Vec<Value> {
-        vec![
-            json!({
-                "benchmark": "Function Performance",
-                "description": "Benchmark critical functions with criterion.rs",
-                "priority": "high"
-            }),
-            json!({
-                "benchmark": "Memory Usage",
-                "description": "Profile memory usage with valgrind or similar tools",
-                "priority": "medium"
-            })
-        ]
+        let mut benchmarks = Vec::new();
+
+        for file in files {
+            let content = file["content"].as_str().unwrap_or("");
+            let file_path = file["path"].as_str().unwrap_or("unknown");
+
+            // Analyze for benchmarking opportunities
+            benchmarks.extend(self.identify_performance_critical_functions(content, file_path));
+            benchmarks.extend(self.identify_memory_intensive_operations(content, file_path));
+            benchmarks.extend(self.identify_io_operations(content, file_path));
+            benchmarks.extend(self.identify_algorithmic_hotspots(content, file_path));
+        }
+
+        // Sort by priority and remove duplicates
+        benchmarks.sort_by(|a, b| {
+            let priority_order = |p: &str| match p {
+                "critical" => 0,
+                "high" => 1,
+                "medium" => 2,
+                "low" => 3,
+                _ => 4,
+            };
+            let a_priority = a["priority"].as_str().unwrap_or("low");
+            let b_priority = b["priority"].as_str().unwrap_or("low");
+            priority_order(a_priority).cmp(&priority_order(b_priority))
+        });
+
+        benchmarks.truncate(8);
+        benchmarks
+    }
+
+    fn identify_performance_critical_functions(&self, content: &str, file_path: &str) -> Vec<Value> {
+        let mut benchmarks = Vec::new();
+
+        // Look for functions that might be called frequently
+        if content.contains("pub fn") && (content.contains("loop") || content.contains("for ")) {
+            benchmarks.push(json!({
+                "benchmark": "Hot path function performance",
+                "description": format!("Benchmark functions with loops in {}", file_path),
+                "file": file_path,
+                "priority": "high",
+                "category": "cpu",
+                "suggested_tool": "criterion"
+            }));
+        }
+
+        benchmarks
+    }
+
+    fn identify_memory_intensive_operations(&self, content: &str, file_path: &str) -> Vec<Value> {
+        let mut benchmarks = Vec::new();
+
+        if content.contains("Vec::with_capacity(") || content.contains("HashMap::with_capacity(") {
+            benchmarks.push(json!({
+                "benchmark": "Memory allocation patterns",
+                "description": format!("Profile memory usage patterns in {}", file_path),
+                "file": file_path,
+                "priority": "medium",
+                "category": "memory"
+            }));
+        }
+
+        benchmarks
+    }
+
+    fn identify_io_operations(&self, content: &str, file_path: &str) -> Vec<Value> {
+        let mut benchmarks = Vec::new();
+
+        if content.contains("File::") || content.contains("fs::") {
+            benchmarks.push(json!({
+                "benchmark": "File I/O performance",
+                "description": format!("Benchmark file operations in {}", file_path),
+                "file": file_path,
+                "priority": "high",
+                "category": "io"
+            }));
+        }
+
+        benchmarks
+    }
+
+    fn identify_algorithmic_hotspots(&self, content: &str, file_path: &str) -> Vec<Value> {
+        let mut benchmarks = Vec::new();
+
+        if content.contains("sort") {
+            benchmarks.push(json!({
+                "benchmark": "Sorting algorithm performance",
+                "description": format!("Benchmark sorting operations in {}", file_path),
+                "file": file_path,
+                "priority": "medium",
+                "category": "algorithm"
+            }));
+        }
+
+        benchmarks
     }
 
     fn analyze_test_coverage(&self, files: &[Value]) -> Value {
