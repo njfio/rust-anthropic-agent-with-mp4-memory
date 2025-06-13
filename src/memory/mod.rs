@@ -1,6 +1,9 @@
 // Using rust-synaptic directly as the memory system
 pub mod search;
 
+#[cfg(test)]
+mod tests;
+
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use std::sync::Arc;

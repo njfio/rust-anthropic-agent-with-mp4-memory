@@ -2,6 +2,9 @@ pub mod conversation;
 pub mod memory_manager;
 pub mod tool_orchestrator;
 
+#[cfg(test)]
+mod tests;
+
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
