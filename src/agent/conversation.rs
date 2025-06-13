@@ -40,7 +40,10 @@ impl ConversationManager {
 
         // Get current conversation and return its messages
         if let Some(conversation) = memory_manager.get_current_conversation() {
-            debug!("Retrieved {} messages from conversation history", conversation.messages.len());
+            debug!(
+                "Retrieved {} messages from conversation history",
+                conversation.messages.len()
+            );
             Ok(conversation.messages.clone())
         } else {
             debug!("No current conversation found");
@@ -49,13 +52,20 @@ impl ConversationManager {
     }
 
     /// Get a specific conversation
-    pub async fn get_conversation(&self, conversation_id: &str) -> Result<Option<crate::memory::Conversation>> {
+    pub async fn get_conversation(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Option<crate::memory::Conversation>> {
         let memory_manager = self.memory_manager.lock().await;
         memory_manager.get_conversation(conversation_id).await
     }
 
     /// Search conversations
-    pub async fn search_conversations(&self, query: &str, limit: usize) -> Result<Vec<crate::memory::Conversation>> {
+    pub async fn search_conversations(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::memory::Conversation>> {
         let memory_manager = self.memory_manager.lock().await;
         memory_manager.search_conversations(query, limit).await
     }
@@ -63,7 +73,9 @@ impl ConversationManager {
     /// Get current conversation ID
     pub async fn current_conversation_id(&self) -> Option<String> {
         let memory_manager = self.memory_manager.lock().await;
-        memory_manager.get_current_conversation_id().map(|s| s.to_string())
+        memory_manager
+            .get_current_conversation_id()
+            .map(|s| s.to_string())
     }
 
     /// Set current conversation ID (not implemented for simple memory)

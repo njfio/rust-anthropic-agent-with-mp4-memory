@@ -5,48 +5,48 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::utils::error::{AgentError, Result};
 use super::{SessionConfig, SessionStorageBackend};
+use crate::utils::error::{AgentError, Result};
 
 /// Session manager trait
 #[async_trait]
 pub trait SessionManager: Send + Sync {
     /// Create a new session
     async fn create_session(&self, user_id: &str, ip_address: Option<String>) -> Result<String>;
-    
+
     /// Get session information
     async fn get_session(&self, session_id: &str) -> Result<Option<Session>>;
-    
+
     /// Update session
     async fn update_session(&self, session: Session) -> Result<()>;
-    
+
     /// Terminate a session
     async fn terminate_session(&self, session_id: &str) -> Result<()>;
-    
+
     /// Check if session is valid
     async fn is_session_valid(&self, session_id: &str) -> Result<bool>;
-    
+
     /// Refresh session (extend expiration)
     async fn refresh_session(&self, session_id: &str) -> Result<()>;
-    
+
     /// Get all sessions for a user
     async fn get_user_sessions(&self, user_id: &str) -> Result<Vec<Session>>;
-    
+
     /// Terminate all sessions for a user
     async fn terminate_user_sessions(&self, user_id: &str) -> Result<u32>;
-    
+
     /// Clean up expired sessions
     async fn cleanup_expired_sessions(&self) -> Result<u32>;
-    
+
     /// Get session statistics
     async fn get_session_statistics(&self) -> Result<SessionStatistics>;
-    
+
     /// Set session data
     async fn set_session_data(&self, session_id: &str, key: &str, value: String) -> Result<()>;
-    
+
     /// Get session data
     async fn get_session_data(&self, session_id: &str, key: &str) -> Result<Option<String>>;
-    
+
     /// Remove session data
     async fn remove_session_data(&self, session_id: &str, key: &str) -> Result<()>;
 }
@@ -155,18 +155,21 @@ impl MemorySessionManager {
     /// Update session statistics
     async fn update_statistics(&self, operation: StatisticsOperation) {
         let mut stats = self.statistics.write().await;
-        
+
         match operation {
-            StatisticsOperation::SessionCreated { user_id, ip_address } => {
+            StatisticsOperation::SessionCreated {
+                user_id,
+                ip_address,
+            } => {
                 stats.active_sessions += 1;
                 stats.sessions_created_today += 1;
-                
+
                 if stats.active_sessions > stats.peak_concurrent_sessions {
                     stats.peak_concurrent_sessions = stats.active_sessions;
                 }
-                
+
                 *stats.sessions_by_user.entry(user_id).or_insert(0) += 1;
-                
+
                 if let Some(ip) = ip_address {
                     *stats.sessions_by_ip.entry(ip).or_insert(0) += 1;
                 }
@@ -212,7 +215,10 @@ impl MemorySessionManager {
 
 /// Statistics operation types
 enum StatisticsOperation {
-    SessionCreated { user_id: String, ip_address: Option<String> },
+    SessionCreated {
+        user_id: String,
+        ip_address: Option<String>,
+    },
     SessionTerminated,
     SessionExpired,
 }
@@ -225,7 +231,7 @@ impl SessionManager for MemorySessionManager {
 
         let session_id = Uuid::new_v4().to_string();
         let now = SystemTime::now();
-        
+
         let session = Session {
             id: session_id.clone(),
             user_id: user_id.to_string(),
@@ -246,14 +252,18 @@ impl SessionManager for MemorySessionManager {
 
         // Update user sessions mapping
         let mut user_sessions = self.user_sessions.write().await;
-        user_sessions.entry(user_id.to_string()).or_insert_with(Vec::new).push(session_id.clone());
+        user_sessions
+            .entry(user_id.to_string())
+            .or_insert_with(Vec::new)
+            .push(session_id.clone());
         drop(user_sessions);
 
         // Update statistics
         self.update_statistics(StatisticsOperation::SessionCreated {
             user_id: user_id.to_string(),
             ip_address,
-        }).await;
+        })
+        .await;
 
         Ok(session_id)
     }
@@ -271,10 +281,10 @@ impl SessionManager for MemorySessionManager {
 
     async fn terminate_session(&self, session_id: &str) -> Result<()> {
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(mut session) = sessions.remove(session_id) {
             session.status = SessionStatus::Terminated;
-            
+
             // Remove from user sessions mapping
             let mut user_sessions = self.user_sessions.write().await;
             if let Some(session_ids) = user_sessions.get_mut(&session.user_id) {
@@ -284,9 +294,10 @@ impl SessionManager for MemorySessionManager {
                 }
             }
             drop(user_sessions);
-            
+
             // Update statistics
-            self.update_statistics(StatisticsOperation::SessionTerminated).await;
+            self.update_statistics(StatisticsOperation::SessionTerminated)
+                .await;
         }
 
         Ok(())
@@ -294,16 +305,16 @@ impl SessionManager for MemorySessionManager {
 
     async fn is_session_valid(&self, session_id: &str) -> Result<bool> {
         let sessions = self.sessions.read().await;
-        
+
         if let Some(session) = sessions.get(session_id) {
             if session.status != SessionStatus::Active {
                 return Ok(false);
             }
-            
+
             if self.is_session_expired(session) {
                 return Ok(false);
             }
-            
+
             Ok(true)
         } else {
             Ok(false)
@@ -312,7 +323,7 @@ impl SessionManager for MemorySessionManager {
 
     async fn refresh_session(&self, session_id: &str) -> Result<()> {
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(session) = sessions.get_mut(session_id) {
             if session.status == SessionStatus::Active && !self.is_session_expired(session) {
                 session.last_accessed = SystemTime::now();
@@ -326,7 +337,7 @@ impl SessionManager for MemorySessionManager {
     async fn get_user_sessions(&self, user_id: &str) -> Result<Vec<Session>> {
         let user_sessions = self.user_sessions.read().await;
         let sessions = self.sessions.read().await;
-        
+
         if let Some(session_ids) = user_sessions.get(user_id) {
             let user_session_list: Vec<Session> = session_ids
                 .iter()
@@ -356,7 +367,7 @@ impl SessionManager for MemorySessionManager {
     async fn cleanup_expired_sessions(&self) -> Result<u32> {
         let mut sessions = self.sessions.write().await;
         let mut user_sessions = self.user_sessions.write().await;
-        
+
         let mut expired_sessions = Vec::new();
         let now = SystemTime::now();
 
@@ -387,7 +398,8 @@ impl SessionManager for MemorySessionManager {
 
         // Update statistics
         for _ in 0..cleanup_count {
-            self.update_statistics(StatisticsOperation::SessionExpired).await;
+            self.update_statistics(StatisticsOperation::SessionExpired)
+                .await;
         }
 
         Ok(cleanup_count)
@@ -400,13 +412,15 @@ impl SessionManager for MemorySessionManager {
 
     async fn set_session_data(&self, session_id: &str, key: &str, value: String) -> Result<()> {
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(session) = sessions.get_mut(session_id) {
             if session.status == SessionStatus::Active && !self.is_session_expired(session) {
                 session.data.insert(key.to_string(), value);
                 session.last_accessed = SystemTime::now();
             } else {
-                return Err(AgentError::validation("Session is not active or has expired".to_string()));
+                return Err(AgentError::validation(
+                    "Session is not active or has expired".to_string(),
+                ));
             }
         } else {
             return Err(AgentError::validation("Session not found".to_string()));
@@ -417,13 +431,15 @@ impl SessionManager for MemorySessionManager {
 
     async fn get_session_data(&self, session_id: &str, key: &str) -> Result<Option<String>> {
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(session) = sessions.get_mut(session_id) {
             if session.status == SessionStatus::Active && !self.is_session_expired(session) {
                 session.last_accessed = SystemTime::now();
                 Ok(session.data.get(key).cloned())
             } else {
-                Err(AgentError::validation("Session is not active or has expired".to_string()))
+                Err(AgentError::validation(
+                    "Session is not active or has expired".to_string(),
+                ))
             }
         } else {
             Err(AgentError::validation("Session not found".to_string()))
@@ -432,13 +448,15 @@ impl SessionManager for MemorySessionManager {
 
     async fn remove_session_data(&self, session_id: &str, key: &str) -> Result<()> {
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(session) = sessions.get_mut(session_id) {
             if session.status == SessionStatus::Active && !self.is_session_expired(session) {
                 session.data.remove(key);
                 session.last_accessed = SystemTime::now();
             } else {
-                return Err(AgentError::validation("Session is not active or has expired".to_string()));
+                return Err(AgentError::validation(
+                    "Session is not active or has expired".to_string(),
+                ));
             }
         } else {
             return Err(AgentError::validation("Session not found".to_string()));
@@ -451,9 +469,9 @@ impl SessionManager for MemorySessionManager {
 /// Create a session manager
 pub async fn create_session_manager(config: &SessionConfig) -> Result<Box<dyn SessionManager>> {
     match config.storage_backend {
-        SessionStorageBackend::Memory => {
-            Ok(Box::new(MemorySessionManager::new(config.clone())))
-        }
-        _ => Err(AgentError::validation("Session storage backend not supported".to_string())),
+        SessionStorageBackend::Memory => Ok(Box::new(MemorySessionManager::new(config.clone()))),
+        _ => Err(AgentError::validation(
+            "Session storage backend not supported".to_string(),
+        )),
     }
 }

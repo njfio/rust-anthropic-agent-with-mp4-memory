@@ -1,6 +1,6 @@
+use argon2::{password_hash::SaltString, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use async_trait::async_trait;
-use jsonwebtoken::{encode, decode, Header, Validation, Algorithm, EncodingKey, DecodingKey};
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::SaltString};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -8,45 +8,50 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+use super::{JwtAlgorithm, JwtConfig, PasswordPolicyConfig};
 use crate::utils::error::{AgentError, Result};
-use super::{JwtConfig, JwtAlgorithm, PasswordPolicyConfig};
 
 /// Authentication service trait
 #[async_trait]
 pub trait AuthenticationService: Send + Sync {
     /// Authenticate a user with username and password
     async fn authenticate(&self, username: &str, password: &str) -> Result<AuthenticationResult>;
-    
+
     /// Generate a JWT token for a user
     async fn generate_token(&self, user_id: &str, roles: Vec<String>) -> Result<TokenPair>;
-    
+
     /// Validate a JWT token
     async fn validate_token(&self, token: &str) -> Result<TokenClaims>;
-    
+
     /// Refresh a JWT token
     async fn refresh_token(&self, refresh_token: &str) -> Result<TokenPair>;
-    
+
     /// Hash a password
     async fn hash_password(&self, password: &str) -> Result<String>;
-    
+
     /// Verify a password against a hash
     async fn verify_password(&self, password: &str, hash: &str) -> Result<bool>;
-    
+
     /// Validate password against policy
     async fn validate_password_policy(&self, password: &str) -> Result<PasswordValidationResult>;
-    
+
     /// Register a new user
     async fn register_user(&self, user_data: UserRegistrationData) -> Result<User>;
-    
+
     /// Get user by username
     async fn get_user(&self, username: &str) -> Result<Option<User>>;
-    
+
     /// Update user password
-    async fn update_password(&self, user_id: &str, old_password: &str, new_password: &str) -> Result<()>;
-    
+    async fn update_password(
+        &self,
+        user_id: &str,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<()>;
+
     /// Revoke a token
     async fn revoke_token(&self, token: &str) -> Result<()>;
-    
+
     /// Check if token is revoked
     async fn is_token_revoked(&self, token: &str) -> Result<bool>;
 }
@@ -223,7 +228,7 @@ impl JwtAuthenticationService {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let exp = if token_type == "refresh" {
             now + self.config.refresh_expiration_seconds
         } else {
@@ -247,18 +252,32 @@ impl JwtAuthenticationService {
     /// Validate password strength
     fn calculate_password_strength(&self, password: &str) -> u8 {
         let mut score = 0u8;
-        
+
         // Length scoring
-        if password.len() >= 8 { score += 20; }
-        if password.len() >= 12 { score += 10; }
-        if password.len() >= 16 { score += 10; }
-        
+        if password.len() >= 8 {
+            score += 20;
+        }
+        if password.len() >= 12 {
+            score += 10;
+        }
+        if password.len() >= 16 {
+            score += 10;
+        }
+
         // Character variety scoring
-        if password.chars().any(|c| c.is_uppercase()) { score += 15; }
-        if password.chars().any(|c| c.is_lowercase()) { score += 15; }
-        if password.chars().any(|c| c.is_numeric()) { score += 15; }
-        if password.chars().any(|c| !c.is_alphanumeric()) { score += 15; }
-        
+        if password.chars().any(|c| c.is_uppercase()) {
+            score += 15;
+        }
+        if password.chars().any(|c| c.is_lowercase()) {
+            score += 15;
+        }
+        if password.chars().any(|c| c.is_numeric()) {
+            score += 15;
+        }
+        if password.chars().any(|c| !c.is_alphanumeric()) {
+            score += 15;
+        }
+
         score.min(100)
     }
 
@@ -266,8 +285,16 @@ impl JwtAuthenticationService {
     fn is_common_password(&self, password: &str) -> bool {
         // Simple check against common passwords
         const COMMON_PASSWORDS: &[&str] = &[
-            "password", "123456", "password123", "admin", "qwerty",
-            "letmein", "welcome", "monkey", "1234567890", "abc123"
+            "password",
+            "123456",
+            "password123",
+            "admin",
+            "qwerty",
+            "letmein",
+            "welcome",
+            "monkey",
+            "1234567890",
+            "abc123",
         ];
 
         COMMON_PASSWORDS.contains(&password.to_lowercase().as_str())
@@ -280,35 +307,65 @@ impl JwtAuthenticationService {
         for role in roles {
             let role_permissions: Vec<String> = match role.as_str() {
                 "admin" => vec![
-                    "user:create", "user:read", "user:update", "user:delete",
-                    "system:configure", "system:monitor", "system:backup",
-                    "memory:read", "memory:write", "memory:delete",
-                    "tools:execute", "tools:configure", "tools:manage",
-                    "security:audit", "security:configure"
-                ].into_iter().map(|s| s.to_string()).collect(),
-                "user" => vec![
-                    "user:read", "user:update_own",
-                    "memory:read", "memory:write",
-                    "tools:execute"
-                ].into_iter().map(|s| s.to_string()).collect(),
-                "readonly" => vec![
-                    "user:read_own",
+                    "user:create",
+                    "user:read",
+                    "user:update",
+                    "user:delete",
+                    "system:configure",
+                    "system:monitor",
+                    "system:backup",
                     "memory:read",
-                    "tools:read"
-                ].into_iter().map(|s| s.to_string()).collect(),
+                    "memory:write",
+                    "memory:delete",
+                    "tools:execute",
+                    "tools:configure",
+                    "tools:manage",
+                    "security:audit",
+                    "security:configure",
+                ]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect(),
+                "user" => vec![
+                    "user:read",
+                    "user:update_own",
+                    "memory:read",
+                    "memory:write",
+                    "tools:execute",
+                ]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect(),
+                "readonly" => vec!["user:read_own", "memory:read", "tools:read"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect(),
                 "operator" => vec![
-                    "user:read", "user:update_own",
+                    "user:read",
+                    "user:update_own",
                     "system:monitor",
-                    "memory:read", "memory:write",
-                    "tools:execute", "tools:configure"
-                ].into_iter().map(|s| s.to_string()).collect(),
+                    "memory:read",
+                    "memory:write",
+                    "tools:execute",
+                    "tools:configure",
+                ]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect(),
                 "developer" => vec![
-                    "user:read", "user:update_own",
+                    "user:read",
+                    "user:update_own",
                     "system:monitor",
-                    "memory:read", "memory:write",
-                    "tools:execute", "tools:configure", "tools:manage",
-                    "security:audit"
-                ].into_iter().map(|s| s.to_string()).collect(),
+                    "memory:read",
+                    "memory:write",
+                    "tools:execute",
+                    "tools:configure",
+                    "tools:manage",
+                    "security:audit",
+                ]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect(),
                 _ => {
                     // Unknown role gets minimal permissions
                     vec!["user:read_own".to_string()]
@@ -329,7 +386,7 @@ impl JwtAuthenticationService {
 impl AuthenticationService for JwtAuthenticationService {
     async fn authenticate(&self, username: &str, password: &str) -> Result<AuthenticationResult> {
         let users = self.users.read().await;
-        
+
         if let Some(user) = users.get(username) {
             if user.status != UserStatus::Active {
                 return Ok(AuthenticationResult {
@@ -342,11 +399,11 @@ impl AuthenticationService for JwtAuthenticationService {
             }
 
             let password_valid = self.verify_password(password, &user.password_hash).await?;
-            
+
             if password_valid {
                 let mut user_clone = user.clone();
                 user_clone.last_login = Some(SystemTime::now());
-                
+
                 Ok(AuthenticationResult {
                     success: true,
                     user: Some(user_clone),
@@ -381,11 +438,13 @@ impl AuthenticationService for JwtAuthenticationService {
         let header = Header::new(self.get_algorithm());
         let encoding_key = EncodingKey::from_secret(self.config.secret.as_ref());
 
-        let access_token = encode(&header, &access_claims, &encoding_key)
-            .map_err(|e| AgentError::validation(format!("Failed to generate access token: {}", e)))?;
+        let access_token = encode(&header, &access_claims, &encoding_key).map_err(|e| {
+            AgentError::validation(format!("Failed to generate access token: {}", e))
+        })?;
 
-        let refresh_token = encode(&header, &refresh_claims, &encoding_key)
-            .map_err(|e| AgentError::validation(format!("Failed to generate refresh token: {}", e)))?;
+        let refresh_token = encode(&header, &refresh_claims, &encoding_key).map_err(|e| {
+            AgentError::validation(format!("Failed to generate refresh token: {}", e))
+        })?;
 
         Ok(TokenPair {
             access_token,
@@ -416,9 +475,11 @@ impl AuthenticationService for JwtAuthenticationService {
 
     async fn refresh_token(&self, refresh_token: &str) -> Result<TokenPair> {
         let claims = self.validate_token(refresh_token).await?;
-        
+
         if claims.token_type != "refresh" {
-            return Err(AgentError::validation("Invalid token type for refresh".to_string()));
+            return Err(AgentError::validation(
+                "Invalid token type for refresh".to_string(),
+            ));
         }
 
         // Revoke the old refresh token
@@ -430,18 +491,22 @@ impl AuthenticationService for JwtAuthenticationService {
 
     async fn hash_password(&self, password: &str) -> Result<String> {
         let salt = SaltString::generate(&mut OsRng);
-        let password_hash = self.argon2
+        let password_hash = self
+            .argon2
             .hash_password(password.as_bytes(), &salt)
             .map_err(|e| AgentError::validation(format!("Failed to hash password: {}", e)))?;
-        
+
         Ok(password_hash.to_string())
     }
 
     async fn verify_password(&self, password: &str, hash: &str) -> Result<bool> {
         let parsed_hash = PasswordHash::new(hash)
             .map_err(|e| AgentError::validation(format!("Invalid password hash: {}", e)))?;
-        
-        Ok(self.argon2.verify_password(password.as_bytes(), &parsed_hash).is_ok())
+
+        Ok(self
+            .argon2
+            .verify_password(password.as_bytes(), &parsed_hash)
+            .is_ok())
     }
 
     async fn validate_password_policy(&self, password: &str) -> Result<PasswordValidationResult> {
@@ -450,12 +515,18 @@ impl AuthenticationService for JwtAuthenticationService {
 
         // Length validation
         if password.len() < self.password_policy.min_length {
-            errors.push(format!("Password must be at least {} characters long", self.password_policy.min_length));
+            errors.push(format!(
+                "Password must be at least {} characters long",
+                self.password_policy.min_length
+            ));
             suggestions.push("Use a longer password".to_string());
         }
 
         if password.len() > self.password_policy.max_length {
-            errors.push(format!("Password must be no more than {} characters long", self.password_policy.max_length));
+            errors.push(format!(
+                "Password must be no more than {} characters long",
+                self.password_policy.max_length
+            ));
         }
 
         // Character requirements
@@ -474,7 +545,9 @@ impl AuthenticationService for JwtAuthenticationService {
             suggestions.push("Add numbers".to_string());
         }
 
-        if self.password_policy.require_special_chars && !password.chars().any(|c| !c.is_alphanumeric()) {
+        if self.password_policy.require_special_chars
+            && !password.chars().any(|c| !c.is_alphanumeric())
+        {
             errors.push("Password must contain at least one special character".to_string());
             suggestions.push("Add special characters like !@#$%".to_string());
         }
@@ -509,7 +582,9 @@ impl AuthenticationService for JwtAuthenticationService {
         // Check if user already exists
         let users = self.users.read().await;
         if users.contains_key(&user_data.username) {
-            return Err(AgentError::validation("Username already exists".to_string()));
+            return Err(AgentError::validation(
+                "Username already exists".to_string(),
+            ));
         }
         drop(users);
 
@@ -545,16 +620,27 @@ impl AuthenticationService for JwtAuthenticationService {
         Ok(users.get(username).cloned())
     }
 
-    async fn update_password(&self, user_id: &str, old_password: &str, new_password: &str) -> Result<()> {
+    async fn update_password(
+        &self,
+        user_id: &str,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<()> {
         // Find user by ID
         let mut users = self.users.write().await;
-        let user = users.values_mut()
+        let user = users
+            .values_mut()
             .find(|u| u.id == user_id)
             .ok_or_else(|| AgentError::validation("User not found".to_string()))?;
 
         // Verify old password
-        if !self.verify_password(old_password, &user.password_hash).await? {
-            return Err(AgentError::validation("Invalid current password".to_string()));
+        if !self
+            .verify_password(old_password, &user.password_hash)
+            .await?
+        {
+            return Err(AgentError::validation(
+                "Invalid current password".to_string(),
+            ));
         }
 
         // Validate new password policy
@@ -569,7 +655,9 @@ impl AuthenticationService for JwtAuthenticationService {
         // Check password history
         for old_hash in &user.password_history {
             if self.verify_password(new_password, old_hash).await? {
-                return Err(AgentError::validation("Cannot reuse a recent password".to_string()));
+                return Err(AgentError::validation(
+                    "Cannot reuse a recent password".to_string(),
+                ));
             }
         }
 
@@ -602,7 +690,12 @@ impl AuthenticationService for JwtAuthenticationService {
 }
 
 /// Create an authentication service
-pub async fn create_authentication_service(config: &JwtConfig) -> Result<Box<dyn AuthenticationService>> {
+pub async fn create_authentication_service(
+    config: &JwtConfig,
+) -> Result<Box<dyn AuthenticationService>> {
     let password_policy = super::PasswordPolicyConfig::default();
-    Ok(Box::new(JwtAuthenticationService::new(config.clone(), password_policy)))
+    Ok(Box::new(JwtAuthenticationService::new(
+        config.clone(),
+        password_policy,
+    )))
 }

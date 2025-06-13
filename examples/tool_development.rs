@@ -33,56 +33,84 @@ impl Tool for CalculatorTool {
         let expression = input
             .get("expression")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| rust_memvid_agent::AgentError::invalid_input("Missing expression parameter"))?;
+            .ok_or_else(|| {
+                rust_memvid_agent::AgentError::invalid_input("Missing expression parameter")
+            })?;
 
         // Simple calculator implementation (in a real tool, you'd use a proper math parser)
         let result = match expression {
             expr if expr.contains('+') => {
                 let parts: Vec<&str> = expr.split('+').collect();
                 if parts.len() == 2 {
-                    let a: f64 = parts[0].trim().parse().map_err(|_| rust_memvid_agent::AgentError::invalid_input("Invalid number"))?;
-                    let b: f64 = parts[1].trim().parse().map_err(|_| rust_memvid_agent::AgentError::invalid_input("Invalid number"))?;
+                    let a: f64 = parts[0].trim().parse().map_err(|_| {
+                        rust_memvid_agent::AgentError::invalid_input("Invalid number")
+                    })?;
+                    let b: f64 = parts[1].trim().parse().map_err(|_| {
+                        rust_memvid_agent::AgentError::invalid_input("Invalid number")
+                    })?;
                     a + b
                 } else {
-                    return Ok(ToolResult::error("Complex expressions not supported in this example"));
+                    return Ok(ToolResult::error(
+                        "Complex expressions not supported in this example",
+                    ));
                 }
             }
             expr if expr.contains('-') => {
                 let parts: Vec<&str> = expr.split('-').collect();
                 if parts.len() == 2 {
-                    let a: f64 = parts[0].trim().parse().map_err(|_| rust_memvid_agent::AgentError::invalid_input("Invalid number"))?;
-                    let b: f64 = parts[1].trim().parse().map_err(|_| rust_memvid_agent::AgentError::invalid_input("Invalid number"))?;
+                    let a: f64 = parts[0].trim().parse().map_err(|_| {
+                        rust_memvid_agent::AgentError::invalid_input("Invalid number")
+                    })?;
+                    let b: f64 = parts[1].trim().parse().map_err(|_| {
+                        rust_memvid_agent::AgentError::invalid_input("Invalid number")
+                    })?;
                     a - b
                 } else {
-                    return Ok(ToolResult::error("Complex expressions not supported in this example"));
+                    return Ok(ToolResult::error(
+                        "Complex expressions not supported in this example",
+                    ));
                 }
             }
             expr if expr.contains('*') => {
                 let parts: Vec<&str> = expr.split('*').collect();
                 if parts.len() == 2 {
-                    let a: f64 = parts[0].trim().parse().map_err(|_| rust_memvid_agent::AgentError::invalid_input("Invalid number"))?;
-                    let b: f64 = parts[1].trim().parse().map_err(|_| rust_memvid_agent::AgentError::invalid_input("Invalid number"))?;
+                    let a: f64 = parts[0].trim().parse().map_err(|_| {
+                        rust_memvid_agent::AgentError::invalid_input("Invalid number")
+                    })?;
+                    let b: f64 = parts[1].trim().parse().map_err(|_| {
+                        rust_memvid_agent::AgentError::invalid_input("Invalid number")
+                    })?;
                     a * b
                 } else {
-                    return Ok(ToolResult::error("Complex expressions not supported in this example"));
+                    return Ok(ToolResult::error(
+                        "Complex expressions not supported in this example",
+                    ));
                 }
             }
             expr if expr.contains('/') => {
                 let parts: Vec<&str> = expr.split('/').collect();
                 if parts.len() == 2 {
-                    let a: f64 = parts[0].trim().parse().map_err(|_| rust_memvid_agent::AgentError::invalid_input("Invalid number"))?;
-                    let b: f64 = parts[1].trim().parse().map_err(|_| rust_memvid_agent::AgentError::invalid_input("Invalid number"))?;
+                    let a: f64 = parts[0].trim().parse().map_err(|_| {
+                        rust_memvid_agent::AgentError::invalid_input("Invalid number")
+                    })?;
+                    let b: f64 = parts[1].trim().parse().map_err(|_| {
+                        rust_memvid_agent::AgentError::invalid_input("Invalid number")
+                    })?;
                     if b == 0.0 {
                         return Ok(ToolResult::error("Division by zero"));
                     }
                     a / b
                 } else {
-                    return Ok(ToolResult::error("Complex expressions not supported in this example"));
+                    return Ok(ToolResult::error(
+                        "Complex expressions not supported in this example",
+                    ));
                 }
             }
             expr => {
                 // Try to parse as a single number
-                expr.trim().parse().map_err(|_| rust_memvid_agent::AgentError::invalid_input("Invalid expression"))?
+                expr.trim().parse().map_err(|_| {
+                    rust_memvid_agent::AgentError::invalid_input("Invalid expression")
+                })?
             }
         };
 
@@ -136,14 +164,19 @@ impl Tool for RandomNumberTool {
         let max = input.get("max").and_then(|v| v.as_i64()).unwrap_or(100);
 
         if min > max {
-            return Ok(ToolResult::error("Minimum value cannot be greater than maximum value"));
+            return Ok(ToolResult::error(
+                "Minimum value cannot be greater than maximum value",
+            ));
         }
 
         use rand::Rng;
         let mut rng = rand::thread_rng();
         let random_number = rng.gen_range(min..=max);
 
-        Ok(ToolResult::success(format!("Random number between {} and {}: {}", min, max, random_number)))
+        Ok(ToolResult::success(format!(
+            "Random number between {} and {}: {}",
+            min, max, random_number
+        )))
     }
 
     fn name(&self) -> &str {
@@ -173,7 +206,9 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     // Start a conversation
-    agent.start_conversation(Some("Custom Tools Demo".to_string())).await?;
+    agent
+        .start_conversation(Some("Custom Tools Demo".to_string()))
+        .await?;
 
     // Test the custom tools
     let messages = vec![
@@ -189,7 +224,7 @@ async fn main() -> anyhow::Result<()> {
         println!("User: {}", message);
         let response = agent.chat(*message).await?;
         println!("Agent: {}\n", response);
-        
+
         if i < messages.len() - 1 {
             println!("---\n");
         }

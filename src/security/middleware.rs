@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use super::{rate_limiting::RateLimitType, SecurityContext, SecurityEvent, SecurityManager};
 use crate::utils::error::{AgentError, Result};
-use super::{SecurityManager, SecurityContext, SecurityEvent, rate_limiting::RateLimitType};
 
 /// Security middleware for HTTP requests
 pub struct SecurityMiddleware {
@@ -163,7 +163,11 @@ impl SecurityMiddleware {
     }
 
     /// Get rate limit key for a request
-    fn get_rate_limit_key(&self, request: &HttpRequest, context: Option<&SecurityContext>) -> String {
+    fn get_rate_limit_key(
+        &self,
+        request: &HttpRequest,
+        context: Option<&SecurityContext>,
+    ) -> String {
         if let Some(ctx) = context {
             format!("user:{}", ctx.user_id)
         } else if let Some(ip) = &request.client_ip {
@@ -174,18 +178,26 @@ impl SecurityMiddleware {
     }
 
     /// Check rate limits
-    async fn check_rate_limits(&self, request: &HttpRequest, context: Option<&SecurityContext>) -> Result<Option<RateLimitInfo>> {
+    async fn check_rate_limits(
+        &self,
+        request: &HttpRequest,
+        context: Option<&SecurityContext>,
+    ) -> Result<Option<RateLimitInfo>> {
         if !self.config.enable_rate_limiting {
             return Ok(None);
         }
 
         let rate_limit_service = self.security_manager.rate_limit_service.read().await;
         let key = self.get_rate_limit_key(request, context);
-        
-        let result = rate_limit_service.check_rate_limit(&key, RateLimitType::PerMinute).await?;
-        
+
+        let result = rate_limit_service
+            .check_rate_limit(&key, RateLimitType::PerMinute)
+            .await?;
+
         if result.allowed {
-            rate_limit_service.record_request(&key, RateLimitType::PerMinute).await?;
+            rate_limit_service
+                .record_request(&key, RateLimitType::PerMinute)
+                .await?;
         }
 
         Ok(Some(RateLimitInfo {
@@ -226,12 +238,19 @@ impl SecurityMiddleware {
     }
 
     /// Check path permissions
-    async fn check_path_permissions(&self, request: &HttpRequest, context: Option<&SecurityContext>) -> Result<bool> {
+    async fn check_path_permissions(
+        &self,
+        request: &HttpRequest,
+        context: Option<&SecurityContext>,
+    ) -> Result<bool> {
         if let Some(required_permissions) = self.config.path_permissions.get(&request.path) {
             if let Some(ctx) = context {
                 let authz_service = self.security_manager.authz_service.read().await;
                 for permission in required_permissions {
-                    if !authz_service.check_permission(ctx, &request.path, permission).await? {
+                    if !authz_service
+                        .check_permission(ctx, &request.path, permission)
+                        .await?
+                    {
                         return Ok(false);
                     }
                 }
@@ -252,16 +271,29 @@ impl SecurityMiddleware {
 
         let event = if result.allowed {
             SecurityEvent::DataAccess {
-                user_id: result.context.as_ref().map(|c| c.user_id.clone()).unwrap_or_else(|| "anonymous".to_string()),
+                user_id: result
+                    .context
+                    .as_ref()
+                    .map(|c| c.user_id.clone())
+                    .unwrap_or_else(|| "anonymous".to_string()),
                 resource: request.path.clone(),
                 action: request.method.clone(),
                 sensitive: request.path.contains("/admin") || request.path.contains("/sensitive"),
             }
         } else {
             SecurityEvent::PolicyViolation {
-                user_id: Some(result.context.as_ref().map(|c| c.user_id.clone()).unwrap_or_else(|| "anonymous".to_string())),
+                user_id: Some(
+                    result
+                        .context
+                        .as_ref()
+                        .map(|c| c.user_id.clone())
+                        .unwrap_or_else(|| "anonymous".to_string()),
+                ),
                 policy: "security_middleware".to_string(),
-                violation: result.denial_reason.clone().unwrap_or_else(|| "Access denied".to_string()),
+                violation: result
+                    .denial_reason
+                    .clone()
+                    .unwrap_or_else(|| "Access denied".to_string()),
             }
         };
 
@@ -336,7 +368,9 @@ impl SecurityMiddleware {
         }
 
         // Check path permissions
-        let has_permission = self.check_path_permissions(&request, context.as_ref()).await?;
+        let has_permission = self
+            .check_path_permissions(&request, context.as_ref())
+            .await?;
         if !has_permission {
             let result = SecurityCheckResult {
                 allowed: false,

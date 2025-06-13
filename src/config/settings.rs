@@ -6,7 +6,7 @@ use crate::security::SecurityConfig;
 use crate::utils::error::{AgentError, Result};
 
 /// Main configuration for the agent system
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AgentConfig {
     /// Anthropic API configuration
     pub anthropic: AnthropicConfig,
@@ -100,18 +100,6 @@ pub struct AgentSettings {
     pub human_input_after_iterations: Option<usize>,
 }
 
-impl Default for AgentConfig {
-    fn default() -> Self {
-        Self {
-            anthropic: AnthropicConfig::default(),
-            memory: MemoryConfig::default(),
-            tools: ToolConfig::default(),
-            agent: AgentSettings::default(),
-            security: None, // Security is optional by default
-        }
-    }
-}
-
 impl Default for AnthropicConfig {
     fn default() -> Self {
         Self {
@@ -164,7 +152,8 @@ impl Default for AgentSettings {
             enable_streaming: false,
             max_tool_iterations: 50,
             enable_human_in_loop: false,
-            human_input_prompt: "The agent needs your input to continue. Please provide guidance:".to_string(),
+            human_input_prompt: "The agent needs your input to continue. Please provide guidance:"
+                .to_string(),
             human_input_after_iterations: Some(5),
         }
     }

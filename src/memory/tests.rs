@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use crate::memory::MemoryManager;
-    use crate::config::MemoryConfig;
     use crate::anthropic::models::ChatMessage;
-    use tempfile::TempDir;
+    use crate::config::MemoryConfig;
+    use crate::memory::MemoryManager;
     use std::collections::HashMap;
     use std::time::Duration;
+    use tempfile::TempDir;
 
     fn create_test_memory_config() -> MemoryConfig {
         let temp_dir = TempDir::new().unwrap();
@@ -32,21 +32,34 @@ mod tests {
         let mut memory_manager = MemoryManager::new(config).await.unwrap();
 
         // Test starting a new conversation
-        let conversation_id = memory_manager.start_conversation(Some("Test Conversation".to_string()));
+        let conversation_id =
+            memory_manager.start_conversation(Some("Test Conversation".to_string()));
         assert!(!conversation_id.is_empty());
 
         // Test adding messages to conversation
         let user_message = ChatMessage::user("Hello, how are you?");
         let assistant_message = ChatMessage::assistant("I'm doing well, thank you!");
 
-        memory_manager.add_message(user_message.clone()).await.unwrap();
-        memory_manager.add_message(assistant_message.clone()).await.unwrap();
+        memory_manager
+            .add_message(user_message.clone())
+            .await
+            .unwrap();
+        memory_manager
+            .add_message(assistant_message.clone())
+            .await
+            .unwrap();
 
         // Test getting current conversation
         let current_conversation = memory_manager.get_current_conversation().unwrap();
         assert_eq!(current_conversation.messages.len(), 2);
-        assert_eq!(current_conversation.messages[0].get_text(), "Hello, how are you?");
-        assert_eq!(current_conversation.messages[1].get_text(), "I'm doing well, thank you!");
+        assert_eq!(
+            current_conversation.messages[0].get_text(),
+            "Hello, how are you?"
+        );
+        assert_eq!(
+            current_conversation.messages[1].get_text(),
+            "I'm doing well, thank you!"
+        );
     }
 
     #[tokio::test]
@@ -61,22 +74,28 @@ mod tests {
         metadata.insert("category".to_string(), "testing".to_string());
         metadata.insert("priority".to_string(), "high".to_string());
 
-        let entry_id = memory_manager.save_memory(
-            entry_content.to_string(),
-            entry_type.to_string(),
-            metadata.clone()
-        ).await.unwrap();
+        let entry_id = memory_manager
+            .save_memory(
+                entry_content.to_string(),
+                entry_type.to_string(),
+                metadata.clone(),
+            )
+            .await
+            .unwrap();
 
         assert!(!entry_id.is_empty());
 
         // Test searching for the memory entry
-        let search_results = memory_manager.search_memory("important fact", 5).await.unwrap();
+        let search_results = memory_manager
+            .search_memory("important fact", 5)
+            .await
+            .unwrap();
         assert!(!search_results.is_empty());
 
         // The search should find our entry
-        let found = search_results.iter().any(|result|
-            result.content.contains("important fact")
-        );
+        let found = search_results
+            .iter()
+            .any(|result| result.content.contains("important fact"));
         assert!(found);
     }
 
@@ -94,18 +113,18 @@ mod tests {
         ];
 
         for (content, entry_type) in entries {
-            memory_manager.save_memory(
-                content.to_string(),
-                entry_type.to_string(),
-                HashMap::new()
-            ).await.unwrap();
+            memory_manager
+                .save_memory(content.to_string(), entry_type.to_string(), HashMap::new())
+                .await
+                .unwrap();
         }
 
         // Test searching with timeout to prevent hanging
         let search_result = tokio::time::timeout(
             Duration::from_secs(5),
-            memory_manager.search_memory("programming language", 5)
-        ).await;
+            memory_manager.search_memory("programming language", 5),
+        )
+        .await;
 
         match search_result {
             Ok(Ok(results)) => {
@@ -125,7 +144,8 @@ mod tests {
         let mut memory_manager = MemoryManager::new(config.clone()).await.unwrap();
 
         // Start a conversation and add messages
-        let conversation_id = memory_manager.start_conversation(Some("Persistent Test".to_string()));
+        let conversation_id =
+            memory_manager.start_conversation(Some("Persistent Test".to_string()));
 
         let message = ChatMessage::user("This message should persist");
         memory_manager.add_message(message.clone()).await.unwrap();
@@ -133,13 +153,17 @@ mod tests {
         // Get the current conversation to verify it was saved
         let current_conversation = memory_manager.get_current_conversation().unwrap();
         assert_eq!(current_conversation.messages.len(), 1);
-        assert_eq!(current_conversation.messages[0].get_text(), "This message should persist");
+        assert_eq!(
+            current_conversation.messages[0].get_text(),
+            "This message should persist"
+        );
 
         // Test that we can retrieve the conversation by ID (with timeout)
         let retrieved_conversation = tokio::time::timeout(
             Duration::from_secs(5),
-            memory_manager.get_conversation(&conversation_id)
-        ).await;
+            memory_manager.get_conversation(&conversation_id),
+        )
+        .await;
 
         // Handle timeout gracefully
         match retrieved_conversation {
@@ -164,10 +188,8 @@ mod tests {
         let memory_manager = MemoryManager::new(config).await.unwrap();
 
         // Test that we can get stats with timeout to prevent hanging
-        let stats_result = tokio::time::timeout(
-            Duration::from_secs(5),
-            memory_manager.get_stats()
-        ).await;
+        let stats_result =
+            tokio::time::timeout(Duration::from_secs(5), memory_manager.get_stats()).await;
 
         match stats_result {
             Ok(Ok(stats)) => {
@@ -191,7 +213,8 @@ mod tests {
         let mut memory_manager = MemoryManager::new(config).await.unwrap();
 
         // Test conversation with title
-        let conversation_id = memory_manager.start_conversation(Some("Important Discussion".to_string()));
+        let conversation_id =
+            memory_manager.start_conversation(Some("Important Discussion".to_string()));
 
         // Add some messages
         let messages = vec![
@@ -205,7 +228,10 @@ mod tests {
 
         // Verify the conversation has the correct title and messages
         let current_conversation = memory_manager.get_current_conversation().unwrap();
-        assert_eq!(current_conversation.title, Some("Important Discussion".to_string()));
+        assert_eq!(
+            current_conversation.title,
+            Some("Important Discussion".to_string())
+        );
         assert_eq!(current_conversation.messages.len(), 2);
         assert_eq!(current_conversation.id, conversation_id);
     }
@@ -217,17 +243,20 @@ mod tests {
 
         // Test different entry types
         let entry_types = vec!["fact", "insight", "preference", "goal", "context"];
-        
+
         for entry_type in entry_types {
             let mut metadata = HashMap::new();
             metadata.insert("type".to_string(), entry_type.to_string());
             metadata.insert("timestamp".to_string(), chrono::Utc::now().to_rfc3339());
 
-            let entry_id = memory_manager.save_memory(
-                format!("This is a {} entry", entry_type),
-                entry_type.to_string(),
-                metadata
-            ).await.unwrap();
+            let entry_id = memory_manager
+                .save_memory(
+                    format!("This is a {} entry", entry_type),
+                    entry_type.to_string(),
+                    metadata,
+                )
+                .await
+                .unwrap();
 
             assert!(!entry_id.is_empty());
         }
@@ -243,14 +272,20 @@ mod tests {
         let mut memory_manager = MemoryManager::new(config).await.unwrap();
 
         // Store a memory entry
-        memory_manager.save_memory(
-            "Rust provides memory safety without garbage collection".to_string(),
-            "fact".to_string(),
-            HashMap::new()
-        ).await.unwrap();
+        memory_manager
+            .save_memory(
+                "Rust provides memory safety without garbage collection".to_string(),
+                "fact".to_string(),
+                HashMap::new(),
+            )
+            .await
+            .unwrap();
 
         // Search for it
-        let results = memory_manager.search_memory("memory safety", 5).await.unwrap();
+        let results = memory_manager
+            .search_memory("memory safety", 5)
+            .await
+            .unwrap();
         assert!(!results.is_empty());
 
         let result = &results[0];
@@ -281,8 +316,14 @@ mod tests {
         assert_eq!(current_conversation.messages.len(), 5);
 
         // Verify message order and content
-        assert!(current_conversation.messages[0].get_text().contains("User message 0"));
-        assert!(current_conversation.messages[1].get_text().contains("Assistant message 1"));
-        assert!(current_conversation.messages[4].get_text().contains("User message 4"));
+        assert!(current_conversation.messages[0]
+            .get_text()
+            .contains("User message 0"));
+        assert!(current_conversation.messages[1]
+            .get_text()
+            .contains("Assistant message 1"));
+        assert!(current_conversation.messages[4]
+            .get_text()
+            .contains("User message 4"));
     }
 }

@@ -7,36 +7,36 @@ use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::RwLock;
 use tracing::info;
 
-use crate::utils::error::{AgentError, Result};
 use super::{AuditConfig, AuditLogLevel, AuditStorageBackend, SecurityEvent};
+use crate::utils::error::{AgentError, Result};
 
 /// Audit service trait
 #[async_trait]
 pub trait AuditService: Send + Sync {
     /// Log a security event
     async fn log_event(&self, event: SecurityEvent) -> Result<()>;
-    
+
     /// Query audit logs
     async fn query_logs(&self, query: AuditQuery) -> Result<Vec<AuditLogEntry>>;
-    
+
     /// Get audit statistics
     async fn get_statistics(&self, time_range: TimeRange) -> Result<AuditStatistics>;
-    
+
     /// Archive old logs
     async fn archive_logs(&self, before_date: chrono::DateTime<chrono::Utc>) -> Result<u64>;
-    
+
     /// Purge old logs
     async fn purge_logs(&self, before_date: chrono::DateTime<chrono::Utc>) -> Result<u64>;
-    
+
     /// Get log retention policy
     async fn get_retention_policy(&self) -> Result<RetentionPolicy>;
-    
+
     /// Update log retention policy
     async fn update_retention_policy(&self, policy: RetentionPolicy) -> Result<()>;
-    
+
     /// Export logs
     async fn export_logs(&self, query: AuditQuery, format: ExportFormat) -> Result<Vec<u8>>;
-    
+
     /// Validate log integrity
     async fn validate_integrity(&self) -> Result<IntegrityReport>;
 }
@@ -192,8 +192,9 @@ impl FileAuditService {
     pub async fn new(config: AuditConfig, log_file_path: PathBuf) -> Result<Self> {
         // Ensure log directory exists
         if let Some(parent) = log_file_path.parent() {
-            tokio::fs::create_dir_all(parent).await
-                .map_err(|e| AgentError::validation(format!("Failed to create log directory: {}", e)))?;
+            tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                AgentError::validation(format!("Failed to create log directory: {}", e))
+            })?;
         }
 
         let retention_policy = RetentionPolicy {
@@ -231,7 +232,7 @@ impl FileAuditService {
     /// Write log entry to file
     async fn write_to_file(&self, entry: &AuditLogEntry) -> Result<()> {
         let mut log_writer = self.log_writer.write().await;
-        
+
         if log_writer.is_none() {
             drop(log_writer);
             self.initialize_writer().await?;
@@ -239,14 +240,20 @@ impl FileAuditService {
         }
 
         if let Some(writer) = log_writer.as_mut() {
-            let json_line = serde_json::to_string(entry)
-                .map_err(|e| AgentError::validation(format!("Failed to serialize log entry: {}", e)))?;
-            
-            writer.write_all(json_line.as_bytes()).await
-                .map_err(|e| AgentError::validation(format!("Failed to write to log file: {}", e)))?;
-            writer.write_all(b"\n").await
+            let json_line = serde_json::to_string(entry).map_err(|e| {
+                AgentError::validation(format!("Failed to serialize log entry: {}", e))
+            })?;
+
+            writer.write_all(json_line.as_bytes()).await.map_err(|e| {
+                AgentError::validation(format!("Failed to write to log file: {}", e))
+            })?;
+            writer
+                .write_all(b"\n")
+                .await
                 .map_err(|e| AgentError::validation(format!("Failed to write newline: {}", e)))?;
-            writer.flush().await
+            writer
+                .flush()
+                .await
                 .map_err(|e| AgentError::validation(format!("Failed to flush log file: {}", e)))?;
         }
 
@@ -262,7 +269,7 @@ impl FileAuditService {
         entry.id.hash(&mut hasher);
         entry.timestamp.hash(&mut hasher);
         entry.source.hash(&mut hasher);
-        
+
         format!("{:x}", hasher.finish())
     }
 
@@ -270,25 +277,26 @@ impl FileAuditService {
     fn should_log_event(&self, event: &SecurityEvent) -> bool {
         match self.config.log_level {
             AuditLogLevel::All => true,
-            AuditLogLevel::Security => matches!(event, 
-                SecurityEvent::AuthenticationAttempt { .. } |
-                SecurityEvent::AuthorizationCheck { .. } |
-                SecurityEvent::SessionCreated { .. } |
-                SecurityEvent::SessionTerminated { .. } |
-                SecurityEvent::PasswordChanged { .. } |
-                SecurityEvent::PolicyViolation { .. } |
-                SecurityEvent::SecurityIncident { .. }
+            AuditLogLevel::Security => matches!(
+                event,
+                SecurityEvent::AuthenticationAttempt { .. }
+                    | SecurityEvent::AuthorizationCheck { .. }
+                    | SecurityEvent::SessionCreated { .. }
+                    | SecurityEvent::SessionTerminated { .. }
+                    | SecurityEvent::PasswordChanged { .. }
+                    | SecurityEvent::PolicyViolation { .. }
+                    | SecurityEvent::SecurityIncident { .. }
             ),
-            AuditLogLevel::Authentication => matches!(event,
-                SecurityEvent::AuthenticationAttempt { .. } |
-                SecurityEvent::PasswordChanged { .. }
+            AuditLogLevel::Authentication => matches!(
+                event,
+                SecurityEvent::AuthenticationAttempt { .. } | SecurityEvent::PasswordChanged { .. }
             ),
-            AuditLogLevel::Authorization => matches!(event,
-                SecurityEvent::AuthorizationCheck { .. }
-            ),
-            AuditLogLevel::Critical => matches!(event,
-                SecurityEvent::PolicyViolation { .. } |
-                SecurityEvent::SecurityIncident { .. }
+            AuditLogLevel::Authorization => {
+                matches!(event, SecurityEvent::AuthorizationCheck { .. })
+            }
+            AuditLogLevel::Critical => matches!(
+                event,
+                SecurityEvent::PolicyViolation { .. } | SecurityEvent::SecurityIncident { .. }
             ),
         }
     }
@@ -376,8 +384,12 @@ impl AuditService for FileAuditService {
         match query.sort_order {
             SortOrder::TimestampAsc => results.sort_by(|a, b| a.timestamp.cmp(&b.timestamp)),
             SortOrder::TimestampDesc => results.sort_by(|a, b| b.timestamp.cmp(&a.timestamp)),
-            SortOrder::LevelAsc => results.sort_by(|a, b| format!("{:?}", a.level).cmp(&format!("{:?}", b.level))),
-            SortOrder::LevelDesc => results.sort_by(|a, b| format!("{:?}", b.level).cmp(&format!("{:?}", a.level))),
+            SortOrder::LevelAsc => {
+                results.sort_by(|a, b| format!("{:?}", a.level).cmp(&format!("{:?}", b.level)))
+            }
+            SortOrder::LevelDesc => {
+                results.sort_by(|a, b| format!("{:?}", b.level).cmp(&format!("{:?}", a.level)))
+            }
         }
 
         // Apply pagination
@@ -418,16 +430,19 @@ impl AuditService for FileAuditService {
 
             // Count by user (extract from event)
             match &entry.event {
-                SecurityEvent::AuthenticationAttempt { user_id, .. } |
-                SecurityEvent::AuthorizationCheck { user_id, .. } |
-                SecurityEvent::SessionCreated { user_id, .. } |
-                SecurityEvent::SessionTerminated { user_id, .. } |
-                SecurityEvent::PasswordChanged { user_id, .. } |
-                SecurityEvent::DataAccess { user_id, .. } |
-                SecurityEvent::ConfigurationChange { user_id, .. } => {
+                SecurityEvent::AuthenticationAttempt { user_id, .. }
+                | SecurityEvent::AuthorizationCheck { user_id, .. }
+                | SecurityEvent::SessionCreated { user_id, .. }
+                | SecurityEvent::SessionTerminated { user_id, .. }
+                | SecurityEvent::PasswordChanged { user_id, .. }
+                | SecurityEvent::DataAccess { user_id, .. }
+                | SecurityEvent::ConfigurationChange { user_id, .. } => {
                     *entries_by_user.entry(user_id.clone()).or_insert(0) += 1;
                 }
-                SecurityEvent::RateLimitExceeded { user_id: Some(user_id), .. } => {
+                SecurityEvent::RateLimitExceeded {
+                    user_id: Some(user_id),
+                    ..
+                } => {
                     *entries_by_user.entry(user_id.clone()).or_insert(0) += 1;
                 }
                 _ => {}
@@ -435,10 +450,22 @@ impl AuditService for FileAuditService {
 
             // Count by IP address (extract from event)
             match &entry.event {
-                SecurityEvent::AuthenticationAttempt { ip_address: Some(ip), .. } |
-                SecurityEvent::SessionCreated { ip_address: Some(ip), .. } |
-                SecurityEvent::PasswordChanged { ip_address: Some(ip), .. } |
-                SecurityEvent::RateLimitExceeded { ip_address: Some(ip), .. } => {
+                SecurityEvent::AuthenticationAttempt {
+                    ip_address: Some(ip),
+                    ..
+                }
+                | SecurityEvent::SessionCreated {
+                    ip_address: Some(ip),
+                    ..
+                }
+                | SecurityEvent::PasswordChanged {
+                    ip_address: Some(ip),
+                    ..
+                }
+                | SecurityEvent::RateLimitExceeded {
+                    ip_address: Some(ip),
+                    ..
+                } => {
                     *entries_by_ip.entry(ip.clone()).or_insert(0) += 1;
                 }
                 _ => {}
@@ -446,11 +473,12 @@ impl AuditService for FileAuditService {
         }
 
         // Calculate storage size (approximate)
-        let storage_size_bytes = if let Ok(metadata) = tokio::fs::metadata(&self.log_file_path).await {
-            metadata.len()
-        } else {
-            0
-        };
+        let storage_size_bytes =
+            if let Ok(metadata) = tokio::fs::metadata(&self.log_file_path).await {
+                metadata.len()
+            } else {
+                0
+            };
 
         Ok(AuditStatistics {
             total_entries: filtered_entries.len() as u64,
@@ -473,12 +501,12 @@ impl AuditService for FileAuditService {
     async fn purge_logs(&self, before_date: chrono::DateTime<chrono::Utc>) -> Result<u64> {
         let mut cache = self.log_cache.write().await;
         let initial_count = cache.len();
-        
+
         cache.retain(|entry| entry.timestamp >= before_date);
-        
+
         let purged_count = initial_count - cache.len();
         info!("Purged {} log entries before {}", purged_count, before_date);
-        
+
         Ok(purged_count as u64)
     }
 
@@ -495,18 +523,19 @@ impl AuditService for FileAuditService {
 
     async fn export_logs(&self, query: AuditQuery, format: ExportFormat) -> Result<Vec<u8>> {
         let logs = self.query_logs(query).await?;
-        
+
         match format {
             ExportFormat::Json => {
-                let json = serde_json::to_string_pretty(&logs)
-                    .map_err(|e| AgentError::validation(format!("Failed to serialize to JSON: {}", e)))?;
+                let json = serde_json::to_string_pretty(&logs).map_err(|e| {
+                    AgentError::validation(format!("Failed to serialize to JSON: {}", e))
+                })?;
                 Ok(json.into_bytes())
             }
             ExportFormat::Csv => {
                 // Simple CSV implementation
                 let mut csv = String::new();
                 csv.push_str("id,timestamp,level,event_type,source\n");
-                
+
                 for entry in logs {
                     let event_type = self.get_event_type(&entry.event);
                     csv.push_str(&format!(
@@ -514,10 +543,12 @@ impl AuditService for FileAuditService {
                         entry.id, entry.timestamp, entry.level, event_type, entry.source
                     ));
                 }
-                
+
                 Ok(csv.into_bytes())
             }
-            _ => Err(AgentError::validation("Export format not supported".to_string())),
+            _ => Err(AgentError::validation(
+                "Export format not supported".to_string(),
+            )),
         }
     }
 
@@ -561,6 +592,8 @@ pub async fn create_audit_service(config: &AuditConfig) -> Result<Box<dyn AuditS
             let service = FileAuditService::new(config.clone(), log_path).await?;
             Ok(Box::new(service))
         }
-        _ => Err(AgentError::validation("Audit storage backend not supported".to_string())),
+        _ => Err(AgentError::validation(
+            "Audit storage backend not supported".to_string(),
+        )),
     }
 }

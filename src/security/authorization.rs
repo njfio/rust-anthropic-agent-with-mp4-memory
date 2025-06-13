@@ -3,54 +3,59 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
 
-use crate::utils::error::{AgentError, Result};
 use super::SecurityContext;
+use crate::utils::error::{AgentError, Result};
 
 /// Authorization service trait
 #[async_trait]
 pub trait AuthorizationService: Send + Sync {
     /// Check if a user has permission to perform an action on a resource
-    async fn check_permission(&self, context: &SecurityContext, resource: &str, action: &str) -> Result<bool>;
-    
+    async fn check_permission(
+        &self,
+        context: &SecurityContext,
+        resource: &str,
+        action: &str,
+    ) -> Result<bool>;
+
     /// Get all permissions for a user
     async fn get_user_permissions(&self, user_id: &str) -> Result<Vec<Permission>>;
-    
+
     /// Get all roles for a user
     async fn get_user_roles(&self, user_id: &str) -> Result<Vec<Role>>;
-    
+
     /// Add a role to a user
     async fn add_user_role(&self, user_id: &str, role_name: &str) -> Result<()>;
-    
+
     /// Remove a role from a user
     async fn remove_user_role(&self, user_id: &str, role_name: &str) -> Result<()>;
-    
+
     /// Create a new role
     async fn create_role(&self, role: Role) -> Result<()>;
-    
+
     /// Update a role
     async fn update_role(&self, role: Role) -> Result<()>;
-    
+
     /// Delete a role
     async fn delete_role(&self, role_name: &str) -> Result<()>;
-    
+
     /// Create a new permission
     async fn create_permission(&self, permission: Permission) -> Result<()>;
-    
+
     /// Update a permission
     async fn update_permission(&self, permission: Permission) -> Result<()>;
-    
+
     /// Delete a permission
     async fn delete_permission(&self, permission_name: &str) -> Result<()>;
-    
+
     /// Check if a role exists
     async fn role_exists(&self, role_name: &str) -> Result<bool>;
-    
+
     /// Check if a permission exists
     async fn permission_exists(&self, permission_name: &str) -> Result<bool>;
-    
+
     /// Get role hierarchy
     async fn get_role_hierarchy(&self) -> Result<HashMap<String, Vec<String>>>;
-    
+
     /// Evaluate a policy
     async fn evaluate_policy(&self, context: &SecurityContext, policy: &Policy) -> Result<bool>;
 }
@@ -195,6 +200,12 @@ pub struct RbacAuthorizationService {
     policies: RwLock<HashMap<String, Policy>>,
 }
 
+impl Default for RbacAuthorizationService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RbacAuthorizationService {
     /// Create a new RBAC authorization service
     pub fn new() -> Self {
@@ -222,7 +233,11 @@ impl RbacAuthorizationService {
                 name: "write".to_string(),
                 description: "Write access".to_string(),
                 resource_type: "*".to_string(),
-                actions: vec!["write".to_string(), "create".to_string(), "update".to_string()],
+                actions: vec![
+                    "write".to_string(),
+                    "create".to_string(),
+                    "update".to_string(),
+                ],
                 conditions: Vec::new(),
                 metadata: HashMap::new(),
             },
@@ -267,7 +282,12 @@ impl RbacAuthorizationService {
             Role {
                 name: "admin".to_string(),
                 description: "Administrator role with full access".to_string(),
-                permissions: vec!["read".to_string(), "write".to_string(), "delete".to_string(), "admin".to_string()],
+                permissions: vec![
+                    "read".to_string(),
+                    "write".to_string(),
+                    "delete".to_string(),
+                    "admin".to_string(),
+                ],
                 parent_roles: vec!["editor".to_string()],
                 metadata: HashMap::new(),
             },
@@ -285,9 +305,9 @@ impl RbacAuthorizationService {
         let roles = self.roles.read().await;
         let mut permissions = HashSet::new();
         let mut visited = HashSet::new();
-        
+
         self.collect_role_permissions(role_name, &roles, &mut permissions, &mut visited)?;
-        
+
         Ok(permissions.into_iter().collect())
     }
 
@@ -320,9 +340,14 @@ impl RbacAuthorizationService {
     }
 
     /// Check if a permission allows a specific action on a resource
-    async fn permission_allows_action(&self, permission_name: &str, resource: &str, action: &str) -> Result<bool> {
+    async fn permission_allows_action(
+        &self,
+        permission_name: &str,
+        resource: &str,
+        action: &str,
+    ) -> Result<bool> {
         let permissions = self.permissions.read().await;
-        
+
         if let Some(permission) = permissions.get(permission_name) {
             // Check resource type
             if permission.resource_type != "*" && permission.resource_type != resource {
@@ -330,7 +355,9 @@ impl RbacAuthorizationService {
             }
 
             // Check actions
-            if permission.actions.contains(&"*".to_string()) || permission.actions.contains(&action.to_string()) {
+            if permission.actions.contains(&"*".to_string())
+                || permission.actions.contains(&action.to_string())
+            {
                 return Ok(true);
             }
         }
@@ -339,7 +366,11 @@ impl RbacAuthorizationService {
     }
 
     /// Evaluate conditions for a permission
-    async fn evaluate_conditions(&self, conditions: &[Condition], context: &SecurityContext) -> Result<bool> {
+    async fn evaluate_conditions(
+        &self,
+        conditions: &[Condition],
+        context: &SecurityContext,
+    ) -> Result<bool> {
         for condition in conditions {
             if !self.evaluate_condition(condition, context).await? {
                 return Ok(false);
@@ -349,11 +380,23 @@ impl RbacAuthorizationService {
     }
 
     /// Evaluate a single condition
-    async fn evaluate_condition(&self, condition: &Condition, context: &SecurityContext) -> Result<bool> {
+    async fn evaluate_condition(
+        &self,
+        condition: &Condition,
+        context: &SecurityContext,
+    ) -> Result<bool> {
         let field_value = match condition.condition_type {
             ConditionType::IpAddress => context.ip_address.clone().unwrap_or_default(),
-            ConditionType::UserAttribute => context.metadata.get(&condition.field).cloned().unwrap_or_default(),
-            ConditionType::ContextAttribute => context.metadata.get(&condition.field).cloned().unwrap_or_default(),
+            ConditionType::UserAttribute => context
+                .metadata
+                .get(&condition.field)
+                .cloned()
+                .unwrap_or_default(),
+            ConditionType::ContextAttribute => context
+                .metadata
+                .get(&condition.field)
+                .cloned()
+                .unwrap_or_default(),
             _ => String::new(),
         };
 
@@ -378,10 +421,18 @@ impl RbacAuthorizationService {
 
 #[async_trait]
 impl AuthorizationService for RbacAuthorizationService {
-    async fn check_permission(&self, context: &SecurityContext, resource: &str, action: &str) -> Result<bool> {
+    async fn check_permission(
+        &self,
+        context: &SecurityContext,
+        resource: &str,
+        action: &str,
+    ) -> Result<bool> {
         // Get user roles
         let user_roles = self.user_roles.read().await;
-        let roles = user_roles.get(&context.user_id).cloned().unwrap_or_default();
+        let roles = user_roles
+            .get(&context.user_id)
+            .cloned()
+            .unwrap_or_default();
         drop(user_roles);
 
         // Get all permissions for user roles
@@ -393,11 +444,17 @@ impl AuthorizationService for RbacAuthorizationService {
 
         // Check if any permission allows the action
         for permission_name in &all_permissions {
-            if self.permission_allows_action(permission_name, resource, action).await? {
+            if self
+                .permission_allows_action(permission_name, resource, action)
+                .await?
+            {
                 // Check permission conditions
                 let permissions = self.permissions.read().await;
                 if let Some(permission) = permissions.get(permission_name) {
-                    if self.evaluate_conditions(&permission.conditions, context).await? {
+                    if self
+                        .evaluate_conditions(&permission.conditions, context)
+                        .await?
+                    {
                         return Ok(true);
                     }
                 }
@@ -414,7 +471,7 @@ impl AuthorizationService for RbacAuthorizationService {
 
         let mut all_permissions = HashSet::new();
         for role_name in &roles {
-            let role_permissions = self.get_role_permissions(&role_name).await?;
+            let role_permissions = self.get_role_permissions(role_name).await?;
             all_permissions.extend(role_permissions);
         }
 
@@ -444,11 +501,17 @@ impl AuthorizationService for RbacAuthorizationService {
     async fn add_user_role(&self, user_id: &str, role_name: &str) -> Result<()> {
         // Check if role exists
         if !self.role_exists(role_name).await? {
-            return Err(AgentError::validation(format!("Role '{}' does not exist", role_name)));
+            return Err(AgentError::validation(format!(
+                "Role '{}' does not exist",
+                role_name
+            )));
         }
 
         let mut user_roles = self.user_roles.write().await;
-        user_roles.entry(user_id.to_string()).or_insert_with(HashSet::new).insert(role_name.to_string());
+        user_roles
+            .entry(user_id.to_string())
+            .or_insert_with(HashSet::new)
+            .insert(role_name.to_string());
         Ok(())
     }
 
@@ -463,7 +526,10 @@ impl AuthorizationService for RbacAuthorizationService {
     async fn create_role(&self, role: Role) -> Result<()> {
         let mut roles = self.roles.write().await;
         if roles.contains_key(&role.name) {
-            return Err(AgentError::validation(format!("Role '{}' already exists", role.name)));
+            return Err(AgentError::validation(format!(
+                "Role '{}' already exists",
+                role.name
+            )));
         }
         roles.insert(role.name.clone(), role);
         Ok(())
@@ -478,20 +544,23 @@ impl AuthorizationService for RbacAuthorizationService {
     async fn delete_role(&self, role_name: &str) -> Result<()> {
         let mut roles = self.roles.write().await;
         roles.remove(role_name);
-        
+
         // Remove role from all users
         let mut user_roles = self.user_roles.write().await;
         for (_, user_role_set) in user_roles.iter_mut() {
             user_role_set.remove(role_name);
         }
-        
+
         Ok(())
     }
 
     async fn create_permission(&self, permission: Permission) -> Result<()> {
         let mut permissions = self.permissions.write().await;
         if permissions.contains_key(&permission.name) {
-            return Err(AgentError::validation(format!("Permission '{}' already exists", permission.name)));
+            return Err(AgentError::validation(format!(
+                "Permission '{}' already exists",
+                permission.name
+            )));
         }
         permissions.insert(permission.name.clone(), permission);
         Ok(())
@@ -522,11 +591,11 @@ impl AuthorizationService for RbacAuthorizationService {
     async fn get_role_hierarchy(&self) -> Result<HashMap<String, Vec<String>>> {
         let roles = self.roles.read().await;
         let mut hierarchy = HashMap::new();
-        
+
         for (role_name, role) in roles.iter() {
             hierarchy.insert(role_name.clone(), role.parent_roles.clone());
         }
-        
+
         Ok(hierarchy)
     }
 

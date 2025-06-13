@@ -6,15 +6,15 @@ use uuid::Uuid;
 
 use crate::utils::error::Result;
 
+pub mod audit;
 /// Enterprise-grade security framework for the agent system
 pub mod authentication;
 pub mod authorization;
 pub mod encryption;
-pub mod audit;
-pub mod session;
+pub mod middleware;
 pub mod policy;
 pub mod rate_limiting;
-pub mod middleware;
+pub mod session;
 
 #[cfg(test)]
 mod tests;
@@ -371,7 +371,7 @@ impl Default for SecurityConfig {
         Self {
             jwt: JwtConfig {
                 secret: Uuid::new_v4().to_string(),
-                expiration_seconds: 3600, // 1 hour
+                expiration_seconds: 3600,              // 1 hour
                 refresh_expiration_seconds: 86400 * 7, // 7 days
                 issuer: "rust-agent".to_string(),
                 audience: "rust-agent-api".to_string(),
@@ -492,7 +492,8 @@ impl SecurityManager {
         let audit_service = audit::create_audit_service(&config.audit).await?;
         let session_manager = session::create_session_manager(&config.session).await?;
         let policy_engine = policy::create_policy_engine().await?;
-        let rate_limit_service = rate_limiting::create_rate_limit_service(&config.rate_limiting).await?;
+        let rate_limit_service =
+            rate_limiting::create_rate_limit_service(&config.rate_limiting).await?;
 
         Ok(Self {
             config,
@@ -521,7 +522,10 @@ impl SecurityManager {
     pub async fn validate_context(&self, context: &SecurityContext) -> Result<bool> {
         // Check session validity
         let session_manager = self.session_manager.read().await;
-        if !session_manager.is_session_valid(&context.session_id).await? {
+        if !session_manager
+            .is_session_valid(&context.session_id)
+            .await?
+        {
             return Ok(false);
         }
 
@@ -529,11 +533,15 @@ impl SecurityManager {
         if self.config.rate_limiting.enabled {
             let rate_limit_service = self.rate_limit_service.read().await;
             let key = format!("user:{}", context.user_id);
-            let result = rate_limit_service.check_rate_limit(&key, rate_limiting::RateLimitType::PerMinute).await?;
+            let result = rate_limit_service
+                .check_rate_limit(&key, rate_limiting::RateLimitType::PerMinute)
+                .await?;
             if !result.allowed {
                 return Ok(false);
             }
-            rate_limit_service.record_request(&key, rate_limiting::RateLimitType::PerMinute).await?;
+            rate_limit_service
+                .record_request(&key, rate_limiting::RateLimitType::PerMinute)
+                .await?;
         }
 
         // Log the validation attempt
@@ -542,15 +550,22 @@ impl SecurityManager {
             resource: "security_context".to_string(),
             action: "validate".to_string(),
             granted: true,
-        }).await?;
+        })
+        .await?;
 
         Ok(true)
     }
 
     /// Create a new security context for a user
-    pub async fn create_context(&self, user_id: String, ip_address: Option<String>) -> Result<SecurityContext> {
+    pub async fn create_context(
+        &self,
+        user_id: String,
+        ip_address: Option<String>,
+    ) -> Result<SecurityContext> {
         let session_manager = self.session_manager.read().await;
-        let session_id = session_manager.create_session(&user_id, ip_address.clone()).await?;
+        let session_id = session_manager
+            .create_session(&user_id, ip_address.clone())
+            .await?;
 
         let mut context = SecurityContext::new(user_id.clone(), session_id.clone());
         if let Some(ip) = ip_address {
@@ -562,7 +577,8 @@ impl SecurityManager {
             user_id,
             session_id,
             ip_address: context.ip_address.clone(),
-        }).await?;
+        })
+        .await?;
 
         Ok(context)
     }
@@ -570,14 +586,17 @@ impl SecurityManager {
     /// Terminate a security context
     pub async fn terminate_context(&self, context: &SecurityContext, reason: String) -> Result<()> {
         let session_manager = self.session_manager.read().await;
-        session_manager.terminate_session(&context.session_id).await?;
+        session_manager
+            .terminate_session(&context.session_id)
+            .await?;
 
         // Log session termination
         self.log_security_event(SecurityEvent::SessionTerminated {
             user_id: context.user_id.clone(),
             session_id: context.session_id.clone(),
             reason,
-        }).await?;
+        })
+        .await?;
 
         Ok(())
     }

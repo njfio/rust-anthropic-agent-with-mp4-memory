@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use tokio::fs;
 use tracing::{debug, info};
 
+use super::{PluginConfig, PluginMetadata};
 use crate::utils::error::{AgentError, Result};
-use super::{PluginMetadata, PluginConfig};
 
 /// Plugin registry for managing plugin metadata and discovery
 #[derive(Debug, Clone)]
@@ -89,7 +89,12 @@ impl PluginRegistry {
     }
 
     /// Register a plugin in the registry
-    pub async fn register_plugin(&mut self, metadata: PluginMetadata, config: PluginConfig, install_path: Option<PathBuf>) -> Result<()> {
+    pub async fn register_plugin(
+        &mut self,
+        metadata: PluginMetadata,
+        config: PluginConfig,
+        install_path: Option<PathBuf>,
+    ) -> Result<()> {
         let plugin_id = metadata.id.clone();
 
         // Validate plugin metadata
@@ -97,7 +102,10 @@ impl PluginRegistry {
 
         // Check for conflicts
         if self.plugins.contains_key(&plugin_id) {
-            return Err(AgentError::plugin(format!("Plugin already registered: {}", plugin_id)));
+            return Err(AgentError::plugin(format!(
+                "Plugin already registered: {}",
+                plugin_id
+            )));
         }
 
         // Register the plugin
@@ -122,7 +130,10 @@ impl PluginRegistry {
     /// Unregister a plugin from the registry
     pub async fn unregister_plugin(&mut self, plugin_id: &str) -> Result<()> {
         if !self.plugins.contains_key(plugin_id) {
-            return Err(AgentError::plugin(format!("Plugin not found: {}", plugin_id)));
+            return Err(AgentError::plugin(format!(
+                "Plugin not found: {}",
+                plugin_id
+            )));
         }
 
         self.plugins.remove(plugin_id);
@@ -173,8 +184,8 @@ impl PluginRegistry {
         self.plugins
             .values()
             .filter(|plugin| {
-                plugin.name.to_lowercase().contains(&query_lower) ||
-                plugin.description.to_lowercase().contains(&query_lower)
+                plugin.name.to_lowercase().contains(&query_lower)
+                    || plugin.description.to_lowercase().contains(&query_lower)
             })
             .collect()
     }
@@ -188,18 +199,28 @@ impl PluginRegistry {
         };
 
         if !search_dir.exists() {
-            result.errors.push(format!("Directory does not exist: {}", search_dir.display()));
+            result.errors.push(format!(
+                "Directory does not exist: {}",
+                search_dir.display()
+            ));
             return Ok(result);
         }
 
         debug!("Discovering plugins in: {}", search_dir.display());
 
-        let mut entries = fs::read_dir(&search_dir).await
-            .map_err(|e| AgentError::plugin(format!("Failed to read directory {}: {}", search_dir.display(), e)))?;
+        let mut entries = fs::read_dir(&search_dir).await.map_err(|e| {
+            AgentError::plugin(format!(
+                "Failed to read directory {}: {}",
+                search_dir.display(),
+                e
+            ))
+        })?;
 
-        while let Some(entry) = entries.next_entry().await
-            .map_err(|e| AgentError::plugin(format!("Failed to read directory entry: {}", e)))? {
-            
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|e| AgentError::plugin(format!("Failed to read directory entry: {}", e)))?
+        {
             let path = entry.path();
             if path.is_dir() {
                 match self.discover_plugin_in_dir(path.clone()).await {
@@ -210,20 +231,26 @@ impl PluginRegistry {
                         // No plugin found in this directory
                     }
                     Err(e) => {
-                        result.errors.push(format!("Error in {}: {}", path.display(), e));
+                        result
+                            .errors
+                            .push(format!("Error in {}: {}", path.display(), e));
                     }
                 }
             }
         }
 
-        info!("Discovered {} plugins in {}", result.plugins.len(), search_dir.display());
+        info!(
+            "Discovered {} plugins in {}",
+            result.plugins.len(),
+            search_dir.display()
+        );
         Ok(result)
     }
 
     /// Discover a plugin in a specific directory
     async fn discover_plugin_in_dir(&self, plugin_dir: PathBuf) -> Result<Option<PluginMetadata>> {
         let manifest_path = plugin_dir.join("plugin.toml");
-        
+
         if !manifest_path.exists() {
             // Try alternative manifest names
             let alt_manifest = plugin_dir.join("manifest.toml");
@@ -232,11 +259,21 @@ impl PluginRegistry {
             }
         }
 
-        let manifest_content = fs::read_to_string(&manifest_path).await
-            .map_err(|e| AgentError::plugin(format!("Failed to read manifest {}: {}", manifest_path.display(), e)))?;
+        let manifest_content = fs::read_to_string(&manifest_path).await.map_err(|e| {
+            AgentError::plugin(format!(
+                "Failed to read manifest {}: {}",
+                manifest_path.display(),
+                e
+            ))
+        })?;
 
-        let metadata: PluginMetadata = toml::from_str(&manifest_content)
-            .map_err(|e| AgentError::plugin(format!("Failed to parse manifest {}: {}", manifest_path.display(), e)))?;
+        let metadata: PluginMetadata = toml::from_str(&manifest_content).map_err(|e| {
+            AgentError::plugin(format!(
+                "Failed to parse manifest {}: {}",
+                manifest_path.display(),
+                e
+            ))
+        })?;
 
         // Validate the discovered plugin
         self.validate_plugin_metadata(&metadata)?;
@@ -251,20 +288,29 @@ impl PluginRegistry {
         }
 
         if metadata.name.is_empty() {
-            return Err(AgentError::plugin("Plugin name cannot be empty".to_string()));
+            return Err(AgentError::plugin(
+                "Plugin name cannot be empty".to_string(),
+            ));
         }
 
         if metadata.version.is_empty() {
-            return Err(AgentError::plugin("Plugin version cannot be empty".to_string()));
+            return Err(AgentError::plugin(
+                "Plugin version cannot be empty".to_string(),
+            ));
         }
 
         if metadata.entry_point.is_empty() {
-            return Err(AgentError::plugin("Plugin entry point cannot be empty".to_string()));
+            return Err(AgentError::plugin(
+                "Plugin entry point cannot be empty".to_string(),
+            ));
         }
 
         // Validate version format (basic semver check)
         if !self.is_valid_version(&metadata.version) {
-            return Err(AgentError::plugin(format!("Invalid version format: {}", metadata.version)));
+            return Err(AgentError::plugin(format!(
+                "Invalid version format: {}",
+                metadata.version
+            )));
         }
 
         Ok(())
@@ -284,11 +330,14 @@ impl PluginRegistry {
     pub async fn load_registry(&mut self) -> Result<()> {
         if let Some(ref registry_path) = self.registry_path {
             if registry_path.exists() {
-                let content = fs::read_to_string(registry_path).await
-                    .map_err(|e| AgentError::plugin(format!("Failed to read registry file: {}", e)))?;
+                let content = fs::read_to_string(registry_path).await.map_err(|e| {
+                    AgentError::plugin(format!("Failed to read registry file: {}", e))
+                })?;
 
                 let registry_data: HashMap<String, PluginRegistryEntry> = toml::from_str(&content)
-                    .map_err(|e| AgentError::plugin(format!("Failed to parse registry file: {}", e)))?;
+                    .map_err(|e| {
+                        AgentError::plugin(format!("Failed to parse registry file: {}", e))
+                    })?;
 
                 for (plugin_id, entry) in registry_data {
                     self.plugins.insert(plugin_id.clone(), entry.metadata);
@@ -309,7 +358,9 @@ impl PluginRegistry {
 
             for (plugin_id, metadata) in &self.plugins {
                 if let Some(config) = self.configs.get(plugin_id) {
-                    let install_path = self.install_paths.get(plugin_id)
+                    let install_path = self
+                        .install_paths
+                        .get(plugin_id)
                         .cloned()
                         .unwrap_or_else(|| PathBuf::from(""));
 
@@ -330,11 +381,13 @@ impl PluginRegistry {
 
             // Ensure parent directory exists
             if let Some(parent) = registry_path.parent() {
-                fs::create_dir_all(parent).await
-                    .map_err(|e| AgentError::plugin(format!("Failed to create registry directory: {}", e)))?;
+                fs::create_dir_all(parent).await.map_err(|e| {
+                    AgentError::plugin(format!("Failed to create registry directory: {}", e))
+                })?;
             }
 
-            fs::write(registry_path, content).await
+            fs::write(registry_path, content)
+                .await
                 .map_err(|e| AgentError::plugin(format!("Failed to write registry file: {}", e)))?;
 
             debug!("Saved registry with {} plugins", registry_data.len());
@@ -375,7 +428,10 @@ impl PluginRegistry {
             let min_version = &metadata.min_agent_version;
             Ok(agent_version >= min_version.as_str())
         } else {
-            Err(AgentError::plugin(format!("Plugin not found: {}", plugin_id)))
+            Err(AgentError::plugin(format!(
+                "Plugin not found: {}",
+                plugin_id
+            )))
         }
     }
 }

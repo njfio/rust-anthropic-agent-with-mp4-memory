@@ -8,8 +8,8 @@ use tracing::{debug, info, warn};
 
 use crate::anthropic::models::ToolDefinition;
 use crate::tools::{create_tool_definition, extract_string_param, Tool, ToolResult};
+use crate::utils::audit_logger::{audit_log, AuditEvent, AuditEventType, AuditSeverity};
 use crate::utils::error::{AgentError, Result};
-use crate::utils::audit_logger::{AuditEvent, AuditEventType, AuditSeverity, audit_log};
 use crate::utils::security_headers::SecurityHeaders;
 
 /// A secure shell command execution tool with allowlist-based filtering
@@ -110,18 +110,28 @@ impl ShellCommandTool {
         };
 
         // Check for shell operators that could be used for command injection
-        if command.contains(';') || command.contains('&') || command.contains('|') ||
-           command.contains('`') || command.contains('$') || command.contains('>') ||
-           command.contains('<') {
+        if command.contains(';')
+            || command.contains('&')
+            || command.contains('|')
+            || command.contains('`')
+            || command.contains('$')
+            || command.contains('>')
+            || command.contains('<')
+        {
             return false;
         }
 
         if self.use_allowlist {
             // SECURITY: Allowlist mode - only explicitly allowed commands
-            self.allowed_commands.iter().any(|allowed| base_command == allowed)
+            self.allowed_commands
+                .iter()
+                .any(|allowed| base_command == allowed)
         } else {
             // Legacy blocklist mode - less secure
-            !self.blocked_commands.iter().any(|blocked| base_command.contains(blocked))
+            !self
+                .blocked_commands
+                .iter()
+                .any(|blocked| base_command.contains(blocked))
         }
     }
 }
@@ -158,21 +168,29 @@ impl Tool for ShellCommandTool {
 
         if !self.is_command_safe(&command) {
             // AUDIT: Log blocked command attempt
-            audit_log(AuditEvent::new(
-                AuditEventType::SecurityViolation,
-                AuditSeverity::High,
-                "blocked_command_execution".to_string(),
-            ).with_resource(&command).with_success(false).with_error("Command blocked by security policy"));
+            audit_log(
+                AuditEvent::new(
+                    AuditEventType::SecurityViolation,
+                    AuditSeverity::High,
+                    "blocked_command_execution".to_string(),
+                )
+                .with_resource(&command)
+                .with_success(false)
+                .with_error("Command blocked by security policy"),
+            );
 
             return Ok(ToolResult::error("Command blocked for security reasons"));
         }
 
         // AUDIT: Log command execution attempt
-        audit_log(AuditEvent::new(
-            AuditEventType::CommandExecution,
-            AuditSeverity::Medium,
-            "shell_command_execution".to_string(),
-        ).with_resource(&command));
+        audit_log(
+            AuditEvent::new(
+                AuditEventType::CommandExecution,
+                AuditSeverity::Medium,
+                "shell_command_execution".to_string(),
+            )
+            .with_resource(&command),
+        );
 
         let mut cmd = if cfg!(target_os = "windows") {
             let mut cmd = Command::new("cmd");
@@ -206,24 +224,44 @@ impl Tool for ShellCommandTool {
                         format!("STDOUT:\n{}\n\nSTDERR:\n{}", stdout, stderr)
                     }
                 } else {
-                    format!("Command failed with exit code: {:?}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
-                           output.status.code(), stdout, stderr)
+                    format!(
+                        "Command failed with exit code: {:?}\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+                        output.status.code(),
+                        stdout,
+                        stderr
+                    )
                 };
 
-                info!("Shell command executed: {} (success: {})", command, output.status.success());
+                info!(
+                    "Shell command executed: {} (success: {})",
+                    command,
+                    output.status.success()
+                );
                 Ok(ToolResult::success(result))
             }
             Ok(Ok(Err(e))) => {
                 warn!("Failed to execute shell command: {}", e);
-                Ok(ToolResult::error(format!("Failed to execute command: {}", e)))
+                Ok(ToolResult::error(format!(
+                    "Failed to execute command: {}",
+                    e
+                )))
             }
             Ok(Err(e)) => {
                 warn!("Shell command task failed: {}", e);
-                Ok(ToolResult::error(format!("Command execution task failed: {}", e)))
+                Ok(ToolResult::error(format!(
+                    "Command execution task failed: {}",
+                    e
+                )))
             }
             Err(_) => {
-                warn!("Shell command timed out after {} seconds: {}", self.timeout_seconds, command);
-                Ok(ToolResult::error(format!("Command timed out after {} seconds", self.timeout_seconds)))
+                warn!(
+                    "Shell command timed out after {} seconds: {}",
+                    self.timeout_seconds, command
+                );
+                Ok(ToolResult::error(format!(
+                    "Command timed out after {} seconds",
+                    self.timeout_seconds
+                )))
             }
         }
     }
@@ -351,21 +389,29 @@ impl Tool for HttpRequestTool {
 
         if !self.is_url_allowed(&url) {
             // AUDIT: Log blocked URL attempt
-            audit_log(AuditEvent::new(
-                AuditEventType::SecurityViolation,
-                AuditSeverity::High,
-                "blocked_http_request".to_string(),
-            ).with_resource(&url).with_success(false).with_error("URL not in allowed domains"));
+            audit_log(
+                AuditEvent::new(
+                    AuditEventType::SecurityViolation,
+                    AuditSeverity::High,
+                    "blocked_http_request".to_string(),
+                )
+                .with_resource(&url)
+                .with_success(false)
+                .with_error("URL not in allowed domains"),
+            );
 
             return Ok(ToolResult::error("URL not allowed"));
         }
 
         // AUDIT: Log HTTP request attempt
-        audit_log(AuditEvent::new(
-            AuditEventType::NetworkRequest,
-            AuditSeverity::Medium,
-            format!("http_request_{}", method.to_lowercase()),
-        ).with_resource(&url));
+        audit_log(
+            AuditEvent::new(
+                AuditEventType::NetworkRequest,
+                AuditSeverity::Medium,
+                format!("http_request_{}", method.to_lowercase()),
+            )
+            .with_resource(&url),
+        );
 
         let mut request = match method.to_uppercase().as_str() {
             "GET" => self.client.get(&url),
@@ -413,10 +459,16 @@ impl Tool for HttpRequestTool {
                             body
                         );
 
-                        info!("HTTP request completed: {} {} (status: {})", method, url, status);
+                        info!(
+                            "HTTP request completed: {} {} (status: {})",
+                            method, url, status
+                        );
                         Ok(ToolResult::success(result))
                     }
-                    Err(e) => Ok(ToolResult::error(format!("Failed to read response body: {}", e))),
+                    Err(e) => Ok(ToolResult::error(format!(
+                        "Failed to read response body: {}",
+                        e
+                    ))),
                 }
             }
             Err(e) => {
@@ -483,7 +535,7 @@ mod tests {
     async fn test_uuid_generator_tool() {
         let tool = UuidGeneratorTool::default();
         let result = tool.execute(json!({})).await.unwrap();
-        
+
         assert!(!result.is_error);
         assert!(uuid::Uuid::parse_str(&result.content).is_ok());
     }
@@ -492,7 +544,7 @@ mod tests {
     async fn test_shell_command_tool_safe() {
         let tool = ShellCommandTool::new();
         let input = json!({"command": "echo hello"});
-        
+
         let result = tool.execute(input).await.unwrap();
         assert!(!result.is_error);
         assert!(result.content.contains("hello"));
@@ -502,7 +554,7 @@ mod tests {
     async fn test_shell_command_tool_blocked() {
         let tool = ShellCommandTool::new();
         let input = json!({"command": "rm -rf /"});
-        
+
         let result = tool.execute(input).await.unwrap();
         assert!(result.is_error);
         assert!(result.content.contains("blocked"));

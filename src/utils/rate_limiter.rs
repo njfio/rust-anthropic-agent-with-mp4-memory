@@ -1,7 +1,7 @@
+use crate::utils::error::{AgentError, Result};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use crate::utils::error::{AgentError, Result};
 
 /// Rate limiter configuration
 #[derive(Debug, Clone)]
@@ -47,13 +47,14 @@ impl RateLimiter {
     /// Check if a request is allowed (global rate limiting)
     pub fn check_global_rate_limit(&self) -> Result<()> {
         let now = Instant::now();
-        let mut requests = self.global_requests.lock()
+        let mut requests = self
+            .global_requests
+            .lock()
             .map_err(|_| AgentError::config("Rate limiter mutex poisoned".to_string()))?;
 
         // Remove old requests outside the window
-        requests.retain(|&request_time| {
-            now.duration_since(request_time) < self.config.window_duration
-        });
+        requests
+            .retain(|&request_time| now.duration_since(request_time) < self.config.window_duration);
 
         // Check if we're within the limit
         if requests.len() >= self.config.max_requests as usize {
@@ -76,16 +77,19 @@ impl RateLimiter {
         }
 
         let now = Instant::now();
-        let mut tool_requests = self.tool_requests.lock()
+        let mut tool_requests = self
+            .tool_requests
+            .lock()
             .map_err(|_| AgentError::config("Rate limiter mutex poisoned".to_string()))?;
 
         // Get or create request history for this tool
-        let requests = tool_requests.entry(tool_name.to_string()).or_insert_with(Vec::new);
+        let requests = tool_requests
+            .entry(tool_name.to_string())
+            .or_insert_with(Vec::new);
 
         // Remove old requests outside the window
-        requests.retain(|&request_time| {
-            now.duration_since(request_time) < self.config.window_duration
-        });
+        requests
+            .retain(|&request_time| now.duration_since(request_time) < self.config.window_duration);
 
         // Check if we're within the limit (per-tool limit is half of global limit)
         let tool_limit = (self.config.max_requests / 2).max(1);
@@ -107,32 +111,40 @@ impl RateLimiter {
     pub fn check_rate_limit(&self, tool_name: &str) -> Result<()> {
         // Check global rate limit first
         self.check_global_rate_limit()?;
-        
+
         // Then check tool-specific rate limit
         self.check_tool_rate_limit(tool_name)?;
-        
+
         Ok(())
     }
 
     /// Get current rate limit status
     pub fn get_rate_limit_status(&self) -> Result<RateLimitStatus> {
         let now = Instant::now();
-        
+
         // Global status
-        let global_requests = self.global_requests.lock()
+        let global_requests = self
+            .global_requests
+            .lock()
             .map_err(|_| AgentError::config("Rate limiter mutex poisoned".to_string()))?;
-        let global_count = global_requests.iter()
+        let global_count = global_requests
+            .iter()
             .filter(|&&request_time| now.duration_since(request_time) < self.config.window_duration)
             .count();
 
         // Tool status
-        let tool_requests = self.tool_requests.lock()
+        let tool_requests = self
+            .tool_requests
+            .lock()
             .map_err(|_| AgentError::config("Rate limiter mutex poisoned".to_string()))?;
         let mut tool_counts = HashMap::new();
-        
+
         for (tool_name, requests) in tool_requests.iter() {
-            let count = requests.iter()
-                .filter(|&&request_time| now.duration_since(request_time) < self.config.window_duration)
+            let count = requests
+                .iter()
+                .filter(|&&request_time| {
+                    now.duration_since(request_time) < self.config.window_duration
+                })
                 .count();
             tool_counts.insert(tool_name.clone(), count);
         }
@@ -148,11 +160,15 @@ impl RateLimiter {
 
     /// Reset rate limiting (for testing or admin purposes)
     pub fn reset(&self) -> Result<()> {
-        let mut global_requests = self.global_requests.lock()
+        let mut global_requests = self
+            .global_requests
+            .lock()
             .map_err(|_| AgentError::config("Rate limiter mutex poisoned".to_string()))?;
         global_requests.clear();
 
-        let mut tool_requests = self.tool_requests.lock()
+        let mut tool_requests = self
+            .tool_requests
+            .lock()
             .map_err(|_| AgentError::config("Rate limiter mutex poisoned".to_string()))?;
         tool_requests.clear();
 
@@ -178,7 +194,8 @@ impl RateLimitStatus {
 
     /// Check if any tool rate limit is close to being exceeded
     pub fn is_any_tool_limit_close(&self) -> bool {
-        self.tool_requests.values()
+        self.tool_requests
+            .values()
             .any(|&count| count as f64 / self.tool_limit as f64 > 0.8)
     }
 }

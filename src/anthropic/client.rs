@@ -4,8 +4,8 @@ use tracing::{debug, error, info, warn};
 
 use crate::anthropic::models::{ChatRequest, ChatResponse};
 use crate::config::AnthropicConfig;
-use crate::utils::error::{AgentError, Result};
 use crate::utils::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
+use crate::utils::error::{AgentError, Result};
 
 /// HTTP client for the Anthropic API
 #[derive(Debug)]
@@ -61,7 +61,7 @@ impl AnthropicClient {
                     // Record success with circuit breaker
                     self.circuit_breaker.record_success().await;
                     return Ok(response);
-                },
+                }
                 Err(e) if retries < max_retries && e.is_retryable() => {
                     retries += 1;
 
@@ -73,11 +73,12 @@ impl AnthropicClient {
                     let delay = Duration::from_millis(base_delay + jitter);
 
                     // For 529 overloaded errors, use longer delays
-                    let final_delay = if e.to_string().contains("529") || e.to_string().contains("overloaded") {
-                        Duration::from_millis((base_delay + jitter) * 2)
-                    } else {
-                        delay
-                    };
+                    let final_delay =
+                        if e.to_string().contains("529") || e.to_string().contains("overloaded") {
+                            Duration::from_millis((base_delay + jitter) * 2)
+                        } else {
+                            delay
+                        };
 
                     warn!(
                         "Request failed (attempt {}/{}), retrying in {:?}: {}",
@@ -89,7 +90,7 @@ impl AnthropicClient {
                     // Record failure with circuit breaker
                     self.circuit_breaker.record_failure().await;
                     return Err(e);
-                },
+                }
             }
         }
     }
@@ -134,9 +135,15 @@ impl AnthropicClient {
             .map_err(|e| {
                 error!("❌ HTTP request failed: {}", e);
                 if e.is_timeout() {
-                    AgentError::anthropic_api("Request timed out - consider increasing timeout_seconds in config".to_string())
+                    AgentError::anthropic_api(
+                        "Request timed out - consider increasing timeout_seconds in config"
+                            .to_string(),
+                    )
                 } else if e.is_connect() {
-                    AgentError::anthropic_api("Connection failed - check internet connection and API endpoint".to_string())
+                    AgentError::anthropic_api(
+                        "Connection failed - check internet connection and API endpoint"
+                            .to_string(),
+                    )
                 } else {
                     AgentError::Http(e)
                 }
@@ -145,10 +152,7 @@ impl AnthropicClient {
         let status = response.status();
 
         // Try to get response as bytes first, then convert to string with better error handling
-        let response_bytes = response
-            .bytes()
-            .await
-            .map_err(|e| AgentError::Http(e))?;
+        let response_bytes = response.bytes().await.map_err(AgentError::Http)?;
 
         let response_text = match String::from_utf8(response_bytes.to_vec()) {
             Ok(text) => text,
@@ -173,12 +177,11 @@ impl AnthropicClient {
             return self.handle_error_response(status, &response_text);
         }
 
-        let chat_response: ChatResponse = serde_json::from_str(&response_text)
-            .map_err(|e| {
-                error!("Failed to parse JSON response: {}", e);
-                error!("Response text: {}", response_text);
-                AgentError::Json(e)
-            })?;
+        let chat_response: ChatResponse = serde_json::from_str(&response_text).map_err(|e| {
+            error!("Failed to parse JSON response: {}", e);
+            error!("Response text: {}", response_text);
+            AgentError::Json(e)
+        })?;
 
         info!(
             "Chat request successful. Input tokens: {}, Output tokens: {}",
@@ -226,7 +229,11 @@ impl AnthropicClient {
     }
 
     /// Handle error responses from the API
-    fn handle_error_response(&self, status: reqwest::StatusCode, body: &str) -> Result<ChatResponse> {
+    fn handle_error_response(
+        &self,
+        status: reqwest::StatusCode,
+        body: &str,
+    ) -> Result<ChatResponse> {
         error!("API request failed with status {}: {}", status, body);
 
         // Try to parse error response
@@ -253,7 +260,7 @@ impl AnthropicClient {
                         "API overloaded ({}): {}",
                         status, error_message
                     )))
-                },
+                }
                 400..=499 => Err(AgentError::anthropic_api(format!(
                     "Client error ({}): {}",
                     status, error_message
@@ -351,7 +358,10 @@ impl AnthropicClient {
                             let role = msg
                                 .get("role")
                                 .cloned()
-                                .map_or(Ok(crate::anthropic::models::MessageRole::Assistant), serde_json::from_value)
+                                .map_or(
+                                    Ok(crate::anthropic::models::MessageRole::Assistant),
+                                    serde_json::from_value,
+                                )
                                 .unwrap_or(crate::anthropic::models::MessageRole::Assistant);
                             let stop_reason = msg
                                 .get("stop_reason")
@@ -385,7 +395,9 @@ impl AnthropicClient {
                     Some("message_delta") => {
                         if usage.is_none() {
                             if let Some(u) = value.get("usage") {
-                                match serde_json::from_value::<crate::anthropic::models::Usage>(u.clone()) {
+                                match serde_json::from_value::<crate::anthropic::models::Usage>(
+                                    u.clone(),
+                                ) {
                                     Ok(u) => usage = Some(u),
                                     Err(e) => error!("Failed to parse usage: {}", e),
                                 }
@@ -452,7 +464,9 @@ impl AnthropicClient {
     }
 
     /// Get circuit breaker statistics
-    pub async fn get_circuit_breaker_stats(&self) -> crate::utils::circuit_breaker::CircuitBreakerStats {
+    pub async fn get_circuit_breaker_stats(
+        &self,
+    ) -> crate::utils::circuit_breaker::CircuitBreakerStats {
         self.circuit_breaker.get_stats().await
     }
 
@@ -465,9 +479,9 @@ impl AnthropicClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::net::TcpListener;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
 
     async fn write_chunk(socket: &mut tokio::net::TcpStream, data: &str) {
         let header = format!("{:X}\r\n", data.len());
@@ -495,9 +509,17 @@ mod tests {
 
             write_chunk(&mut socket, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"1\",\"model\":\"test\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":\"stop\"}}\n\n").await;
             tokio::time::sleep(Duration::from_millis(10)).await;
-            write_chunk(&mut socket, "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hello \"}}\n\n").await;
+            write_chunk(
+                &mut socket,
+                "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hello \"}}\n\n",
+            )
+            .await;
             tokio::time::sleep(Duration::from_millis(10)).await;
-            write_chunk(&mut socket, "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"world\"}}\n\n").await;
+            write_chunk(
+                &mut socket,
+                "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"world\"}}\n\n",
+            )
+            .await;
             tokio::time::sleep(Duration::from_millis(10)).await;
             write_chunk(&mut socket, "data: {\"type\":\"message_delta\",\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}\n\n").await;
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -558,7 +580,11 @@ mod tests {
 
             write_chunk(&mut socket, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"1\",\"model\":\"test\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":\"stop\"}}\n\n").await;
             tokio::time::sleep(Duration::from_millis(10)).await;
-            write_chunk(&mut socket, "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hi\"}}\n\n").await;
+            write_chunk(
+                &mut socket,
+                "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hi\"}}\n\n",
+            )
+            .await;
             tokio::time::sleep(Duration::from_millis(10)).await;
             write_chunk(&mut socket, "data: {\"type\":\"message_delta\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}\n\n").await;
             tokio::time::sleep(Duration::from_millis(10)).await;

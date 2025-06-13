@@ -9,38 +9,118 @@ pub const MAX_URL_LENGTH: usize = 2048;
 pub const MAX_HEADER_VALUE_LENGTH: usize = 8192;
 
 /// Allowed characters for different input types
-const SAFE_PATH_CHARS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/\\";
-const SAFE_COMMAND_CHARS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/ =";
-const SAFE_URL_CHARS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/:?&=+%#";
+const SAFE_PATH_CHARS: &str =
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/\\";
+const SAFE_COMMAND_CHARS: &str =
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/ =";
+const SAFE_URL_CHARS: &str =
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/:?&=+%#";
 
 /// Dangerous patterns that should be blocked
 const DANGEROUS_PATTERNS: &[&str] = &[
-    "../", "..\\", "~", "$", "`", "$(", "${", "&&", "||", ";", "|", ">", "<",
-    "rm ", "del ", "format ", "mkfs", "dd ", "chmod 777", "chmod +x",
-    "curl ", "wget ", "nc ", "netcat", "telnet", "ssh", "ftp",
-    "python -c", "perl -e", "ruby -e", "node -e", "eval", "exec",
-    "/etc/passwd", "/etc/shadow", "C:\\Windows\\System32",
+    "../",
+    "..\\",
+    "~",
+    "$",
+    "`",
+    "$(",
+    "${",
+    "&&",
+    "||",
+    ";",
+    "|",
+    ">",
+    "<",
+    "rm ",
+    "del ",
+    "format ",
+    "mkfs",
+    "dd ",
+    "chmod 777",
+    "chmod +x",
+    "curl ",
+    "wget ",
+    "nc ",
+    "netcat",
+    "telnet",
+    "ssh",
+    "ftp",
+    "python -c",
+    "perl -e",
+    "ruby -e",
+    "node -e",
+    "eval",
+    "exec",
+    "/etc/passwd",
+    "/etc/shadow",
+    "C:\\Windows\\System32",
 ];
 
 /// SQL injection patterns
 const SQL_INJECTION_PATTERNS: &[&str] = &[
-    "' OR ", "\" OR ", "' AND ", "\" AND ", "UNION SELECT", "DROP TABLE",
-    "DELETE FROM", "INSERT INTO", "UPDATE SET", "CREATE TABLE", "ALTER TABLE",
-    "'; ", "\"; ", "/*", "*/", "--", "xp_", "sp_",
+    "' OR ",
+    "\" OR ",
+    "' AND ",
+    "\" AND ",
+    "UNION SELECT",
+    "DROP TABLE",
+    "DELETE FROM",
+    "INSERT INTO",
+    "UPDATE SET",
+    "CREATE TABLE",
+    "ALTER TABLE",
+    "'; ",
+    "\"; ",
+    "/*",
+    "*/",
+    "--",
+    "xp_",
+    "sp_",
 ];
 
 /// XSS patterns
 const XSS_PATTERNS: &[&str] = &[
-    "<script", "</script>", "javascript:", "vbscript:", "onload=", "onerror=",
-    "onclick=", "onmouseover=", "onfocus=", "onblur=", "onchange=", "onsubmit=",
-    "eval(", "setTimeout(", "setInterval(", "Function(", "document.cookie",
-    "document.write", "innerHTML", "outerHTML",
+    "<script",
+    "</script>",
+    "javascript:",
+    "vbscript:",
+    "onload=",
+    "onerror=",
+    "onclick=",
+    "onmouseover=",
+    "onfocus=",
+    "onblur=",
+    "onchange=",
+    "onsubmit=",
+    "eval(",
+    "setTimeout(",
+    "setInterval(",
+    "Function(",
+    "document.cookie",
+    "document.write",
+    "innerHTML",
+    "outerHTML",
 ];
 
 /// Command injection patterns
 const COMMAND_INJECTION_PATTERNS: &[&str] = &[
-    "$(", "${", "`", "&&", "||", ";", "|", ">", "<", ">>", "<<",
-    "2>&1", "/dev/null", "/proc/", "/sys/", "\\x", "\\u",
+    "$(",
+    "${",
+    "`",
+    "&&",
+    "||",
+    ";",
+    "|",
+    ">",
+    "<",
+    ">>",
+    "<<",
+    "2>&1",
+    "/dev/null",
+    "/proc/",
+    "/sys/",
+    "\\x",
+    "\\u",
 ];
 
 /// Validate a file path for security
@@ -110,7 +190,9 @@ pub fn validate_command(command: &str) -> Result<()> {
 
     // Check for null bytes
     if command.contains('\0') {
-        return Err(AgentError::invalid_input("Null bytes not allowed in command"));
+        return Err(AgentError::invalid_input(
+            "Null bytes not allowed in command",
+        ));
     }
 
     Ok(())
@@ -133,7 +215,9 @@ pub fn validate_file_content(content: &str) -> Result<()> {
 
     // Check for null bytes
     if content.contains('\0') {
-        return Err(AgentError::invalid_input("Null bytes not allowed in file content"));
+        return Err(AgentError::invalid_input(
+            "Null bytes not allowed in file content",
+        ));
     }
 
     Ok(())
@@ -160,22 +244,24 @@ pub fn validate_url(url: &str) -> Result<()> {
         Ok(parsed_url) => {
             // Check scheme
             match parsed_url.scheme() {
-                "http" | "https" => {},
-                scheme => return Err(AgentError::invalid_input(format!(
-                    "Unsupported URL scheme: {}",
-                    scheme
-                ))),
+                "http" | "https" => {}
+                scheme => {
+                    return Err(AgentError::invalid_input(format!(
+                        "Unsupported URL scheme: {}",
+                        scheme
+                    )))
+                }
             }
 
             // Check for localhost/private IPs to prevent SSRF
             if let Some(host) = parsed_url.host_str() {
                 if is_private_or_localhost(host) {
                     return Err(AgentError::invalid_input(
-                        "Requests to localhost or private IPs not allowed"
+                        "Requests to localhost or private IPs not allowed",
                     ));
                 }
             }
-        },
+        }
         Err(_) => return Err(AgentError::invalid_input("Invalid URL format")),
     }
 
@@ -196,7 +282,7 @@ pub fn validate_header_value(value: &str) -> Result<()> {
     for ch in value.chars() {
         if ch.is_control() && ch != '\t' {
             return Err(AgentError::invalid_input(
-                "Control characters not allowed in header values"
+                "Control characters not allowed in header values",
             ));
         }
     }
@@ -213,7 +299,7 @@ fn is_private_or_localhost(host: &str) -> bool {
 
     // Remove brackets from IPv6 addresses
     let clean_host = if host.starts_with('[') && host.ends_with(']') {
-        &host[1..host.len()-1]
+        &host[1..host.len() - 1]
     } else {
         host
     };
@@ -229,13 +315,13 @@ fn is_private_or_localhost(host: &str) -> bool {
                 (octets[0] == 192 && octets[1] == 168) ||
                 // Link-local 169.254.0.0/16
                 (octets[0] == 169 && octets[1] == 254)
-            },
+            }
             std::net::IpAddr::V6(ipv6) => {
                 // Check for private IPv6 ranges
                 ipv6.is_loopback() ||
                 ipv6.segments()[0] == 0xfc00 || // fc00::/7
                 ipv6.segments()[0] == 0xfd00 ||
-                ipv6.segments()[0] == 0xfe80    // fe80::/10 link-local
+                ipv6.segments()[0] == 0xfe80 // fe80::/10 link-local
             }
         }
     } else {
@@ -252,7 +338,7 @@ mod tests {
         // Valid paths
         assert!(validate_path("src/main.rs").is_ok());
         assert!(validate_path("docs/README.md").is_ok());
-        
+
         // Invalid paths
         assert!(validate_path("../etc/passwd").is_err());
         assert!(validate_path("/etc/passwd").is_err());
@@ -335,8 +421,14 @@ mod tests {
     fn test_sanitize_input() {
         assert_eq!(sanitize_input("hello world"), "hello world");
         assert_eq!(sanitize_input("test_file.txt"), "test_file.txt");
-        assert_eq!(sanitize_input("hello<script>alert(1)</script>"), "helloscriptalert1script");
-        assert_eq!(sanitize_input("'; DROP TABLE users; --"), "DROP TABLE users");
+        assert_eq!(
+            sanitize_input("hello<script>alert(1)</script>"),
+            "helloscriptalert1script"
+        );
+        assert_eq!(
+            sanitize_input("'; DROP TABLE users; --"),
+            "DROP TABLE users"
+        );
     }
 
     #[test]
@@ -369,7 +461,7 @@ mod tests {
         // Valid URLs
         assert!(validate_url("https://example.com").is_ok());
         assert!(validate_url("http://api.github.com/repos").is_ok());
-        
+
         // Invalid URLs
         assert!(validate_url("http://localhost:8080").is_err());
         assert!(validate_url("http://127.0.0.1").is_err());
@@ -385,7 +477,7 @@ mod tests {
         assert!(is_private_or_localhost("192.168.1.1"));
         assert!(is_private_or_localhost("10.0.0.1"));
         assert!(is_private_or_localhost("172.16.0.1"));
-        
+
         assert!(!is_private_or_localhost("8.8.8.8"));
         assert!(!is_private_or_localhost("example.com"));
     }
@@ -411,8 +503,17 @@ fn check_dangerous_patterns_lenient(input: &str, context: &str) -> Result<()> {
 
     // Only check the most dangerous patterns for file content
     let strict_patterns = [
-        "rm -rf", "format ", "mkfs", "dd if=", "chmod 777",
-        "curl ", "wget ", "nc ", "netcat", "ssh ", "ftp "
+        "rm -rf",
+        "format ",
+        "mkfs",
+        "dd if=",
+        "chmod 777",
+        "curl ",
+        "wget ",
+        "nc ",
+        "netcat",
+        "ssh ",
+        "ftp ",
     ];
 
     for pattern in &strict_patterns {
@@ -446,9 +547,14 @@ fn check_sql_injection_patterns_lenient(input: &str) -> Result<()> {
 
     // Check for dangerous SQL injection patterns but allow common SQL keywords in code
     let strict_patterns = [
-        "'; drop table", "\"; drop table", "union select password",
-        "delete from users", "' or 1=1", "\" or 1=1",
-        "union select * from", "drop table users"
+        "'; drop table",
+        "\"; drop table",
+        "union select password",
+        "delete from users",
+        "' or 1=1",
+        "\" or 1=1",
+        "union select * from",
+        "drop table users",
     ];
 
     for pattern in &strict_patterns {
@@ -500,7 +606,11 @@ pub fn sanitize_input(input: &str) -> String {
 
 /// Validate JSON input structure
 pub fn validate_json_structure(value: &serde_json::Value, max_depth: usize) -> Result<()> {
-    fn check_depth(value: &serde_json::Value, current_depth: usize, max_depth: usize) -> Result<()> {
+    fn check_depth(
+        value: &serde_json::Value,
+        current_depth: usize,
+        max_depth: usize,
+    ) -> Result<()> {
         if current_depth > max_depth {
             return Err(AgentError::invalid_input(format!(
                 "JSON structure too deep: {} levels (max: {})",

@@ -1,8 +1,8 @@
+use crate::utils::error::{AgentError, Result};
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use flate2::{Compression, read::GzDecoder, write::GzEncoder};
-use serde::{Deserialize, Serialize};
-use crate::utils::error::{AgentError, Result};
 
 /// Compression algorithms available
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,8 +38,8 @@ impl Default for CompressionConfig {
     fn default() -> Self {
         Self {
             algorithm: CompressionAlgorithm::Gzip,
-            level: 6, // Balanced compression level
-            min_size_threshold: 1024, // Only compress data > 1KB
+            level: 6,                       // Balanced compression level
+            min_size_threshold: 1024,       // Only compress data > 1KB
             max_dictionary_size: 64 * 1024, // 64KB dictionary
             adaptive: true,
         }
@@ -92,6 +92,12 @@ pub struct CompressionDictionary {
     usage_stats: HashMap<String, usize>,
 }
 
+impl Default for CompressionDictionary {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CompressionDictionary {
     /// Create a new empty dictionary
     pub fn new() -> Self {
@@ -105,14 +111,18 @@ impl CompressionDictionary {
     /// Build dictionary from sample data
     pub fn build_from_samples(&mut self, samples: &[String], max_patterns: usize) {
         let mut pattern_counts = HashMap::new();
-        
+
         // Find common patterns (simple n-gram approach)
         for sample in samples {
             // Extract 3-grams to 8-grams
             for n in 3..=8 {
                 for window in sample.chars().collect::<Vec<_>>().windows(n) {
                     let pattern: String = window.iter().collect();
-                    if pattern.len() >= 3 && pattern.chars().all(|c| c.is_alphanumeric() || c.is_whitespace()) {
+                    if pattern.len() >= 3
+                        && pattern
+                            .chars()
+                            .all(|c| c.is_alphanumeric() || c.is_whitespace())
+                    {
                         *pattern_counts.entry(pattern).or_insert(0) += 1;
                     }
                 }
@@ -137,43 +147,46 @@ impl CompressionDictionary {
     /// Compress text using dictionary
     pub fn compress_text(&self, text: &str) -> String {
         let mut result = text.to_string();
-        
+
         // Sort patterns by length (longest first) to avoid partial replacements
         let mut patterns: Vec<_> = self.patterns.iter().collect();
         patterns.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
-        
+
         for (pattern, replacement) in patterns {
             result = result.replace(pattern, replacement);
         }
-        
+
         result
     }
 
     /// Decompress text using dictionary
     pub fn decompress_text(&self, compressed: &str) -> String {
         let mut result = compressed.to_string();
-        
+
         for (replacement, pattern) in &self.reverse_patterns {
             result = result.replace(replacement, pattern);
         }
-        
+
         result
     }
 
     /// Get dictionary efficiency metrics
     pub fn get_efficiency_metrics(&self) -> HashMap<String, f64> {
         let mut metrics = HashMap::new();
-        
+
         let total_patterns = self.patterns.len();
         let total_usage: usize = self.usage_stats.values().sum();
-        
+
         metrics.insert("total_patterns".to_string(), total_patterns as f64);
         metrics.insert("total_usage".to_string(), total_usage as f64);
-        
+
         if total_patterns > 0 {
-            metrics.insert("average_usage".to_string(), total_usage as f64 / total_patterns as f64);
+            metrics.insert(
+                "average_usage".to_string(),
+                total_usage as f64 / total_patterns as f64,
+            );
         }
-        
+
         metrics
     }
 }
@@ -203,7 +216,7 @@ impl MemoryCompressor {
     /// Compress data with automatic algorithm selection
     pub fn compress(&mut self, data: &[u8]) -> Result<(Vec<u8>, CompressionStats)> {
         let start_time = std::time::Instant::now();
-        
+
         // Skip compression for small data
         if data.len() < self.config.min_size_threshold {
             let stats = CompressionStats::new(data.len(), data.len(), CompressionAlgorithm::None);
@@ -233,9 +246,13 @@ impl MemoryCompressor {
     }
 
     /// Decompress data
-    pub fn decompress(&mut self, compressed_data: &[u8], algorithm: CompressionAlgorithm) -> Result<Vec<u8>> {
+    pub fn decompress(
+        &mut self,
+        compressed_data: &[u8],
+        algorithm: CompressionAlgorithm,
+    ) -> Result<Vec<u8>> {
         let start_time = std::time::Instant::now();
-        
+
         let decompressed = match algorithm {
             CompressionAlgorithm::None => compressed_data.to_vec(),
             CompressionAlgorithm::Gzip => self.decompress_gzip(compressed_data)?,
@@ -245,7 +262,7 @@ impl MemoryCompressor {
         };
 
         let decompression_time = start_time.elapsed().as_millis() as u64;
-        
+
         // Update stats if we have a matching entry
         if let Some(stats) = self.stats_history.last_mut() {
             if stats.algorithm_used == algorithm {
@@ -261,7 +278,7 @@ impl MemoryCompressor {
         // Analyze data characteristics
         let entropy = self.calculate_entropy(data);
         let repetition_ratio = self.calculate_repetition_ratio(data);
-        
+
         // Decision logic based on data characteristics
         if entropy < 0.5 && repetition_ratio > 0.3 {
             // High repetition, low entropy - dictionary compression works well
@@ -321,18 +338,21 @@ impl MemoryCompressor {
     /// GZIP compression
     fn compress_gzip(&self, data: &[u8]) -> Result<Vec<u8>> {
         let mut encoder = GzEncoder::new(Vec::new(), Compression::new(self.config.level));
-        encoder.write_all(data)
-            .map_err(|e| AgentError::tool("compression", &format!("GZIP compression failed: {}", e)))?;
-        encoder.finish()
-            .map_err(|e| AgentError::tool("compression", &format!("GZIP finalization failed: {}", e)))
+        encoder.write_all(data).map_err(|e| {
+            AgentError::tool("compression", &format!("GZIP compression failed: {}", e))
+        })?;
+        encoder.finish().map_err(|e| {
+            AgentError::tool("compression", &format!("GZIP finalization failed: {}", e))
+        })
     }
 
     /// GZIP decompression
     fn decompress_gzip(&self, data: &[u8]) -> Result<Vec<u8>> {
         let mut decoder = GzDecoder::new(data);
         let mut decompressed = Vec::new();
-        decoder.read_to_end(&mut decompressed)
-            .map_err(|e| AgentError::tool("compression", &format!("GZIP decompression failed: {}", e)))?;
+        decoder.read_to_end(&mut decompressed).map_err(|e| {
+            AgentError::tool("compression", &format!("GZIP decompression failed: {}", e))
+        })?;
         Ok(decompressed)
     }
 
@@ -345,20 +365,25 @@ impl MemoryCompressor {
     /// LZ4 decompression
     fn decompress_lz4(&self, data: &[u8]) -> Result<Vec<u8>> {
         // Use lz4_flex for reliable decompression with size prepended
-        lz4_flex::decompress_size_prepended(data)
-            .map_err(|e| AgentError::tool("compression", &format!("LZ4 decompression failed: {}", e)))
+        lz4_flex::decompress_size_prepended(data).map_err(|e| {
+            AgentError::tool("compression", &format!("LZ4 decompression failed: {}", e))
+        })
     }
 
     /// ZSTD compression
     fn compress_zstd(&self, data: &[u8]) -> Result<Vec<u8>> {
         zstd::bulk::compress(data, 3) // Level 3 for good balance of speed and compression
-            .map_err(|e| AgentError::tool("compression", &format!("ZSTD compression failed: {}", e)))
+            .map_err(|e| {
+                AgentError::tool("compression", &format!("ZSTD compression failed: {}", e))
+            })
     }
 
     /// ZSTD decompression
     fn decompress_zstd(&self, data: &[u8]) -> Result<Vec<u8>> {
         zstd::bulk::decompress(data, 1024 * 1024 * 100) // 100MB max decompressed size
-            .map_err(|e| AgentError::tool("compression", &format!("ZSTD decompression failed: {}", e)))
+            .map_err(|e| {
+                AgentError::tool("compression", &format!("ZSTD decompression failed: {}", e))
+            })
     }
 
     /// Dictionary-based compression
@@ -368,7 +393,10 @@ impl MemoryCompressor {
             let compressed_text = dict.compress_text(&text);
             Ok(compressed_text.into_bytes())
         } else {
-            Err(AgentError::tool("compression", "Dictionary not available for compression"))
+            Err(AgentError::tool(
+                "compression",
+                "Dictionary not available for compression",
+            ))
         }
     }
 
@@ -379,7 +407,10 @@ impl MemoryCompressor {
             let decompressed_text = dict.decompress_text(&compressed_text);
             Ok(decompressed_text.into_bytes())
         } else {
-            Err(AgentError::tool("compression", "Dictionary not available for decompression"))
+            Err(AgentError::tool(
+                "compression",
+                "Dictionary not available for decompression",
+            ))
         }
     }
 
@@ -394,10 +425,8 @@ impl MemoryCompressor {
             return 1.0;
         }
 
-        let total_ratio: f64 = self.stats_history.iter()
-            .map(|s| s.compression_ratio)
-            .sum();
-        
+        let total_ratio: f64 = self.stats_history.iter().map(|s| s.compression_ratio).sum();
+
         total_ratio / self.stats_history.len() as f64
     }
 
@@ -527,7 +556,9 @@ mod tests {
         assert!(stats.compression_ratio < 1.0);
 
         // Test decompression
-        let decompressed = compressor.decompress(&compressed, CompressionAlgorithm::Gzip).unwrap();
+        let decompressed = compressor
+            .decompress(&compressed, CompressionAlgorithm::Gzip)
+            .unwrap();
         assert_eq!(data, decompressed.as_slice());
     }
 
@@ -557,7 +588,9 @@ mod tests {
         assert_eq!(stats.algorithm_used, CompressionAlgorithm::Dictionary);
 
         // Test decompression
-        let decompressed = compressor.decompress(&compressed, CompressionAlgorithm::Dictionary).unwrap();
+        let decompressed = compressor
+            .decompress(&compressed, CompressionAlgorithm::Dictionary)
+            .unwrap();
         assert_eq!(data, decompressed.as_slice());
     }
 
@@ -701,12 +734,18 @@ mod tests {
 
         assert_eq!(stats.algorithm_used, CompressionAlgorithm::Lz4);
         // LZ4 should compress repetitive data well
-        assert!(stats.compressed_size < stats.original_size,
-                "LZ4 should compress repetitive data: {} >= {}", stats.compressed_size, stats.original_size);
+        assert!(
+            stats.compressed_size < stats.original_size,
+            "LZ4 should compress repetitive data: {} >= {}",
+            stats.compressed_size,
+            stats.original_size
+        );
         assert!(stats.compression_ratio < 1.0);
 
         // Test decompression
-        let decompressed = compressor.decompress(&compressed, CompressionAlgorithm::Lz4).unwrap();
+        let decompressed = compressor
+            .decompress(&compressed, CompressionAlgorithm::Lz4)
+            .unwrap();
         assert_eq!(data, decompressed);
     }
 
@@ -726,12 +765,18 @@ mod tests {
 
         assert_eq!(stats.algorithm_used, CompressionAlgorithm::Zstd);
         // ZSTD should compress repetitive data very well
-        assert!(stats.compressed_size < stats.original_size,
-                "ZSTD should compress repetitive data: {} >= {}", stats.compressed_size, stats.original_size);
+        assert!(
+            stats.compressed_size < stats.original_size,
+            "ZSTD should compress repetitive data: {} >= {}",
+            stats.compressed_size,
+            stats.original_size
+        );
         assert!(stats.compression_ratio < 1.0);
 
         // Test decompression
-        let decompressed = compressor.decompress(&compressed, CompressionAlgorithm::Zstd).unwrap();
+        let decompressed = compressor
+            .decompress(&compressed, CompressionAlgorithm::Zstd)
+            .unwrap();
         assert_eq!(data, decompressed);
     }
 
@@ -772,9 +817,15 @@ mod tests {
         assert!(zstd_stats.compressed_size < test_data.len());
 
         // All should decompress correctly
-        let gzip_decompressed = gzip_compressor.decompress(&gzip_compressed, CompressionAlgorithm::Gzip).unwrap();
-        let lz4_decompressed = lz4_compressor.decompress(&lz4_compressed, CompressionAlgorithm::Lz4).unwrap();
-        let zstd_decompressed = zstd_compressor.decompress(&zstd_compressed, CompressionAlgorithm::Zstd).unwrap();
+        let gzip_decompressed = gzip_compressor
+            .decompress(&gzip_compressed, CompressionAlgorithm::Gzip)
+            .unwrap();
+        let lz4_decompressed = lz4_compressor
+            .decompress(&lz4_compressed, CompressionAlgorithm::Lz4)
+            .unwrap();
+        let zstd_decompressed = zstd_compressor
+            .decompress(&zstd_compressed, CompressionAlgorithm::Zstd)
+            .unwrap();
 
         assert_eq!(test_data, gzip_decompressed);
         assert_eq!(test_data, lz4_decompressed);

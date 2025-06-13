@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
-use tracing::{debug, warn, error};
+use tracing::{debug, error, warn};
 
 /// Circuit breaker states
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -60,7 +60,10 @@ impl CircuitBreaker {
             success_count: AtomicUsize::new(0),
             last_failure_time: AtomicU64::new(0),
             last_state_change: AtomicU64::new(
-                SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
             ),
         }
     }
@@ -77,9 +80,12 @@ impl CircuitBreaker {
             CircuitState::Closed => true,
             CircuitState::Open => {
                 // Check if we should transition to half-open
-                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
                 let last_change = self.last_state_change.load(Ordering::Relaxed);
-                
+
                 if now - last_change >= self.config.recovery_timeout.as_secs() {
                     drop(state);
                     self.transition_to_half_open().await;
@@ -115,12 +121,18 @@ impl CircuitBreaker {
             }
         }
 
-        debug!("Circuit breaker recorded success, state: {:?}", current_state);
+        debug!(
+            "Circuit breaker recorded success, state: {:?}",
+            current_state
+        );
     }
 
     /// Record a failed execution
     pub async fn record_failure(&self) {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         self.last_failure_time.store(now, Ordering::Relaxed);
 
         let current_state = {
@@ -145,7 +157,10 @@ impl CircuitBreaker {
             }
         }
 
-        warn!("Circuit breaker recorded failure, state: {:?}", current_state);
+        warn!(
+            "Circuit breaker recorded failure, state: {:?}",
+            current_state
+        );
     }
 
     /// Get the current state of the circuit breaker
@@ -172,8 +187,11 @@ impl CircuitBreaker {
         self.failure_count.store(0, Ordering::Relaxed);
         self.success_count.store(0, Ordering::Relaxed);
         self.last_state_change.store(
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
-            Ordering::Relaxed
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            Ordering::Relaxed,
         );
         debug!("Circuit breaker reset to closed state");
     }
@@ -184,8 +202,11 @@ impl CircuitBreaker {
         *state = CircuitState::Open;
         self.success_count.store(0, Ordering::Relaxed);
         self.last_state_change.store(
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
-            Ordering::Relaxed
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            Ordering::Relaxed,
         );
         error!("Circuit breaker opened due to failures");
     }
@@ -196,8 +217,11 @@ impl CircuitBreaker {
         *state = CircuitState::HalfOpen;
         self.success_count.store(0, Ordering::Relaxed);
         self.last_state_change.store(
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
-            Ordering::Relaxed
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            Ordering::Relaxed,
         );
         warn!("Circuit breaker transitioned to half-open for testing");
     }
@@ -209,8 +233,11 @@ impl CircuitBreaker {
         self.failure_count.store(0, Ordering::Relaxed);
         self.success_count.store(0, Ordering::Relaxed);
         self.last_state_change.store(
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
-            Ordering::Relaxed
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            Ordering::Relaxed,
         );
         debug!("Circuit breaker closed after successful recovery");
     }
@@ -268,7 +295,7 @@ mod tests {
     #[tokio::test]
     async fn test_circuit_breaker_closed_state() {
         let circuit_breaker = CircuitBreaker::default();
-        
+
         assert_eq!(circuit_breaker.get_state().await, CircuitState::Closed);
         assert!(circuit_breaker.can_execute().await);
     }
@@ -280,12 +307,12 @@ mod tests {
             ..Default::default()
         };
         let circuit_breaker = CircuitBreaker::new(config);
-        
+
         // Record failures
         for _ in 0..3 {
             circuit_breaker.record_failure().await;
         }
-        
+
         assert_eq!(circuit_breaker.get_state().await, CircuitState::Open);
         assert!(!circuit_breaker.can_execute().await);
     }
@@ -298,15 +325,15 @@ mod tests {
             ..Default::default()
         };
         let circuit_breaker = CircuitBreaker::new(config);
-        
+
         // Open the circuit
         circuit_breaker.record_failure().await;
         circuit_breaker.record_failure().await;
         assert_eq!(circuit_breaker.get_state().await, CircuitState::Open);
-        
+
         // Wait for recovery timeout
         sleep(Duration::from_millis(150)).await;
-        
+
         // Should allow execution (transitioning to half-open)
         assert!(circuit_breaker.can_execute().await);
         assert_eq!(circuit_breaker.get_state().await, CircuitState::HalfOpen);
@@ -321,39 +348,39 @@ mod tests {
             ..Default::default()
         };
         let circuit_breaker = CircuitBreaker::new(config);
-        
+
         // Open the circuit
         circuit_breaker.record_failure().await;
         circuit_breaker.record_failure().await;
-        
+
         // Wait and transition to half-open
         sleep(Duration::from_millis(150)).await;
         assert!(circuit_breaker.can_execute().await);
-        
+
         // Record successes to close the circuit
         circuit_breaker.record_success().await;
         circuit_breaker.record_success().await;
-        
+
         assert_eq!(circuit_breaker.get_state().await, CircuitState::Closed);
     }
 
     #[tokio::test]
     async fn test_execute_with_circuit_breaker() {
         let circuit_breaker = CircuitBreaker::default();
-        
+
         // Test successful execution
-        let result = execute_with_circuit_breaker(&circuit_breaker, async {
-            Ok::<i32, &str>(42)
-        }).await;
-        
+        let result =
+            execute_with_circuit_breaker(&circuit_breaker, async { Ok::<i32, &str>(42) }).await;
+
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 42);
-        
+
         // Test failed execution
         let result = execute_with_circuit_breaker(&circuit_breaker, async {
             Err::<i32, &str>("test error")
-        }).await;
-        
+        })
+        .await;
+
         assert!(result.is_err());
     }
 }

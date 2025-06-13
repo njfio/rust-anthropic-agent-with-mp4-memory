@@ -1,9 +1,9 @@
+use crate::utils::error::{AgentError, Result};
+use futures::stream::BoxStream;
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
-use futures::stream::BoxStream;
-use serde::{Deserialize, Serialize};
-use crate::utils::error::{AgentError, Result};
 
 /// Streaming response chunk types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -12,17 +12,30 @@ pub enum StreamChunk {
     /// Text content chunk
     Text(String),
     /// Tool execution start
-    ToolStart { tool_name: String, parameters: serde_json::Value },
+    ToolStart {
+        tool_name: String,
+        parameters: serde_json::Value,
+    },
     /// Tool execution result
-    ToolResult { tool_name: String, result: serde_json::Value },
+    ToolResult {
+        tool_name: String,
+        result: serde_json::Value,
+    },
     /// Tool execution error
     ToolError { tool_name: String, error: String },
     /// Thinking/reasoning chunk
     Thinking(String),
     /// Memory operation
-    Memory { operation: String, details: serde_json::Value },
+    Memory {
+        operation: String,
+        details: serde_json::Value,
+    },
     /// Progress indicator
-    Progress { current: usize, total: usize, message: String },
+    Progress {
+        current: usize,
+        total: usize,
+        message: String,
+    },
     /// Error chunk
     Error(String),
     /// End of stream marker
@@ -89,7 +102,7 @@ impl StreamBuilder {
     /// Create a new stream builder
     pub fn new(config: StreamConfig, request_id: String) -> (Self, mpsc::Receiver<StreamResponse>) {
         let (sender, receiver) = mpsc::channel(config.buffer_size);
-        
+
         let builder = Self {
             config,
             request_id,
@@ -97,7 +110,7 @@ impl StreamBuilder {
             chunk_index: 0,
             sender,
         };
-        
+
         (builder, receiver)
     }
 
@@ -109,28 +122,38 @@ impl StreamBuilder {
 
         // Split large text into smaller chunks
         let chunks = self.split_text(text);
-        
+
         for chunk_text in chunks {
             self.send_chunk(StreamChunk::Text(chunk_text)).await?;
         }
-        
+
         Ok(())
     }
 
     /// Send a tool start notification
-    pub async fn send_tool_start(&mut self, tool_name: &str, parameters: serde_json::Value) -> Result<()> {
+    pub async fn send_tool_start(
+        &mut self,
+        tool_name: &str,
+        parameters: serde_json::Value,
+    ) -> Result<()> {
         self.send_chunk(StreamChunk::ToolStart {
             tool_name: tool_name.to_string(),
             parameters,
-        }).await
+        })
+        .await
     }
 
     /// Send a tool result
-    pub async fn send_tool_result(&mut self, tool_name: &str, result: serde_json::Value) -> Result<()> {
+    pub async fn send_tool_result(
+        &mut self,
+        tool_name: &str,
+        result: serde_json::Value,
+    ) -> Result<()> {
         self.send_chunk(StreamChunk::ToolResult {
             tool_name: tool_name.to_string(),
             result,
-        }).await
+        })
+        .await
     }
 
     /// Send a tool error
@@ -138,7 +161,8 @@ impl StreamBuilder {
         self.send_chunk(StreamChunk::ToolError {
             tool_name: tool_name.to_string(),
             error: error.to_string(),
-        }).await
+        })
+        .await
     }
 
     /// Send thinking/reasoning content
@@ -151,20 +175,30 @@ impl StreamBuilder {
         for chunk_text in chunks {
             self.send_chunk(StreamChunk::Thinking(chunk_text)).await?;
         }
-        
+
         Ok(())
     }
 
     /// Send memory operation notification
-    pub async fn send_memory_operation(&mut self, operation: &str, details: serde_json::Value) -> Result<()> {
+    pub async fn send_memory_operation(
+        &mut self,
+        operation: &str,
+        details: serde_json::Value,
+    ) -> Result<()> {
         self.send_chunk(StreamChunk::Memory {
             operation: operation.to_string(),
             details,
-        }).await
+        })
+        .await
     }
 
     /// Send progress update
-    pub async fn send_progress(&mut self, current: usize, total: usize, message: &str) -> Result<()> {
+    pub async fn send_progress(
+        &mut self,
+        current: usize,
+        total: usize,
+        message: &str,
+    ) -> Result<()> {
         if !self.config.enable_progress {
             return Ok(());
         }
@@ -173,7 +207,8 @@ impl StreamBuilder {
             current,
             total,
             message: message.to_string(),
-        }).await
+        })
+        .await
     }
 
     /// Send error chunk
@@ -190,7 +225,10 @@ impl StreamBuilder {
     async fn send_chunk(&mut self, chunk: StreamChunk) -> Result<()> {
         // Check if we've exceeded the maximum streaming duration
         if self.start_time.elapsed() > self.config.max_stream_duration {
-            return Err(AgentError::tool("streaming", "Maximum streaming duration exceeded"));
+            return Err(AgentError::tool(
+                "streaming",
+                "Maximum streaming duration exceeded",
+            ));
         }
 
         // Apply rate limiting
@@ -211,8 +249,9 @@ impl StreamBuilder {
 
         let response = StreamResponse { metadata, chunk };
 
-        self.sender.send(response).await
-            .map_err(|_| AgentError::tool("streaming", "Failed to send chunk - receiver dropped"))?;
+        self.sender.send(response).await.map_err(|_| {
+            AgentError::tool("streaming", "Failed to send chunk - receiver dropped")
+        })?;
 
         self.chunk_index += 1;
         Ok(())
@@ -228,13 +267,13 @@ impl StreamBuilder {
         let mut current_chunk = String::new();
 
         for word in text.split_whitespace() {
-            if current_chunk.len() + word.len() + 1 > self.config.max_chunk_size {
-                if !current_chunk.is_empty() {
-                    chunks.push(current_chunk.clone());
-                    current_chunk.clear();
-                }
+            if current_chunk.len() + word.len() + 1 > self.config.max_chunk_size
+                && !current_chunk.is_empty()
+            {
+                chunks.push(current_chunk.clone());
+                current_chunk.clear();
             }
-            
+
             if !current_chunk.is_empty() {
                 current_chunk.push(' ');
             }
@@ -284,30 +323,29 @@ impl ResponseStream {
 
     /// Convert to a tokio stream
     pub fn into_stream(self) -> BoxStream<'static, Result<StreamResponse>> {
-        Box::pin(tokio_stream::wrappers::ReceiverStream::new(self.receiver)
-            .map(|response| Ok(response)))
+        Box::pin(tokio_stream::wrappers::ReceiverStream::new(self.receiver).map(Ok))
     }
 
     /// Collect all chunks into a single response
     pub async fn collect_all(mut self) -> Result<Vec<StreamResponse>> {
         let mut responses = Vec::new();
-        
+
         while let Some(response) = self.receiver.recv().await {
             let is_done = matches!(response.chunk, StreamChunk::Done);
             responses.push(response);
-            
+
             if is_done {
                 break;
             }
         }
-        
+
         Ok(responses)
     }
 
     /// Get only text chunks as a single string
     pub async fn collect_text(mut self) -> Result<String> {
         let mut text = String::new();
-        
+
         while let Some(response) = self.receiver.recv().await {
             match response.chunk {
                 StreamChunk::Text(chunk_text) => {
@@ -317,7 +355,7 @@ impl ResponseStream {
                 _ => {} // Ignore non-text chunks
             }
         }
-        
+
         Ok(text)
     }
 
@@ -330,12 +368,12 @@ impl ResponseStream {
         while let Some(response) = self.receiver.recv().await {
             let is_done = matches!(response.chunk, StreamChunk::Done);
             callback(response).await?;
-            
+
             if is_done {
                 break;
             }
         }
-        
+
         Ok(())
     }
 }
@@ -351,7 +389,7 @@ pub mod utils {
         request_id: String,
     ) -> Result<ResponseStream> {
         let (mut builder, receiver) = StreamBuilder::new(config.clone(), request_id);
-        
+
         // Send text in background
         let text = text.to_string();
         tokio::spawn(async move {
@@ -360,7 +398,7 @@ pub mod utils {
             }
             let _ = builder.send_done().await;
         });
-        
+
         Ok(ResponseStream::new(receiver, config))
     }
 
@@ -380,7 +418,6 @@ pub mod utils {
 mod tests {
     use super::*;
     use serde_json::json;
-
 
     #[tokio::test]
     async fn test_stream_builder_text_chunks() {
@@ -440,7 +477,10 @@ mod tests {
             }
         }
 
-        assert!(text_chunks.len() > 1, "Text should be split into multiple chunks");
+        assert!(
+            text_chunks.len() > 1,
+            "Text should be split into multiple chunks"
+        );
 
         // Verify all chunks are within size limit
         for chunk in &text_chunks {
@@ -464,7 +504,10 @@ mod tests {
         tokio::spawn(async move {
             builder.send_tool_start("search", params).await.unwrap();
             builder.send_tool_result("search", result).await.unwrap();
-            builder.send_tool_error("search", "Test error").await.unwrap();
+            builder
+                .send_tool_error("search", "Test error")
+                .await
+                .unwrap();
             builder.send_done().await.unwrap();
         });
 
@@ -481,7 +524,11 @@ mod tests {
         assert_eq!(responses.len(), 4); // ToolStart + ToolResult + ToolError + Done
 
         // Verify tool start
-        if let StreamChunk::ToolStart { tool_name, parameters } = &responses[0].chunk {
+        if let StreamChunk::ToolStart {
+            tool_name,
+            parameters,
+        } = &responses[0].chunk
+        {
             assert_eq!(tool_name, "search");
             assert_eq!(parameters["query"], "test");
         } else {
@@ -524,7 +571,11 @@ mod tests {
         let mut progress_responses = Vec::new();
         while let Some(response) = receiver.recv().await {
             match response.chunk {
-                StreamChunk::Progress { current, total, message } => {
+                StreamChunk::Progress {
+                    current,
+                    total,
+                    message,
+                } => {
                     progress_responses.push((current, total, message));
                 }
                 StreamChunk::Done => break,
@@ -545,8 +596,14 @@ mod tests {
 
         // Send thinking content in background
         tokio::spawn(async move {
-            builder.send_thinking("Let me think about this...").await.unwrap();
-            builder.send_thinking("I need to consider multiple factors").await.unwrap();
+            builder
+                .send_thinking("Let me think about this...")
+                .await
+                .unwrap();
+            builder
+                .send_thinking("I need to consider multiple factors")
+                .await
+                .unwrap();
             builder.send_done().await.unwrap();
         });
 
@@ -574,7 +631,10 @@ mod tests {
 
         // Send memory operation in background
         tokio::spawn(async move {
-            builder.send_memory_operation("store", details).await.unwrap();
+            builder
+                .send_memory_operation("store", details)
+                .await
+                .unwrap();
             builder.send_done().await.unwrap();
         });
 
@@ -599,7 +659,8 @@ mod tests {
     #[tokio::test]
     async fn test_response_stream_collect_text() {
         let config = StreamConfig::default();
-        let (mut builder, receiver) = StreamBuilder::new(config.clone(), "test-collect".to_string());
+        let (mut builder, receiver) =
+            StreamBuilder::new(config.clone(), "test-collect".to_string());
 
         // Send mixed content in background
         tokio::spawn(async move {
@@ -659,7 +720,8 @@ mod tests {
         let mut count = 0;
         while let Some(_) = receiver.recv().await {
             count += 1;
-            if count == 4 { // 3 text chunks + done
+            if count == 4 {
+                // 3 text chunks + done
                 break;
             }
         }
@@ -667,7 +729,10 @@ mod tests {
         let elapsed = start_time.elapsed();
 
         // Should take at least 150ms (3 delays of 50ms each)
-        assert!(elapsed >= Duration::from_millis(100), "Rate limiting should add delays");
+        assert!(
+            elapsed >= Duration::from_millis(100),
+            "Rate limiting should add delays"
+        );
     }
 
     #[tokio::test]
@@ -688,8 +753,10 @@ mod tests {
     #[tokio::test]
     async fn test_utils_create_text_stream() {
         let config = StreamConfig::default();
-        let stream = utils::create_text_stream("Hello streaming world", config, "test-utils".to_string())
-            .await.unwrap();
+        let stream =
+            utils::create_text_stream("Hello streaming world", config, "test-utils".to_string())
+                .await
+                .unwrap();
 
         let text = stream.collect_text().await.unwrap();
         assert_eq!(text, "Hello streaming world");
@@ -708,6 +775,9 @@ mod tests {
         // This should fail due to timeout
         let result = builder.send_text("This should fail").await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("duration exceeded"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("duration exceeded"));
     }
 }

@@ -1,6 +1,6 @@
-use super::*;
-use super::registry::PluginRegistry;
 use super::loader::PluginLoader;
+use super::registry::PluginRegistry;
+use super::*;
 use serde_json::json;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -94,7 +94,7 @@ if __name__ == "__main__":
 #[tokio::test]
 async fn test_plugin_metadata_creation() {
     let metadata = create_test_metadata();
-    
+
     assert_eq!(metadata.id, "test_plugin");
     assert_eq!(metadata.name, "Test Plugin");
     assert_eq!(metadata.version, "1.0.0");
@@ -106,7 +106,7 @@ async fn test_plugin_metadata_creation() {
 #[tokio::test]
 async fn test_plugin_config_creation() {
     let config = create_test_config();
-    
+
     assert!(config.enabled);
     assert_eq!(config.priority, 10);
     assert_eq!(config.timeout_seconds, 30);
@@ -119,7 +119,7 @@ async fn test_plugin_config_creation() {
 #[tokio::test]
 async fn test_plugin_permissions_default() {
     let permissions = PluginPermissions::default();
-    
+
     assert!(!permissions.file_read);
     assert!(!permissions.file_write);
     assert!(!permissions.execute_commands);
@@ -156,14 +156,12 @@ async fn test_plugin_result_creation() {
         error: None,
         execution_time_ms: 100,
         memory_usage_bytes: 1024,
-        logs: vec![
-            PluginLogEntry {
-                level: "info".to_string(),
-                message: "Test log".to_string(),
-                timestamp: chrono::Utc::now(),
-                source: Some("test_plugin".to_string()),
-            }
-        ],
+        logs: vec![PluginLogEntry {
+            level: "info".to_string(),
+            message: "Test log".to_string(),
+            timestamp: chrono::Utc::now(),
+            source: Some("test_plugin".to_string()),
+        }],
     };
 
     assert!(result.success);
@@ -225,7 +223,7 @@ async fn test_plugin_manager_creation() {
 async fn test_plugin_loader_creation() {
     let loader = PluginLoader::new();
     let supported_types = loader.supported_types();
-    
+
     assert!(!supported_types.is_empty());
     assert!(supported_types.contains(&"rust".to_string()));
     assert!(supported_types.contains(&"python".to_string()));
@@ -235,7 +233,7 @@ async fn test_plugin_loader_creation() {
 async fn test_plugin_registry_creation() {
     let registry = PluginRegistry::new();
     let plugins = registry.list_plugins();
-    
+
     assert!(plugins.is_empty());
 }
 
@@ -243,10 +241,10 @@ async fn test_plugin_registry_creation() {
 async fn test_plugin_registry_with_storage() {
     let temp_dir = TempDir::new().unwrap();
     let registry_path = temp_dir.path().join("registry.toml");
-    
+
     let registry = PluginRegistry::with_storage(registry_path);
     let plugins = registry.list_plugins();
-    
+
     assert!(plugins.is_empty());
 }
 
@@ -256,7 +254,9 @@ async fn test_plugin_registry_register_plugin() {
     let metadata = create_test_metadata();
     let config = create_test_config();
 
-    let result = registry.register_plugin(metadata.clone(), config, None).await;
+    let result = registry
+        .register_plugin(metadata.clone(), config, None)
+        .await;
     assert!(result.is_ok());
 
     let retrieved = registry.get_plugin(&metadata.id);
@@ -271,7 +271,9 @@ async fn test_plugin_registry_duplicate_registration() {
     let config = create_test_config();
 
     // First registration should succeed
-    let result1 = registry.register_plugin(metadata.clone(), config.clone(), None).await;
+    let result1 = registry
+        .register_plugin(metadata.clone(), config.clone(), None)
+        .await;
     assert!(result1.is_ok());
 
     // Second registration should fail
@@ -286,7 +288,10 @@ async fn test_plugin_registry_unregister_plugin() {
     let config = create_test_config();
 
     // Register plugin
-    registry.register_plugin(metadata.clone(), config, None).await.unwrap();
+    registry
+        .register_plugin(metadata.clone(), config, None)
+        .await
+        .unwrap();
     assert!(registry.get_plugin(&metadata.id).is_some());
 
     // Unregister plugin
@@ -301,7 +306,10 @@ async fn test_plugin_registry_search_by_capability() {
     let metadata = create_test_metadata();
     let config = create_test_config();
 
-    registry.register_plugin(metadata, config, None).await.unwrap();
+    registry
+        .register_plugin(metadata, config, None)
+        .await
+        .unwrap();
 
     let results = registry.search_by_capability("test");
     assert_eq!(results.len(), 1);
@@ -317,7 +325,10 @@ async fn test_plugin_registry_search_plugins() {
     let metadata = create_test_metadata();
     let config = create_test_config();
 
-    registry.register_plugin(metadata, config, None).await.unwrap();
+    registry
+        .register_plugin(metadata, config, None)
+        .await
+        .unwrap();
 
     let results = registry.search_plugins("Test");
     assert_eq!(results.len(), 1);
@@ -336,9 +347,13 @@ async fn test_plugin_discovery() {
     let registry = PluginRegistry::new();
 
     // Create test plugin directory
-    create_test_plugin_dir(&temp_dir, "test_plugin").await.unwrap();
+    create_test_plugin_dir(&temp_dir, "test_plugin")
+        .await
+        .unwrap();
 
-    let result = registry.discover_plugins(temp_dir.path().to_path_buf()).await;
+    let result = registry
+        .discover_plugins(temp_dir.path().to_path_buf())
+        .await;
     assert!(result.is_ok());
 
     let discovery_result = result.unwrap();
@@ -352,7 +367,9 @@ async fn test_plugin_discovery_empty_directory() {
     let temp_dir = TempDir::new().unwrap();
     let registry = PluginRegistry::new();
 
-    let result = registry.discover_plugins(temp_dir.path().to_path_buf()).await;
+    let result = registry
+        .discover_plugins(temp_dir.path().to_path_buf())
+        .await;
     assert!(result.is_ok());
 
     let discovery_result = result.unwrap();
@@ -377,7 +394,7 @@ async fn test_plugin_discovery_nonexistent_directory() {
 async fn test_basic_plugin_execution() {
     let metadata = create_test_metadata();
     let plugin = loader::BasicPlugin::new(metadata);
-    
+
     let config = create_test_config();
     let context = PluginContext {
         plugin_id: "test_plugin".to_string(),
@@ -390,7 +407,7 @@ async fn test_basic_plugin_execution() {
 
     let input = json!({"test": "data"});
     let result = plugin.execute(input.clone(), &context).await;
-    
+
     assert!(result.is_ok());
     let plugin_result = result.unwrap();
     assert!(plugin_result.success);
@@ -401,9 +418,9 @@ async fn test_basic_plugin_execution() {
 #[tokio::test]
 async fn test_plugin_security_manager() {
     let security_manager = manager::PluginSecurityManager::new();
-    
+
     assert!(!security_manager.is_blocked("test_plugin"));
-    
+
     let permissions = PluginPermissions::default();
     let result = security_manager.validate_permissions("test_plugin", &permissions);
     assert!(result.is_ok());
@@ -412,7 +429,7 @@ async fn test_plugin_security_manager() {
 #[tokio::test]
 async fn test_plugin_resource_monitor() {
     let resource_monitor = manager::PluginResourceMonitor::new();
-    
+
     let can_execute = resource_monitor.can_execute("test_plugin").await;
     assert!(can_execute);
 }

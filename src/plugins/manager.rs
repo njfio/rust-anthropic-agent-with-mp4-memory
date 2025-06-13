@@ -1,17 +1,17 @@
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn, error};
-use serde_json::Value;
+use tracing::{debug, error, info, warn};
 
-use crate::utils::error::{AgentError, Result};
-use super::{
-    Plugin, PluginMetadata, PluginConfig, PluginContext, PluginResult, 
-    PluginStats, PluginEvent, PluginHealthStatus, PluginPermissions
-};
-use super::registry::PluginRegistry;
 use super::loader::PluginLoader;
+use super::registry::PluginRegistry;
+use super::{
+    Plugin, PluginConfig, PluginContext, PluginEvent, PluginHealthStatus, PluginMetadata,
+    PluginPermissions, PluginResult, PluginStats,
+};
+use crate::utils::error::{AgentError, Result};
 
 /// Advanced plugin manager with lifecycle management, security, and monitoring
 pub struct AdvancedPluginManager {
@@ -78,7 +78,7 @@ impl AdvancedPluginManager {
     /// Create a new advanced plugin manager
     pub fn new(plugin_dir: PathBuf, data_dir: PathBuf) -> Self {
         let registry_path = data_dir.join("plugin_registry.toml");
-        
+
         Self {
             plugins: Arc::new(RwLock::new(HashMap::new())),
             configs: Arc::new(RwLock::new(HashMap::new())),
@@ -101,10 +101,15 @@ impl AdvancedPluginManager {
         self.registry.write().await.load_registry().await?;
 
         // Discover plugins in the plugin directory
-        let discovery_result = self.registry.read().await.discover_plugins(self.plugin_dir.clone()).await?;
-        
+        let discovery_result = self
+            .registry
+            .read()
+            .await
+            .discover_plugins(self.plugin_dir.clone())
+            .await?;
+
         info!("Discovered {} plugins", discovery_result.plugins.len());
-        
+
         for error in &discovery_result.errors {
             warn!("Plugin discovery error: {}", error);
         }
@@ -136,22 +141,34 @@ impl AdvancedPluginManager {
         };
 
         // Register in registry
-        self.registry.write().await.register_plugin(metadata, config.clone(), Some(plugin_path.clone())).await?;
+        self.registry
+            .write()
+            .await
+            .register_plugin(metadata, config.clone(), Some(plugin_path.clone()))
+            .await?;
 
         // Load the plugin
-        self.load_plugin_from_path(plugin_path, Some(config)).await?;
+        self.load_plugin_from_path(plugin_path, Some(config))
+            .await?;
 
         Ok(())
     }
 
     /// Load a plugin from a path with optional configuration
-    pub async fn load_plugin_from_path(&self, plugin_path: PathBuf, config: Option<PluginConfig>) -> Result<String> {
+    pub async fn load_plugin_from_path(
+        &self,
+        plugin_path: PathBuf,
+        config: Option<PluginConfig>,
+    ) -> Result<String> {
         let mut plugin = self.loader.load_from_path(plugin_path).await?;
         let plugin_id = plugin.metadata().id.clone();
 
         // Security check
         if self.security_manager.is_blocked(&plugin_id) {
-            return Err(AgentError::plugin(format!("Plugin is blocked: {}", plugin_id)));
+            return Err(AgentError::plugin(format!(
+                "Plugin is blocked: {}",
+                plugin_id
+            )));
         }
 
         // Get or create configuration
@@ -165,7 +182,8 @@ impl AdvancedPluginManager {
         });
 
         // Validate permissions
-        self.security_manager.validate_permissions(&plugin_id, &plugin_config.permissions)?;
+        self.security_manager
+            .validate_permissions(&plugin_id, &plugin_config.permissions)?;
 
         // Create plugin context
         let context = PluginContext {
@@ -199,7 +217,10 @@ impl AdvancedPluginManager {
 
         // Store plugin, config, and stats
         self.plugins.write().await.insert(plugin_id.clone(), plugin);
-        self.configs.write().await.insert(plugin_id.clone(), plugin_config);
+        self.configs
+            .write()
+            .await
+            .insert(plugin_id.clone(), plugin_config);
         self.stats.write().await.insert(plugin_id.clone(), stats);
 
         // Initialize health status
@@ -208,38 +229,56 @@ impl AdvancedPluginManager {
             message: "Plugin loaded successfully".to_string(),
             details: Value::Null,
         };
-        self.health_status.write().await.insert(plugin_id.clone(), health);
+        self.health_status
+            .write()
+            .await
+            .insert(plugin_id.clone(), health);
 
         info!("Successfully loaded plugin: {}", plugin_id);
         Ok(plugin_id)
     }
 
     /// Execute a plugin with security and resource monitoring
-    pub async fn execute_plugin_secure(&self, plugin_id: &str, input: Value) -> Result<PluginResult> {
+    pub async fn execute_plugin_secure(
+        &self,
+        plugin_id: &str,
+        input: Value,
+    ) -> Result<PluginResult> {
         let start_time = std::time::Instant::now();
 
         // Security checks
         if self.security_manager.is_blocked(plugin_id) {
-            return Err(AgentError::plugin(format!("Plugin is blocked: {}", plugin_id)));
+            return Err(AgentError::plugin(format!(
+                "Plugin is blocked: {}",
+                plugin_id
+            )));
         }
 
         // Resource checks
         if !self.resource_monitor.can_execute(plugin_id).await {
-            return Err(AgentError::plugin(format!("Plugin resource limits exceeded: {}", plugin_id)));
+            return Err(AgentError::plugin(format!(
+                "Plugin resource limits exceeded: {}",
+                plugin_id
+            )));
         }
 
         // Get plugin and config
         let plugins = self.plugins.read().await;
-        let plugin = plugins.get(plugin_id)
+        let plugin = plugins
+            .get(plugin_id)
             .ok_or_else(|| AgentError::plugin(format!("Plugin not found: {}", plugin_id)))?;
 
         let configs = self.configs.read().await;
-        let config = configs.get(plugin_id)
+        let config = configs
+            .get(plugin_id)
             .ok_or_else(|| AgentError::plugin(format!("Plugin config not found: {}", plugin_id)))?;
 
         // Check if plugin is enabled
         if !config.enabled {
-            return Err(AgentError::plugin(format!("Plugin is disabled: {}", plugin_id)));
+            return Err(AgentError::plugin(format!(
+                "Plugin is disabled: {}",
+                plugin_id
+            )));
         }
 
         // Create execution context
@@ -256,21 +295,35 @@ impl AdvancedPluginManager {
         plugin.on_event(PluginEvent::Executing, &context).await?;
 
         // Execute with timeout and resource monitoring
-        let result = self.execute_with_monitoring(plugin.as_ref(), input, &context).await;
+        let result = self
+            .execute_with_monitoring(plugin.as_ref(), input, &context)
+            .await;
 
         let execution_time = start_time.elapsed().as_millis() as u64;
 
         // Update statistics and health
         match &result {
             Ok(plugin_result) => {
-                self.update_stats(plugin_id, true, execution_time, plugin_result.memory_usage_bytes).await;
-                self.update_health_status(plugin_id, true, "Execution successful".to_string()).await;
-                plugin.on_event(PluginEvent::ExecutionCompleted, &context).await?;
+                self.update_stats(
+                    plugin_id,
+                    true,
+                    execution_time,
+                    plugin_result.memory_usage_bytes,
+                )
+                .await;
+                self.update_health_status(plugin_id, true, "Execution successful".to_string())
+                    .await;
+                plugin
+                    .on_event(PluginEvent::ExecutionCompleted, &context)
+                    .await?;
             }
             Err(e) => {
                 self.update_stats(plugin_id, false, execution_time, 0).await;
-                self.update_health_status(plugin_id, false, e.to_string()).await;
-                plugin.on_event(PluginEvent::Error(e.to_string()), &context).await?;
+                self.update_health_status(plugin_id, false, e.to_string())
+                    .await;
+                plugin
+                    .on_event(PluginEvent::Error(e.to_string()), &context)
+                    .await?;
             }
         }
 
@@ -278,17 +331,23 @@ impl AdvancedPluginManager {
     }
 
     /// Execute plugin with resource monitoring
-    async fn execute_with_monitoring(&self, plugin: &dyn Plugin, input: Value, context: &PluginContext) -> Result<PluginResult> {
+    async fn execute_with_monitoring(
+        &self,
+        plugin: &dyn Plugin,
+        input: Value,
+        context: &PluginContext,
+    ) -> Result<PluginResult> {
         let plugin_id = &context.plugin_id;
-        
+
         // Start resource monitoring
         self.resource_monitor.start_monitoring(plugin_id).await;
 
         // Execute with timeout
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(context.config.timeout_seconds),
-            plugin.execute(input, context)
-        ).await;
+            plugin.execute(input, context),
+        )
+        .await;
 
         // Stop resource monitoring
         self.resource_monitor.stop_monitoring(plugin_id).await;
@@ -296,12 +355,21 @@ impl AdvancedPluginManager {
         match result {
             Ok(Ok(plugin_result)) => Ok(plugin_result),
             Ok(Err(e)) => Err(e),
-            Err(_) => Err(AgentError::plugin(format!("Plugin execution timed out: {}", plugin_id))),
+            Err(_) => Err(AgentError::plugin(format!(
+                "Plugin execution timed out: {}",
+                plugin_id
+            ))),
         }
     }
 
     /// Update plugin statistics
-    async fn update_stats(&self, plugin_id: &str, success: bool, execution_time_ms: u64, memory_usage: u64) {
+    async fn update_stats(
+        &self,
+        plugin_id: &str,
+        success: bool,
+        execution_time_ms: u64,
+        memory_usage: u64,
+    ) {
         let mut stats = self.stats.write().await;
         if let Some(plugin_stats) = stats.get_mut(plugin_id) {
             plugin_stats.total_executions += 1;
@@ -310,15 +378,15 @@ impl AdvancedPluginManager {
             } else {
                 plugin_stats.failed_executions += 1;
             }
-            
+
             plugin_stats.total_execution_time_ms += execution_time_ms;
-            plugin_stats.avg_execution_time_ms = 
+            plugin_stats.avg_execution_time_ms =
                 plugin_stats.total_execution_time_ms as f64 / plugin_stats.total_executions as f64;
-            
+
             if memory_usage > plugin_stats.peak_memory_usage_bytes {
                 plugin_stats.peak_memory_usage_bytes = memory_usage;
             }
-            
+
             plugin_stats.last_execution = Some(chrono::Utc::now());
         }
     }
@@ -341,7 +409,7 @@ impl AdvancedPluginManager {
     pub async fn health_check_all(&self) -> HashMap<String, PluginHealthStatus> {
         let mut results = HashMap::new();
         let plugins = self.plugins.read().await;
-        
+
         for (plugin_id, plugin) in plugins.iter() {
             let configs = self.configs.read().await;
             if let Some(config) = configs.get(plugin_id) {
@@ -359,11 +427,14 @@ impl AdvancedPluginManager {
                         results.insert(plugin_id.clone(), status);
                     }
                     Err(e) => {
-                        results.insert(plugin_id.clone(), PluginHealthStatus {
-                            healthy: false,
-                            message: format!("Health check failed: {}", e),
-                            details: Value::Null,
-                        });
+                        results.insert(
+                            plugin_id.clone(),
+                            PluginHealthStatus {
+                                healthy: false,
+                                message: format!("Health check failed: {}", e),
+                                details: Value::Null,
+                            },
+                        );
                     }
                 }
             }
@@ -416,7 +487,7 @@ impl AdvancedPluginManager {
 
                 // Send unloading event
                 plugin.on_event(PluginEvent::Unloading, &context).await?;
-                
+
                 // Cleanup plugin resources
                 // Note: We can't call cleanup on the plugin here because we have a read lock
                 // In a real implementation, we'd need to handle this differently
@@ -444,6 +515,12 @@ pub struct PluginInfo {
     pub health: Option<PluginHealthStatus>,
 }
 
+impl Default for PluginSecurityManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PluginSecurityManager {
     pub fn new() -> Self {
         Self {
@@ -457,21 +534,40 @@ impl PluginSecurityManager {
         self.blocked_plugins.contains(&plugin_id.to_string())
     }
 
-    pub fn validate_permissions(&self, plugin_id: &str, permissions: &PluginPermissions) -> Result<()> {
+    pub fn validate_permissions(
+        &self,
+        plugin_id: &str,
+        permissions: &PluginPermissions,
+    ) -> Result<()> {
         // Check against global permissions
         if permissions.file_write && !self.global_permissions.file_write {
-            return Err(AgentError::plugin(format!("Plugin {} not allowed to write files", plugin_id)));
+            return Err(AgentError::plugin(format!(
+                "Plugin {} not allowed to write files",
+                plugin_id
+            )));
         }
 
         if permissions.execute_commands && !self.global_permissions.execute_commands {
-            return Err(AgentError::plugin(format!("Plugin {} not allowed to execute commands", plugin_id)));
+            return Err(AgentError::plugin(format!(
+                "Plugin {} not allowed to execute commands",
+                plugin_id
+            )));
         }
 
         if permissions.network_access && !self.global_permissions.network_access {
-            return Err(AgentError::plugin(format!("Plugin {} not allowed network access", plugin_id)));
+            return Err(AgentError::plugin(format!(
+                "Plugin {} not allowed network access",
+                plugin_id
+            )));
         }
 
         Ok(())
+    }
+}
+
+impl Default for PluginResourceMonitor {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

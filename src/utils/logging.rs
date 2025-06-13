@@ -9,8 +9,8 @@ pub fn init_logging() -> Result<()> {
 
 /// Initialize logging with specified level
 pub fn init_logging_with_level(level: tracing::Level) -> Result<()> {
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(level.to_string()));
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level.to_string()));
 
     tracing_subscriber::registry()
         .with(
@@ -29,8 +29,7 @@ pub fn init_logging_with_level(level: tracing::Level) -> Result<()> {
 
 /// Initialize JSON logging for structured output
 pub fn init_json_logging() -> Result<()> {
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     tracing_subscriber::registry()
         .with(

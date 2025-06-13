@@ -4,39 +4,48 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
-use crate::utils::error::{AgentError, Result};
 use super::SecurityContext;
+use crate::utils::error::{AgentError, Result};
 
 /// Policy engine trait
 #[async_trait]
 pub trait PolicyEngine: Send + Sync {
     /// Evaluate a policy against a context
-    async fn evaluate_policy(&self, policy_name: &str, context: &SecurityContext) -> Result<PolicyDecision>;
-    
+    async fn evaluate_policy(
+        &self,
+        policy_name: &str,
+        context: &SecurityContext,
+    ) -> Result<PolicyDecision>;
+
     /// Evaluate all applicable policies
-    async fn evaluate_all_policies(&self, context: &SecurityContext, resource: &str, action: &str) -> Result<PolicyDecision>;
-    
+    async fn evaluate_all_policies(
+        &self,
+        context: &SecurityContext,
+        resource: &str,
+        action: &str,
+    ) -> Result<PolicyDecision>;
+
     /// Add a policy
     async fn add_policy(&self, policy: SecurityPolicy) -> Result<()>;
-    
+
     /// Update a policy
     async fn update_policy(&self, policy: SecurityPolicy) -> Result<()>;
-    
+
     /// Remove a policy
     async fn remove_policy(&self, policy_name: &str) -> Result<()>;
-    
+
     /// Get a policy
     async fn get_policy(&self, policy_name: &str) -> Result<Option<SecurityPolicy>>;
-    
+
     /// List all policies
     async fn list_policies(&self) -> Result<Vec<SecurityPolicy>>;
-    
+
     /// Check if a policy exists
     async fn policy_exists(&self, policy_name: &str) -> Result<bool>;
-    
+
     /// Validate policy syntax
     async fn validate_policy(&self, policy: &SecurityPolicy) -> Result<PolicyValidationResult>;
-    
+
     /// Get policy evaluation statistics
     async fn get_evaluation_statistics(&self) -> Result<PolicyStatistics>;
 }
@@ -191,6 +200,12 @@ pub struct SimplePolicyEngine {
     statistics: RwLock<PolicyStatistics>,
 }
 
+impl Default for SimplePolicyEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SimplePolicyEngine {
     /// Create a new simple policy engine
     pub fn new() -> Self {
@@ -217,14 +232,12 @@ impl SimplePolicyEngine {
                 effect: PolicyEffect::Allow,
                 resources: vec!["*".to_string()],
                 actions: vec!["*".to_string()],
-                conditions: vec![
-                    PolicyCondition {
-                        field: "user.roles".to_string(),
-                        operator: PolicyOperator::Contains,
-                        value: PolicyValue::String("admin".to_string()),
-                        negate: false,
-                    }
-                ],
+                conditions: vec![PolicyCondition {
+                    field: "user.roles".to_string(),
+                    operator: PolicyOperator::Contains,
+                    value: PolicyValue::String("admin".to_string()),
+                    negate: false,
+                }],
                 priority: 100,
                 enabled: true,
                 metadata: HashMap::new(),
@@ -236,14 +249,12 @@ impl SimplePolicyEngine {
                 effect: PolicyEffect::Deny,
                 resources: vec!["*".to_string()],
                 actions: vec!["*".to_string()],
-                conditions: vec![
-                    PolicyCondition {
-                        field: "user.status".to_string(),
-                        operator: PolicyOperator::Equals,
-                        value: PolicyValue::String("suspended".to_string()),
-                        negate: false,
-                    }
-                ],
+                conditions: vec![PolicyCondition {
+                    field: "user.status".to_string(),
+                    operator: PolicyOperator::Equals,
+                    value: PolicyValue::String("suspended".to_string()),
+                    negate: false,
+                }],
                 priority: 200,
                 enabled: true,
                 metadata: HashMap::new(),
@@ -255,17 +266,15 @@ impl SimplePolicyEngine {
                 effect: PolicyEffect::Deny,
                 resources: vec!["sensitive/*".to_string()],
                 actions: vec!["read".to_string(), "write".to_string()],
-                conditions: vec![
-                    PolicyCondition {
-                        field: "time.hour".to_string(),
-                        operator: PolicyOperator::TimeInRange,
-                        value: PolicyValue::TimeRange {
-                            start: "09:00".to_string(),
-                            end: "17:00".to_string(),
-                        },
-                        negate: true,
-                    }
-                ],
+                conditions: vec![PolicyCondition {
+                    field: "time.hour".to_string(),
+                    operator: PolicyOperator::TimeInRange,
+                    value: PolicyValue::TimeRange {
+                        start: "09:00".to_string(),
+                        end: "17:00".to_string(),
+                    },
+                    negate: true,
+                }],
                 priority: 50,
                 enabled: false, // Disabled by default
                 metadata: HashMap::new(),
@@ -280,9 +289,13 @@ impl SimplePolicyEngine {
     }
 
     /// Evaluate a single condition
-    async fn evaluate_condition(&self, condition: &PolicyCondition, context: &SecurityContext) -> Result<bool> {
+    async fn evaluate_condition(
+        &self,
+        condition: &PolicyCondition,
+        context: &SecurityContext,
+    ) -> Result<bool> {
         let field_value = self.extract_field_value(&condition.field, context)?;
-        
+
         let result = match condition.operator {
             PolicyOperator::Equals => self.compare_equals(&field_value, &condition.value),
             PolicyOperator::NotEquals => !self.compare_equals(&field_value, &condition.value),
@@ -291,7 +304,9 @@ impl SimplePolicyEngine {
             PolicyOperator::EndsWith => self.compare_ends_with(&field_value, &condition.value),
             PolicyOperator::In => self.compare_in(&field_value, &condition.value),
             PolicyOperator::NotIn => !self.compare_in(&field_value, &condition.value),
-            PolicyOperator::GreaterThan => self.compare_greater_than(&field_value, &condition.value),
+            PolicyOperator::GreaterThan => {
+                self.compare_greater_than(&field_value, &condition.value)
+            }
             PolicyOperator::LessThan => self.compare_less_than(&field_value, &condition.value),
             _ => false, // Unsupported operators default to false
         };
@@ -331,8 +346,8 @@ impl SimplePolicyEngine {
     fn compare_equals(&self, field_value: &str, policy_value: &PolicyValue) -> bool {
         match policy_value {
             PolicyValue::String(s) => field_value == s,
-            PolicyValue::Number(n) => field_value.parse::<f64>().map_or(false, |v| v == *n),
-            PolicyValue::Boolean(b) => field_value.parse::<bool>().map_or(false, |v| v == *b),
+            PolicyValue::Number(n) => field_value.parse::<f64>() == Ok(*n),
+            PolicyValue::Boolean(b) => field_value.parse::<bool>() == Ok(*b),
             _ => false,
         }
     }
@@ -379,7 +394,7 @@ impl SimplePolicyEngine {
     /// Compare if field is greater than value
     fn compare_greater_than(&self, field_value: &str, policy_value: &PolicyValue) -> bool {
         match policy_value {
-            PolicyValue::Number(n) => field_value.parse::<f64>().map_or(false, |v| v > *n),
+            PolicyValue::Number(n) => field_value.parse::<f64>().is_ok_and(|v| v > *n),
             _ => false,
         }
     }
@@ -387,7 +402,7 @@ impl SimplePolicyEngine {
     /// Compare if field is less than value
     fn compare_less_than(&self, field_value: &str, policy_value: &PolicyValue) -> bool {
         match policy_value {
-            PolicyValue::Number(n) => field_value.parse::<f64>().map_or(false, |v| v < *n),
+            PolicyValue::Number(n) => field_value.parse::<f64>().is_ok_and(|v| v < *n),
             _ => false,
         }
     }
@@ -397,12 +412,11 @@ impl SimplePolicyEngine {
         if pattern == "*" {
             return true;
         }
-        
-        if pattern.ends_with("*") {
-            let prefix = &pattern[..pattern.len() - 1];
+
+        if let Some(prefix) = pattern.strip_suffix("*") {
             return resource.starts_with(prefix);
         }
-        
+
         resource == pattern
     }
 
@@ -415,27 +429,36 @@ impl SimplePolicyEngine {
     async fn update_statistics(&self, policy_name: &str, granted: bool, evaluation_time_us: u64) {
         let mut stats = self.statistics.write().await;
         stats.total_evaluations += 1;
-        *stats.evaluations_by_policy.entry(policy_name.to_string()).or_insert(0) += 1;
-        
+        *stats
+            .evaluations_by_policy
+            .entry(policy_name.to_string())
+            .or_insert(0) += 1;
+
         if granted {
             stats.allow_decisions += 1;
         } else {
             stats.deny_decisions += 1;
         }
-        
+
         // Update average evaluation time
         let total_time = stats.avg_evaluation_time_us * (stats.total_evaluations - 1) as f64;
-        stats.avg_evaluation_time_us = (total_time + evaluation_time_us as f64) / stats.total_evaluations as f64;
+        stats.avg_evaluation_time_us =
+            (total_time + evaluation_time_us as f64) / stats.total_evaluations as f64;
     }
 }
 
 #[async_trait]
 impl PolicyEngine for SimplePolicyEngine {
-    async fn evaluate_policy(&self, policy_name: &str, context: &SecurityContext) -> Result<PolicyDecision> {
+    async fn evaluate_policy(
+        &self,
+        policy_name: &str,
+        context: &SecurityContext,
+    ) -> Result<PolicyDecision> {
         let start_time = std::time::Instant::now();
-        
+
         let policies = self.policies.read().await;
-        let policy = policies.get(policy_name)
+        let policy = policies
+            .get(policy_name)
             .ok_or_else(|| AgentError::validation(format!("Policy '{}' not found", policy_name)))?;
 
         if !policy.enabled {
@@ -465,24 +488,38 @@ impl PolicyEngine for SimplePolicyEngine {
 
         let evaluation_time = start_time.elapsed().as_micros() as u64;
         drop(policies);
-        
-        self.update_statistics(policy_name, granted, evaluation_time).await;
+
+        self.update_statistics(policy_name, granted, evaluation_time)
+            .await;
 
         Ok(PolicyDecision {
             granted,
-            reason: if granted { "Policy allows access".to_string() } else { "Policy denies access".to_string() },
+            reason: if granted {
+                "Policy allows access".to_string()
+            } else {
+                "Policy denies access".to_string()
+            },
             evaluated_policies: vec![policy_name.to_string()],
             deciding_policy: Some(policy_name.to_string()),
             metadata: HashMap::new(),
         })
     }
 
-    async fn evaluate_all_policies(&self, context: &SecurityContext, resource: &str, action: &str) -> Result<PolicyDecision> {
+    async fn evaluate_all_policies(
+        &self,
+        context: &SecurityContext,
+        resource: &str,
+        action: &str,
+    ) -> Result<PolicyDecision> {
         let policies = self.policies.read().await;
         let mut applicable_policies: Vec<&SecurityPolicy> = policies
             .values()
             .filter(|p| p.enabled)
-            .filter(|p| p.resources.iter().any(|r| self.resource_matches(resource, r)))
+            .filter(|p| {
+                p.resources
+                    .iter()
+                    .any(|r| self.resource_matches(resource, r))
+            })
             .filter(|p| p.actions.iter().any(|a| self.action_matches(action, a)))
             .collect();
 
@@ -500,7 +537,7 @@ impl PolicyEngine for SimplePolicyEngine {
 
         for policy in applicable_policies {
             evaluated_policies.push(policy.name.clone());
-            
+
             // Evaluate all conditions for this policy
             let mut all_conditions_met = true;
             for condition in &policy.conditions {
@@ -513,8 +550,15 @@ impl PolicyEngine for SimplePolicyEngine {
             if all_conditions_met {
                 final_decision = PolicyDecision {
                     granted: policy.effect == PolicyEffect::Allow,
-                    reason: format!("Policy '{}' {} access", policy.name, 
-                                  if policy.effect == PolicyEffect::Allow { "allows" } else { "denies" }),
+                    reason: format!(
+                        "Policy '{}' {} access",
+                        policy.name,
+                        if policy.effect == PolicyEffect::Allow {
+                            "allows"
+                        } else {
+                            "denies"
+                        }
+                    ),
                     evaluated_policies: evaluated_policies.clone(),
                     deciding_policy: Some(policy.name.clone()),
                     metadata: HashMap::new(),
@@ -542,7 +586,10 @@ impl PolicyEngine for SimplePolicyEngine {
 
         let mut policies = self.policies.write().await;
         if policies.contains_key(&policy.name) {
-            return Err(AgentError::validation(format!("Policy '{}' already exists", policy.name)));
+            return Err(AgentError::validation(format!(
+                "Policy '{}' already exists",
+                policy.name
+            )));
         }
         policies.insert(policy.name.clone(), policy);
         Ok(())

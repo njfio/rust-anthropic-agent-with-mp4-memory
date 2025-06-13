@@ -30,16 +30,29 @@ impl MemorySearchTool {
 
         // Header with search summary
         output.push_str("╭─────────────────────────────────────────────────────────────────╮\n");
-        output.push_str(&format!("│ 🔍 Memory Search Results                                        │\n"));
+        output.push_str("│ 🔍 Memory Search Results                                        │\n");
         output.push_str("├─────────────────────────────────────────────────────────────────┤\n");
-        output.push_str(&format!("│ Query: \"{}\"{}│\n",
+        output.push_str(&format!(
+            "│ Query: \"{}\"{}│\n",
             Self::truncate_text(query, 45),
             " ".repeat(45_i32.saturating_sub(query.len() as i32).max(0) as usize + 8)
         ));
-        output.push_str(&format!("│ Found: {} result{}{}│\n",
+        output.push_str(&format!(
+            "│ Found: {} result{}{}│\n",
             results.len(),
             if results.len() == 1 { "" } else { "s" },
-            " ".repeat(50_i32.saturating_sub(format!("{} result{}", results.len(), if results.len() == 1 { "" } else { "s" }).len() as i32).max(0) as usize)
+            " ".repeat(
+                50_i32
+                    .saturating_sub(
+                        format!(
+                            "{} result{}",
+                            results.len(),
+                            if results.len() == 1 { "" } else { "s" }
+                        )
+                        .len() as i32
+                    )
+                    .max(0) as usize
+            )
         ));
         output.push_str("╰─────────────────────────────────────────────────────────────────╯\n\n");
 
@@ -75,7 +88,7 @@ impl MemorySearchTool {
             output.push_str("└───────────────────────────────────────────────────────────────\n");
 
             if i < results.len() - 1 {
-                output.push_str("\n");
+                output.push('\n');
             }
         }
 
@@ -145,9 +158,17 @@ impl MemorySearchTool {
         let duration = now.signed_duration_since(*created_at);
 
         if duration.num_days() > 0 {
-            format!("{} days ago ({})", duration.num_days(), created_at.format("%Y-%m-%d %H:%M"))
+            format!(
+                "{} days ago ({})",
+                duration.num_days(),
+                created_at.format("%Y-%m-%d %H:%M")
+            )
         } else if duration.num_hours() > 0 {
-            format!("{} hours ago ({})", duration.num_hours(), created_at.format("%H:%M"))
+            format!(
+                "{} hours ago ({})",
+                duration.num_hours(),
+                created_at.format("%H:%M")
+            )
         } else if duration.num_minutes() > 0 {
             format!("{} minutes ago", duration.num_minutes())
         } else {
@@ -172,7 +193,7 @@ impl MemorySearchTool {
         for word in text.split_whitespace() {
             if current_line.is_empty() {
                 current_line = word.to_string();
-            } else if current_line.len() + word.len() + 1 <= width {
+            } else if current_line.len() + word.len() < width {
                 current_line.push(' ');
                 current_line.push_str(word);
             } else {
@@ -294,7 +315,7 @@ impl Tool for MemorySaveTool {
         let content = extract_string_param(&input, "content")?;
         let entry_type_str = extract_optional_string_param(&input, "entry_type")
             .unwrap_or_else(|| "note".to_string());
-        
+
         let entry_type = entry_type_str;
 
         let _tags: Vec<String> = input
@@ -307,11 +328,17 @@ impl Tool for MemorySaveTool {
             })
             .unwrap_or_default();
 
-        debug!("Saving memory entry: {} chars, type: {:?}", content.len(), entry_type);
+        debug!(
+            "Saving memory entry: {} chars, type: {:?}",
+            content.len(),
+            entry_type
+        );
 
         let mut memory_manager = self.memory_manager.lock().await;
         let metadata = std::collections::HashMap::new();
-        let memory_id = memory_manager.save_memory(content, entry_type, metadata).await?;
+        let memory_id = memory_manager
+            .save_memory(content, entry_type, metadata)
+            .await?;
 
         info!("Saved memory entry with ID: {}", memory_id);
         Ok(ToolResult::success(format!(
@@ -370,8 +397,18 @@ impl MemoryStatsTool {
             stats.total_memories,
             memory_size_mb,
             index_size_kb,
-            if stats.total_chunks > 0 { "🟢 Active" } else { "🟡 Empty" },
-            if memory_size_mb < 100.0 { "🟢 Optimal" } else if memory_size_mb < 500.0 { "🟡 Good" } else { "🟠 Large" }
+            if stats.total_chunks > 0 {
+                "🟢 Active"
+            } else {
+                "🟡 Empty"
+            },
+            if memory_size_mb < 100.0 {
+                "🟢 Optimal"
+            } else if memory_size_mb < 500.0 {
+                "🟡 Good"
+            } else {
+                "🟠 Large"
+            }
         )
     }
 }
@@ -423,21 +460,37 @@ impl ConversationSearchTool {
     }
 
     /// Format conversation search results with enhanced visual presentation
-    fn format_conversation_results(query: &str, conversations: &[crate::memory::Conversation]) -> String {
+    fn format_conversation_results(
+        query: &str,
+        conversations: &[crate::memory::Conversation],
+    ) -> String {
         let mut output = String::new();
 
         // Header with search summary
         output.push_str("╭─────────────────────────────────────────────────────────────────╮\n");
-        output.push_str(&format!("│ 💬 Conversation Search Results                                 │\n"));
+        output.push_str("│ 💬 Conversation Search Results                                 │\n");
         output.push_str("├─────────────────────────────────────────────────────────────────┤\n");
-        output.push_str(&format!("│ Query: \"{}\"{}│\n",
+        output.push_str(&format!(
+            "│ Query: \"{}\"{}│\n",
             Self::truncate_text(query, 45),
             " ".repeat(45_i32.saturating_sub(query.len() as i32).max(0) as usize + 8)
         ));
-        output.push_str(&format!("│ Found: {} conversation{}{}│\n",
+        output.push_str(&format!(
+            "│ Found: {} conversation{}{}│\n",
             conversations.len(),
             if conversations.len() == 1 { "" } else { "s" },
-            " ".repeat(44_i32.saturating_sub(format!("{} conversation{}", conversations.len(), if conversations.len() == 1 { "" } else { "s" }).len() as i32).max(0) as usize)
+            " ".repeat(
+                44_i32
+                    .saturating_sub(
+                        format!(
+                            "{} conversation{}",
+                            conversations.len(),
+                            if conversations.len() == 1 { "" } else { "s" }
+                        )
+                        .len() as i32
+                    )
+                    .max(0) as usize
+            )
         ));
         output.push_str("╰─────────────────────────────────────────────────────────────────╯\n\n");
 
@@ -447,7 +500,11 @@ impl ConversationSearchTool {
             let time_display = Self::format_time_ago(&conversation.created_at);
             let message_count = conversation.messages.len();
 
-            output.push_str(&format!("┌─ Conversation {} {}\n", conversation_number, "─".repeat(50)));
+            output.push_str(&format!(
+                "┌─ Conversation {} {}\n",
+                conversation_number,
+                "─".repeat(50)
+            ));
             output.push_str(&format!("│ 🕒 Created: {}\n", time_display));
             output.push_str(&format!("│ 💬 Messages: {}\n", message_count));
             output.push_str(&format!("│ 🆔 ID: {}\n", conversation.id));
@@ -458,7 +515,8 @@ impl ConversationSearchTool {
 
             // Show preview of first few messages
             if !conversation.messages.is_empty() {
-                output.push_str("├─ Message Preview ────────────────────────────────────────────\n");
+                output
+                    .push_str("├─ Message Preview ────────────────────────────────────────────\n");
 
                 for (msg_idx, message) in conversation.messages.iter().take(2).enumerate() {
                     let (role_emoji, role_name) = match message.role {
@@ -480,14 +538,17 @@ impl ConversationSearchTool {
                 }
 
                 if conversation.messages.len() > 2 {
-                    output.push_str(&format!("│ (and {} more messages)\n", conversation.messages.len() - 2));
+                    output.push_str(&format!(
+                        "│ (and {} more messages)\n",
+                        conversation.messages.len() - 2
+                    ));
                 }
             }
 
             output.push_str("└───────────────────────────────────────────────────────────────\n");
 
             if i < conversations.len() - 1 {
-                output.push_str("\n");
+                output.push('\n');
             }
         }
 
@@ -534,9 +595,17 @@ impl ConversationSearchTool {
         let duration = now.signed_duration_since(*created_at);
 
         if duration.num_days() > 0 {
-            format!("{} days ago ({})", duration.num_days(), created_at.format("%Y-%m-%d %H:%M"))
+            format!(
+                "{} days ago ({})",
+                duration.num_days(),
+                created_at.format("%Y-%m-%d %H:%M")
+            )
         } else if duration.num_hours() > 0 {
-            format!("{} hours ago ({})", duration.num_hours(), created_at.format("%H:%M"))
+            format!(
+                "{} hours ago ({})",
+                duration.num_hours(),
+                created_at.format("%H:%M")
+            )
         } else if duration.num_minutes() > 0 {
             format!("{} minutes ago", duration.num_minutes())
         } else {
@@ -584,18 +653,26 @@ impl Tool for ConversationSearchTool {
         let query = extract_string_param(&input, "query")?;
         let limit = extract_optional_int_param(&input, "limit").unwrap_or(5) as usize;
 
-        debug!("Searching conversations for: '{}' (limit: {})", query, limit);
+        debug!(
+            "Searching conversations for: '{}' (limit: {})",
+            query, limit
+        );
 
         let memory_manager = self.memory_manager.lock().await;
         let conversations = memory_manager.search_conversations(&query, limit).await?;
 
         if conversations.is_empty() {
-            return Ok(ToolResult::success(Self::format_no_conversation_results(&query)));
+            return Ok(ToolResult::success(Self::format_no_conversation_results(
+                &query,
+            )));
         }
 
         let result_text = Self::format_conversation_results(&query, &conversations);
 
-        info!("Conversation search completed: {} results", conversations.len());
+        info!(
+            "Conversation search completed: {} results",
+            conversations.len()
+        );
         Ok(ToolResult::success(result_text))
     }
 

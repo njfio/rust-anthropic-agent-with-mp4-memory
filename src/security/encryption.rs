@@ -6,45 +6,45 @@ use std::collections::HashMap;
 use std::num::NonZeroU32;
 use tokio::sync::RwLock;
 
+use super::{EncryptionAlgorithm, EncryptionConfig, KeyDerivationAlgorithm, KeyDerivationConfig};
 use crate::utils::error::{AgentError, Result};
-use super::{EncryptionConfig, EncryptionAlgorithm, KeyDerivationConfig, KeyDerivationAlgorithm};
 
 /// Encryption service trait
 #[async_trait]
 pub trait EncryptionService: Send + Sync {
     /// Encrypt data with a key
     async fn encrypt(&self, data: &[u8], key_id: &str) -> Result<EncryptedData>;
-    
+
     /// Decrypt data with a key
     async fn decrypt(&self, encrypted_data: &EncryptedData, key_id: &str) -> Result<Vec<u8>>;
-    
+
     /// Generate a new encryption key
     async fn generate_key(&self, key_id: &str, algorithm: EncryptionAlgorithm) -> Result<()>;
-    
+
     /// Derive a key from a password
     async fn derive_key(&self, password: &str, salt: &[u8], key_id: &str) -> Result<()>;
-    
+
     /// Delete an encryption key
     async fn delete_key(&self, key_id: &str) -> Result<()>;
-    
+
     /// Check if a key exists
     async fn key_exists(&self, key_id: &str) -> Result<bool>;
-    
+
     /// Rotate an encryption key
     async fn rotate_key(&self, key_id: &str) -> Result<String>;
-    
+
     /// Get key metadata
     async fn get_key_metadata(&self, key_id: &str) -> Result<KeyMetadata>;
-    
+
     /// Encrypt a string
     async fn encrypt_string(&self, data: &str, key_id: &str) -> Result<String>;
-    
+
     /// Decrypt a string
     async fn decrypt_string(&self, encrypted_data: &str, key_id: &str) -> Result<String>;
-    
+
     /// Generate a secure random value
     async fn generate_random(&self, length: usize) -> Result<Vec<u8>>;
-    
+
     /// Hash data with a secure hash function
     async fn hash_data(&self, data: &[u8], algorithm: HashAlgorithm) -> Result<Vec<u8>>;
 }
@@ -153,14 +153,15 @@ impl RingEncryptionService {
     /// Generate a random nonce for the given algorithm
     fn generate_nonce(&self, algorithm: &EncryptionAlgorithm) -> Result<Vec<u8>> {
         let nonce_len = match algorithm {
-            EncryptionAlgorithm::Aes256Gcm => 12, // 96 bits
+            EncryptionAlgorithm::Aes256Gcm => 12,        // 96 bits
             EncryptionAlgorithm::ChaCha20Poly1305 => 12, // 96 bits
-            EncryptionAlgorithm::Aes256Cbc => 16, // 128 bits
+            EncryptionAlgorithm::Aes256Cbc => 16,        // 128 bits
         };
 
         let mut nonce = vec![0u8; nonce_len];
         use ring::rand::SecureRandom;
-        self.rng.fill(&mut nonce)
+        self.rng
+            .fill(&mut nonce)
             .map_err(|_| AgentError::validation("Failed to generate nonce".to_string()))?;
 
         Ok(nonce)
@@ -181,7 +182,12 @@ impl RingEncryptionService {
     }
 
     /// Create encryption key from raw key data
-    fn create_encryption_key(&self, key_data: Vec<u8>, key_id: &str, algorithm: EncryptionAlgorithm) -> EncryptionKey {
+    fn create_encryption_key(
+        &self,
+        key_data: Vec<u8>,
+        key_id: &str,
+        algorithm: EncryptionAlgorithm,
+    ) -> EncryptionKey {
         let metadata = KeyMetadata {
             key_id: key_id.to_string(),
             algorithm,
@@ -192,10 +198,7 @@ impl RingEncryptionService {
             metadata: HashMap::new(),
         };
 
-        EncryptionKey {
-            key_data,
-            metadata,
-        }
+        EncryptionKey { key_data, metadata }
     }
 
     /// Update key last used time
@@ -212,11 +215,15 @@ impl RingEncryptionService {
 impl EncryptionService for RingEncryptionService {
     async fn encrypt(&self, data: &[u8], key_id: &str) -> Result<EncryptedData> {
         let keys = self.keys.read().await;
-        let key = keys.get(key_id)
+        let key = keys
+            .get(key_id)
             .ok_or_else(|| AgentError::validation(format!("Key '{}' not found", key_id)))?;
 
         if key.metadata.status != KeyStatus::Active {
-            return Err(AgentError::validation(format!("Key '{}' is not active", key_id)));
+            return Err(AgentError::validation(format!(
+                "Key '{}' is not active",
+                key_id
+            )));
         }
 
         let algorithm = key.metadata.algorithm.clone();
@@ -250,11 +257,15 @@ impl EncryptionService for RingEncryptionService {
 
     async fn decrypt(&self, encrypted_data: &EncryptedData, key_id: &str) -> Result<Vec<u8>> {
         let keys = self.keys.read().await;
-        let key = keys.get(key_id)
+        let key = keys
+            .get(key_id)
             .ok_or_else(|| AgentError::validation(format!("Key '{}' not found", key_id)))?;
 
         if key.metadata.status == KeyStatus::Revoked {
-            return Err(AgentError::validation(format!("Key '{}' is revoked", key_id)));
+            return Err(AgentError::validation(format!(
+                "Key '{}' is revoked",
+                key_id
+            )));
         }
 
         // For now, use simple XOR decryption (same as encryption)
@@ -277,19 +288,23 @@ impl EncryptionService for RingEncryptionService {
     async fn generate_key(&self, key_id: &str, algorithm: EncryptionAlgorithm) -> Result<()> {
         // Check if key already exists
         if self.key_exists(key_id).await? {
-            return Err(AgentError::validation(format!("Key '{}' already exists", key_id)));
+            return Err(AgentError::validation(format!(
+                "Key '{}' already exists",
+                key_id
+            )));
         }
 
         // Generate random key
         let key_len = match algorithm {
-            EncryptionAlgorithm::Aes256Gcm => 32, // 256 bits
+            EncryptionAlgorithm::Aes256Gcm => 32,        // 256 bits
             EncryptionAlgorithm::ChaCha20Poly1305 => 32, // 256 bits
-            EncryptionAlgorithm::Aes256Cbc => 32, // 256 bits
+            EncryptionAlgorithm::Aes256Cbc => 32,        // 256 bits
         };
 
         let mut key_data = vec![0u8; key_len];
         use ring::rand::SecureRandom;
-        self.rng.fill(&mut key_data)
+        self.rng
+            .fill(&mut key_data)
             .map_err(|_| AgentError::validation("Failed to generate key".to_string()))?;
 
         // Create and store key
@@ -303,7 +318,10 @@ impl EncryptionService for RingEncryptionService {
     async fn derive_key(&self, password: &str, salt: &[u8], key_id: &str) -> Result<()> {
         // Check if key already exists
         if self.key_exists(key_id).await? {
-            return Err(AgentError::validation(format!("Key '{}' already exists", key_id)));
+            return Err(AgentError::validation(format!(
+                "Key '{}' already exists",
+                key_id
+            )));
         }
 
         // Derive key based on algorithm
@@ -314,11 +332,16 @@ impl EncryptionService for RingEncryptionService {
                 // In a real implementation, you'd use the argon2 crate
                 self.derive_key_pbkdf2(password, salt)?
             }
-            _ => return Err(AgentError::validation("Unsupported key derivation algorithm".to_string())),
+            _ => {
+                return Err(AgentError::validation(
+                    "Unsupported key derivation algorithm".to_string(),
+                ))
+            }
         };
 
         // Create and store key
-        let encryption_key = self.create_encryption_key(key_data, key_id, self.config.algorithm.clone());
+        let encryption_key =
+            self.create_encryption_key(key_data, key_id, self.config.algorithm.clone());
         let mut keys = self.keys.write().await;
         keys.insert(key_id.to_string(), encryption_key);
 
@@ -338,11 +361,12 @@ impl EncryptionService for RingEncryptionService {
 
     async fn rotate_key(&self, key_id: &str) -> Result<String> {
         let new_key_id = format!("{}_v{}", key_id, chrono::Utc::now().timestamp());
-        
+
         // Get current key metadata
         let algorithm = {
             let keys = self.keys.read().await;
-            let key = keys.get(key_id)
+            let key = keys
+                .get(key_id)
                 .ok_or_else(|| AgentError::validation(format!("Key '{}' not found", key_id)))?;
             key.metadata.algorithm.clone()
         };
@@ -361,25 +385,29 @@ impl EncryptionService for RingEncryptionService {
 
     async fn get_key_metadata(&self, key_id: &str) -> Result<KeyMetadata> {
         let keys = self.keys.read().await;
-        let key = keys.get(key_id)
+        let key = keys
+            .get(key_id)
             .ok_or_else(|| AgentError::validation(format!("Key '{}' not found", key_id)))?;
         Ok(key.metadata.clone())
     }
 
     async fn encrypt_string(&self, data: &str, key_id: &str) -> Result<String> {
         let encrypted = self.encrypt(data.as_bytes(), key_id).await?;
-        let serialized = serde_json::to_string(&encrypted)
-            .map_err(|e| AgentError::validation(format!("Failed to serialize encrypted data: {}", e)))?;
+        let serialized = serde_json::to_string(&encrypted).map_err(|e| {
+            AgentError::validation(format!("Failed to serialize encrypted data: {}", e))
+        })?;
         use base64::Engine;
         Ok(base64::engine::general_purpose::STANDARD.encode(serialized))
     }
 
     async fn decrypt_string(&self, encrypted_data: &str, key_id: &str) -> Result<String> {
         use base64::Engine;
-        let decoded = base64::engine::general_purpose::STANDARD.decode(encrypted_data)
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(encrypted_data)
             .map_err(|e| AgentError::validation(format!("Failed to decode base64: {}", e)))?;
-        let encrypted: EncryptedData = serde_json::from_slice(&decoded)
-            .map_err(|e| AgentError::validation(format!("Failed to deserialize encrypted data: {}", e)))?;
+        let encrypted: EncryptedData = serde_json::from_slice(&decoded).map_err(|e| {
+            AgentError::validation(format!("Failed to deserialize encrypted data: {}", e))
+        })?;
         let decrypted = self.decrypt(&encrypted, key_id).await?;
         String::from_utf8(decrypted)
             .map_err(|e| AgentError::validation(format!("Failed to convert to string: {}", e)))
@@ -388,7 +416,8 @@ impl EncryptionService for RingEncryptionService {
     async fn generate_random(&self, length: usize) -> Result<Vec<u8>> {
         let mut random_data = vec![0u8; length];
         use ring::rand::SecureRandom;
-        self.rng.fill(&mut random_data)
+        self.rng
+            .fill(&mut random_data)
             .map_err(|_| AgentError::validation("Failed to generate random data".to_string()))?;
         Ok(random_data)
     }
@@ -417,6 +446,8 @@ impl EncryptionService for RingEncryptionService {
 }
 
 /// Create an encryption service
-pub async fn create_encryption_service(config: &EncryptionConfig) -> Result<Box<dyn EncryptionService>> {
+pub async fn create_encryption_service(
+    config: &EncryptionConfig,
+) -> Result<Box<dyn EncryptionService>> {
     Ok(Box::new(RingEncryptionService::new(config.clone())))
 }

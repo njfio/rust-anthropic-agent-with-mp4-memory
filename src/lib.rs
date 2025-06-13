@@ -55,7 +55,7 @@ pub use utils::error::{AgentError, Result};
 pub use tools::{Tool, ToolRegistry, ToolResult};
 
 // Re-export memory types
-pub use memory::{MemoryManager, SearchResult, MemoryEntry, MemoryStats};
+pub use memory::{MemoryEntry, MemoryManager, MemoryStats, SearchResult};
 
 /// Initialize the agent system with default logging
 pub async fn init() -> Result<()> {
@@ -71,12 +71,12 @@ pub async fn init_with_logging(level: tracing::Level) -> Result<()> {
 
 #[cfg(test)]
 mod security_tests {
-    
+
     use crate::tools::custom_tools::ShellCommandTool;
     use crate::tools::local_file_ops::LocalTextEditorTool;
     use crate::tools::Tool;
-    use crate::utils::validation::{validate_path, validate_command, validate_url};
-    use crate::utils::rate_limiter::{RateLimiter, RateLimitConfig};
+    use crate::utils::rate_limiter::{RateLimitConfig, RateLimiter};
+    use crate::utils::validation::{validate_command, validate_path, validate_url};
     use serde_json::json;
     use std::time::Duration;
     use tempfile::TempDir;
@@ -85,8 +85,8 @@ mod security_tests {
     #[tokio::test]
     async fn test_path_traversal_prevention() {
         let temp_dir = TempDir::new().unwrap();
-        let tool = LocalTextEditorTool::new(temp_dir.path().to_path_buf())
-            .with_max_file_size(1024 * 1024);
+        let tool =
+            LocalTextEditorTool::new(temp_dir.path().to_path_buf()).with_max_file_size(1024 * 1024);
 
         // Test absolute path rejection
         let input = json!({
@@ -98,9 +98,11 @@ mod security_tests {
         match result {
             Ok(tool_result) => {
                 assert!(tool_result.is_error);
-                assert!(tool_result.content.contains("Absolute paths not allowed") ||
-                        tool_result.content.contains("Invalid input"));
-            },
+                assert!(
+                    tool_result.content.contains("Absolute paths not allowed")
+                        || tool_result.content.contains("Invalid input")
+                );
+            }
             Err(_) => {
                 // This is also acceptable - the validation caught it early
             }
@@ -116,9 +118,11 @@ mod security_tests {
         match result {
             Ok(tool_result) => {
                 assert!(tool_result.is_error);
-                assert!(tool_result.content.contains("Path traversal not allowed") ||
-                        tool_result.content.contains("Invalid input"));
-            },
+                assert!(
+                    tool_result.content.contains("Path traversal not allowed")
+                        || tool_result.content.contains("Invalid input")
+                );
+            }
             Err(_) => {
                 // This is also acceptable - the validation caught it early
             }
@@ -252,7 +256,8 @@ mod security_tests {
             AuditEventType::FileAccess,
             AuditSeverity::Medium,
             "test_file_access".to_string(),
-        ).with_resource("test.txt");
+        )
+        .with_resource("test.txt");
 
         logger.log_event(event).unwrap();
         logger.flush().unwrap();

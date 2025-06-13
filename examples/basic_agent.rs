@@ -15,15 +15,21 @@ async fn main() -> anyhow::Result<()> {
     let mut agent = Agent::new(config).await?;
 
     // Start a conversation
-    agent.start_conversation(Some("Basic Example".to_string())).await?;
+    agent
+        .start_conversation(Some("Basic Example".to_string()))
+        .await?;
 
     // Send some messages
     println!("=== Basic Agent Example ===\n");
 
-    let response1 = agent.chat("Hello! Can you help me understand what tools you have available?").await?;
+    let response1 = agent
+        .chat("Hello! Can you help me understand what tools you have available?")
+        .await?;
     println!("Agent: {}\n", response1);
 
-    let response2 = agent.chat("Can you save a note to memory that says 'This is my first memory entry'?").await?;
+    let response2 = agent
+        .chat("Can you save a note to memory that says 'This is my first memory entry'?")
+        .await?;
     println!("Agent: {}\n", response2);
 
     let response3 = agent.chat("Now search for that note in memory").await?;

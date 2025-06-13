@@ -9,9 +9,9 @@ use uuid::Uuid;
 
 use crate::utils::error::{AgentError, Result};
 
-pub mod registry;
 pub mod loader;
 pub mod manager;
+pub mod registry;
 
 #[cfg(test)]
 mod tests;
@@ -61,7 +61,7 @@ pub struct PluginConfig {
 }
 
 /// Plugin permissions system
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PluginPermissions {
     /// Can read files
     pub file_read: bool,
@@ -81,22 +81,6 @@ pub struct PluginPermissions {
     pub allowed_paths: Vec<PathBuf>,
     /// Allowed network hosts (if network access is enabled)
     pub allowed_hosts: Vec<String>,
-}
-
-impl Default for PluginPermissions {
-    fn default() -> Self {
-        Self {
-            file_read: false,
-            file_write: false,
-            execute_commands: false,
-            network_access: false,
-            memory_access: false,
-            register_tools: false,
-            env_access: false,
-            allowed_paths: Vec::new(),
-            allowed_hosts: Vec::new(),
-        }
-    }
 }
 
 /// Plugin execution context
@@ -306,14 +290,16 @@ impl PluginManager {
     /// Execute a plugin
     pub async fn execute_plugin(&self, plugin_id: &str, input: Value) -> Result<PluginResult> {
         let start_time = std::time::Instant::now();
-        
+
         // Get plugin and config
         let plugins = self.plugins.read().await;
-        let plugin = plugins.get(plugin_id)
+        let plugin = plugins
+            .get(plugin_id)
             .ok_or_else(|| AgentError::plugin(format!("Plugin not found: {}", plugin_id)))?;
 
         let configs = self.configs.read().await;
-        let config = configs.get(plugin_id)
+        let config = configs
+            .get(plugin_id)
             .cloned()
             .unwrap_or_else(|| PluginConfig {
                 enabled: true,
@@ -326,7 +312,10 @@ impl PluginManager {
 
         // Check if plugin is enabled
         if !config.enabled {
-            return Err(AgentError::plugin(format!("Plugin is disabled: {}", plugin_id)));
+            return Err(AgentError::plugin(format!(
+                "Plugin is disabled: {}",
+                plugin_id
+            )));
         }
 
         // Create execution context
@@ -342,8 +331,9 @@ impl PluginManager {
         // Execute plugin with timeout
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(context.config.timeout_seconds),
-            plugin.execute(input, &context)
-        ).await;
+            plugin.execute(input, &context),
+        )
+        .await;
 
         let execution_time = start_time.elapsed().as_millis() as u64;
 
@@ -351,7 +341,13 @@ impl PluginManager {
         match result {
             Ok(Ok(mut plugin_result)) => {
                 plugin_result.execution_time_ms = execution_time;
-                self.update_stats(plugin_id, true, execution_time, plugin_result.memory_usage_bytes).await;
+                self.update_stats(
+                    plugin_id,
+                    true,
+                    execution_time,
+                    plugin_result.memory_usage_bytes,
+                )
+                .await;
                 Ok(plugin_result)
             }
             Ok(Err(e)) => {
@@ -360,13 +356,22 @@ impl PluginManager {
             }
             Err(_) => {
                 self.update_stats(plugin_id, false, execution_time, 0).await;
-                Err(AgentError::plugin(format!("Plugin execution timed out: {}", plugin_id)))
+                Err(AgentError::plugin(format!(
+                    "Plugin execution timed out: {}",
+                    plugin_id
+                )))
             }
         }
     }
 
     /// Update plugin statistics
-    async fn update_stats(&self, plugin_id: &str, success: bool, execution_time_ms: u64, memory_usage: u64) {
+    async fn update_stats(
+        &self,
+        plugin_id: &str,
+        success: bool,
+        execution_time_ms: u64,
+        memory_usage: u64,
+    ) {
         let mut stats = self.stats.write().await;
         if let Some(plugin_stats) = stats.get_mut(plugin_id) {
             plugin_stats.total_executions += 1;
@@ -375,15 +380,15 @@ impl PluginManager {
             } else {
                 plugin_stats.failed_executions += 1;
             }
-            
+
             plugin_stats.total_execution_time_ms += execution_time_ms;
-            plugin_stats.avg_execution_time_ms = 
+            plugin_stats.avg_execution_time_ms =
                 plugin_stats.total_execution_time_ms as f64 / plugin_stats.total_executions as f64;
-            
+
             if memory_usage > plugin_stats.peak_memory_usage_bytes {
                 plugin_stats.peak_memory_usage_bytes = memory_usage;
             }
-            
+
             plugin_stats.last_execution = Some(chrono::Utc::now());
         }
     }

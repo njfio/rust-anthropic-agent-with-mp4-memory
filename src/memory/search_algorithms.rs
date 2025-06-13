@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
 use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 
-use crate::utils::error::{AgentError, Result};
 use super::search::SearchResult;
+use crate::utils::error::{AgentError, Result};
 
 /// Advanced search algorithms for memory optimization
 #[cfg(test)]
@@ -128,6 +128,12 @@ pub struct SearchMetrics {
     pub cache_hits: usize,
 }
 
+impl Default for InvertedIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InvertedIndex {
     /// Create a new inverted index
     pub fn new() -> Self {
@@ -144,23 +150,26 @@ impl InvertedIndex {
     pub fn add_document(&mut self, document: Document) -> Result<()> {
         let doc_id = document.id.clone();
         let terms = self.tokenize(&document.content);
-        
+
         // Update term frequencies for this document
         let mut doc_term_freq = HashMap::new();
         for term in &terms {
             *doc_term_freq.entry(term.clone()).or_insert(0) += 1;
         }
-        
+
         // Update inverted index
         for term in terms.iter().collect::<HashSet<_>>() {
-            self.index.entry(term.clone()).or_insert_with(HashSet::new).insert(doc_id.clone());
+            self.index
+                .entry(term.clone())
+                .or_default()
+                .insert(doc_id.clone());
             *self.document_frequencies.entry(term.clone()).or_insert(0) += 1;
         }
-        
+
         self.term_frequencies.insert(doc_id.clone(), doc_term_freq);
         self.documents.insert(doc_id, document);
         self.total_documents += 1;
-        
+
         Ok(())
     }
 
@@ -168,12 +177,12 @@ impl InvertedIndex {
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let query_terms = self.tokenize(query);
         let mut doc_scores: HashMap<String, f64> = HashMap::new();
-        
+
         // Calculate TF-IDF scores for each document
         for term in &query_terms {
             if let Some(doc_ids) = self.index.get(term) {
                 let idf = self.calculate_idf(term);
-                
+
                 for doc_id in doc_ids {
                     let tf = self.calculate_tf(doc_id, term);
                     let score = tf * idf;
@@ -181,7 +190,7 @@ impl InvertedIndex {
                 }
             }
         }
-        
+
         // Convert to search results and sort by score
         let mut results: Vec<SearchResult> = doc_scores
             .into_iter()
@@ -194,10 +203,10 @@ impl InvertedIndex {
                 })
             })
             .collect();
-        
+
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
         results.truncate(limit);
-        
+
         Ok(results)
     }
 
@@ -236,9 +245,17 @@ impl InvertedIndex {
         let mut stats = HashMap::new();
         stats.insert("total_documents".to_string(), self.total_documents);
         stats.insert("unique_terms".to_string(), self.index.len());
-        stats.insert("total_postings".to_string(), 
-                     self.index.values().map(|set| set.len()).sum());
+        stats.insert(
+            "total_postings".to_string(),
+            self.index.values().map(|set| set.len()).sum(),
+        );
         stats
+    }
+}
+
+impl Default for TrieIndex {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -255,11 +272,11 @@ impl TrieIndex {
     pub fn add_document(&mut self, document: Document) -> Result<()> {
         let doc_id = document.id.clone();
         let words = self.tokenize(&document.content);
-        
+
         for word in words {
             self.root.insert(&word, &doc_id);
         }
-        
+
         self.documents.insert(doc_id, document);
         Ok(())
     }
@@ -278,7 +295,7 @@ impl TrieIndex {
                 })
             })
             .collect();
-        
+
         results.truncate(limit);
         Ok(results)
     }
@@ -307,19 +324,19 @@ impl TrieNode {
     /// Insert a word into the trie
     fn insert(&mut self, word: &str, doc_id: &str) {
         let mut current = self;
-        
+
         for ch in word.chars() {
             current = current.children.entry(ch).or_insert_with(TrieNode::new);
             current.document_ids.insert(doc_id.to_string());
         }
-        
+
         current.is_end_of_word = true;
     }
 
     /// Search for documents with a given prefix
     fn search_prefix(&self, prefix: &str) -> HashSet<String> {
         let mut current = self;
-        
+
         // Navigate to the prefix node
         for ch in prefix.chars() {
             if let Some(node) = current.children.get(&ch) {
@@ -328,7 +345,7 @@ impl TrieNode {
                 return HashSet::new(); // Prefix not found
             }
         }
-        
+
         // Return all document IDs from this subtree
         current.document_ids.clone()
     }
@@ -348,11 +365,11 @@ impl NGramIndex {
     pub fn add_document(&mut self, document: Document) -> Result<()> {
         let doc_id = document.id.clone();
         let ngrams = self.generate_ngrams(&document.content);
-        
+
         for ngram in ngrams {
-            self.ngrams.entry(ngram).or_insert_with(HashSet::new).insert(doc_id.clone());
+            self.ngrams.entry(ngram).or_default().insert(doc_id.clone());
         }
-        
+
         self.documents.insert(doc_id, document);
         Ok(())
     }
@@ -361,7 +378,7 @@ impl NGramIndex {
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let query_ngrams = self.generate_ngrams(query);
         let mut doc_scores: HashMap<String, f64> = HashMap::new();
-        
+
         for ngram in &query_ngrams {
             if let Some(doc_ids) = self.ngrams.get(ngram) {
                 for doc_id in doc_ids {
@@ -369,13 +386,13 @@ impl NGramIndex {
                 }
             }
         }
-        
+
         // Normalize scores by query length
         let query_len = query_ngrams.len() as f64;
         for score in doc_scores.values_mut() {
             *score /= query_len;
         }
-        
+
         let mut results: Vec<SearchResult> = doc_scores
             .into_iter()
             .filter_map(|(doc_id, score)| {
@@ -387,10 +404,10 @@ impl NGramIndex {
                 })
             })
             .collect();
-        
+
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
         results.truncate(limit);
-        
+
         Ok(results)
     }
 
@@ -399,14 +416,14 @@ impl NGramIndex {
         let text = text.to_lowercase();
         let chars: Vec<char> = text.chars().collect();
         let mut ngrams = Vec::new();
-        
+
         if chars.len() >= self.n {
             for i in 0..=chars.len() - self.n {
                 let ngram: String = chars[i..i + self.n].iter().collect();
                 ngrams.push(ngram);
             }
         }
-        
+
         ngrams
     }
 }
@@ -424,17 +441,18 @@ impl VectorIndex {
     /// Add a document with its vector representation
     pub fn add_document(&mut self, document: Document) -> Result<()> {
         let doc_id = document.id.clone();
-        
+
         if let Some(vector) = &document.vector {
             if vector.len() != self.dimension {
                 return Err(AgentError::validation(format!(
-                    "Vector dimension mismatch: expected {}, got {}", 
-                    self.dimension, vector.len()
+                    "Vector dimension mismatch: expected {}, got {}",
+                    self.dimension,
+                    vector.len()
                 )));
             }
             self.vectors.insert(doc_id.clone(), vector.clone());
         }
-        
+
         self.documents.insert(doc_id, document);
         Ok(())
     }
@@ -443,22 +461,24 @@ impl VectorIndex {
     pub fn search(&self, query_vector: &[f64], limit: usize) -> Result<Vec<SearchResult>> {
         if query_vector.len() != self.dimension {
             return Err(AgentError::validation(format!(
-                "Query vector dimension mismatch: expected {}, got {}", 
-                self.dimension, query_vector.len()
+                "Query vector dimension mismatch: expected {}, got {}",
+                self.dimension,
+                query_vector.len()
             )));
         }
-        
-        let mut similarities: Vec<(String, f64)> = self.vectors
+
+        let mut similarities: Vec<(String, f64)> = self
+            .vectors
             .iter()
             .map(|(doc_id, vector)| {
                 let similarity = self.cosine_similarity(query_vector, vector);
                 (doc_id.clone(), similarity)
             })
             .collect();
-        
+
         similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
         similarities.truncate(limit);
-        
+
         let results: Vec<SearchResult> = similarities
             .into_iter()
             .filter_map(|(doc_id, similarity)| {
@@ -470,7 +490,7 @@ impl VectorIndex {
                 })
             })
             .collect();
-        
+
         Ok(results)
     }
 
@@ -479,7 +499,7 @@ impl VectorIndex {
         let dot_product: f64 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
         let norm_a: f64 = a.iter().map(|x| x * x).sum::<f64>().sqrt();
         let norm_b: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt();
-        
+
         if norm_a == 0.0 || norm_b == 0.0 {
             0.0
         } else {
@@ -506,7 +526,8 @@ impl FuzzyMatcher {
 
     /// Search using fuzzy string matching
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        let mut matches: Vec<(String, usize)> = self.documents
+        let mut matches: Vec<(String, usize)> = self
+            .documents
             .iter()
             .filter_map(|(doc_id, doc)| {
                 let distance = self.levenshtein_distance(query, &doc.content);
@@ -517,10 +538,10 @@ impl FuzzyMatcher {
                 }
             })
             .collect();
-        
+
         matches.sort_by_key(|(_, distance)| *distance);
         matches.truncate(limit);
-        
+
         let results: Vec<SearchResult> = matches
             .into_iter()
             .filter_map(|(doc_id, distance)| {
@@ -535,7 +556,7 @@ impl FuzzyMatcher {
                 })
             })
             .collect();
-        
+
         Ok(results)
     }
 
@@ -544,7 +565,7 @@ impl FuzzyMatcher {
         let len1 = s1.len();
         let len2 = s2.len();
         let mut matrix = vec![vec![0; len2 + 1]; len1 + 1];
-        
+
         // Initialize first row and column
         for i in 0..=len1 {
             matrix[i][0] = i;
@@ -552,23 +573,27 @@ impl FuzzyMatcher {
         for j in 0..=len2 {
             matrix[0][j] = j;
         }
-        
+
         let s1_chars: Vec<char> = s1.chars().collect();
         let s2_chars: Vec<char> = s2.chars().collect();
-        
+
         for i in 1..=len1 {
             for j in 1..=len2 {
-                let cost = if s1_chars[i - 1] == s2_chars[j - 1] { 0 } else { 1 };
+                let cost = if s1_chars[i - 1] == s2_chars[j - 1] {
+                    0
+                } else {
+                    1
+                };
                 matrix[i][j] = std::cmp::min(
                     std::cmp::min(
-                        matrix[i - 1][j] + 1,      // deletion
-                        matrix[i][j - 1] + 1       // insertion
+                        matrix[i - 1][j] + 1, // deletion
+                        matrix[i][j - 1] + 1, // insertion
                     ),
-                    matrix[i - 1][j - 1] + cost    // substitution
+                    matrix[i - 1][j - 1] + cost, // substitution
                 );
             }
         }
-        
+
         matrix[len1][len2]
     }
 }
@@ -585,7 +610,7 @@ impl SearchAlgorithmFactory {
             SearchAlgorithm::NGram => Box::new(NGramIndex::new(3)), // Default 3-gram
             SearchAlgorithm::VectorSimilarity => Box::new(VectorIndex::new(100)), // Default 100-dim
             SearchAlgorithm::FuzzyMatch => Box::new(FuzzyMatcher::new(3)), // Max distance 3
-            _ => Box::new(InvertedIndex::new()), // Default fallback
+            _ => Box::new(InvertedIndex::new()),                    // Default fallback
         }
     }
 }
@@ -594,10 +619,10 @@ impl SearchAlgorithmFactory {
 pub trait SearchAlgorithmTrait: Send + Sync {
     /// Add a document to the algorithm's index
     fn add_document(&mut self, document: Document) -> Result<()>;
-    
+
     /// Search for documents
     fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>>;
-    
+
     /// Get algorithm statistics
     fn get_stats(&self) -> HashMap<String, usize>;
 }
@@ -607,11 +632,11 @@ impl SearchAlgorithmTrait for InvertedIndex {
     fn add_document(&mut self, document: Document) -> Result<()> {
         self.add_document(document)
     }
-    
+
     fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         self.search(query, limit)
     }
-    
+
     fn get_stats(&self) -> HashMap<String, usize> {
         self.get_stats()
     }
@@ -621,11 +646,11 @@ impl SearchAlgorithmTrait for TrieIndex {
     fn add_document(&mut self, document: Document) -> Result<()> {
         self.add_document(document)
     }
-    
+
     fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         self.search_prefix(query, limit)
     }
-    
+
     fn get_stats(&self) -> HashMap<String, usize> {
         let mut stats = HashMap::new();
         stats.insert("total_documents".to_string(), self.documents.len());
@@ -637,11 +662,11 @@ impl SearchAlgorithmTrait for NGramIndex {
     fn add_document(&mut self, document: Document) -> Result<()> {
         self.add_document(document)
     }
-    
+
     fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         self.search(query, limit)
     }
-    
+
     fn get_stats(&self) -> HashMap<String, usize> {
         let mut stats = HashMap::new();
         stats.insert("total_documents".to_string(), self.documents.len());
@@ -658,7 +683,8 @@ impl SearchAlgorithmTrait for VectorIndex {
     fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         // For text query, create a simple vector representation
         // In a real implementation, this would use proper text-to-vector conversion
-        let query_vector: Vec<f64> = query.chars()
+        let query_vector: Vec<f64> = query
+            .chars()
             .take(self.dimension)
             .map(|c| c as u8 as f64)
             .chain(std::iter::repeat(0.0))

@@ -1,8 +1,11 @@
-use async_trait::async_trait;
 use crate::anthropic::models::ToolDefinition;
-use crate::tools::{create_tool_definition, extract_optional_bool_param, extract_optional_int_param, extract_optional_string_param, extract_string_param, Tool, ToolResult};
+use crate::tools::{
+    create_tool_definition, extract_optional_bool_param, extract_optional_int_param,
+    extract_optional_string_param, extract_string_param, Tool, ToolResult,
+};
 use crate::utils::error::{AgentError, Result};
-use rust_tree_sitter::{CodebaseAnalyzer, AnalysisConfig};
+use async_trait::async_trait;
+use rust_tree_sitter::{AnalysisConfig, CodebaseAnalyzer};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
@@ -31,6 +34,12 @@ struct VulnerabilityInfo {
     fixed_version: Option<String>,
     cve: Option<String>,
     published: String,
+}
+
+impl Default for CodeAnalysisTool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CodeAnalysisTool {
@@ -169,7 +178,10 @@ impl Tool for CodeAnalysisTool {
 
         let path_buf = PathBuf::from(&path);
         if !path_buf.exists() {
-            return Err(AgentError::invalid_input(format!("Path does not exist: {}", path)));
+            return Err(AgentError::invalid_input(format!(
+                "Path does not exist: {}",
+                path
+            )));
         }
 
         info!("Performing code analysis: {} on {}", action, path);
@@ -187,10 +199,14 @@ impl Tool for CodeAnalysisTool {
             "refactor" => self.refactor_suggestions(&path_buf, &params).await?,
 
             // Phase 2 Advanced Intelligence Actions
-            "advanced_ai" | "semantic_analysis" => self.advanced_ai_analysis(&path_buf, &params).await?,
+            "advanced_ai" | "semantic_analysis" => {
+                self.advanced_ai_analysis(&path_buf, &params).await?
+            }
             "pattern_recognition" => self.pattern_recognition(&path_buf, &params).await?,
             "learning_paths" => self.learning_paths(&path_buf, &params).await?,
-            "advanced_security" | "owasp_scan" => self.advanced_security_scan(&path_buf, &params).await?,
+            "advanced_security" | "owasp_scan" => {
+                self.advanced_security_scan(&path_buf, &params).await?
+            }
             "secrets_detection" => self.secrets_detection(&path_buf, &params).await?,
             "vulnerability_scan" => self.vulnerability_scan(&path_buf, &params).await?,
             "smart_refactor" | "code_smells" => self.smart_refactor(&path_buf, &params).await?,
@@ -205,7 +221,12 @@ impl Tool for CodeAnalysisTool {
             "outdated_deps" => self.outdated_deps(&path_buf, &params).await?,
             "license_check" => self.license_check(&path_buf, &params).await?,
 
-            _ => return Err(AgentError::invalid_input(format!("Unknown action: {}", action)))
+            _ => {
+                return Err(AgentError::invalid_input(format!(
+                    "Unknown action: {}",
+                    action
+                )))
+            }
         };
 
         Ok(ToolResult::success(serde_json::to_string_pretty(&result)?))
@@ -225,35 +246,48 @@ impl CodeAnalysisTool {
     async fn analyze_codebase(&self, path: &Path, params: &Value) -> Result<Value> {
         let max_depth = extract_optional_int_param(params, "max_depth").unwrap_or(10) as usize;
         let include_hidden = extract_optional_bool_param(params, "include_hidden").unwrap_or(false);
-        
+
         let config = AnalysisConfig {
             max_depth: Some(max_depth),
             include_hidden,
             max_file_size: Some(1024 * 1024), // 1MB max
-            exclude_dirs: vec!["target".to_string(), "node_modules".to_string(), ".git".to_string()],
+            exclude_dirs: vec![
+                "target".to_string(),
+                "node_modules".to_string(),
+                ".git".to_string(),
+            ],
             ..Default::default()
         };
 
         let mut analyzer = CodebaseAnalyzer::with_config(config);
-        
+
         let result = if path.is_file() {
             // For single files, we need to analyze the parent directory
             // and filter for just this file
             let parent_dir = path.parent().unwrap_or(path);
-            let full_result = analyzer.analyze_directory(parent_dir)
-                .map_err(|e| AgentError::tool("code_analysis", &format!("Analysis failed: {}", e)))?;
+            let full_result = analyzer.analyze_directory(parent_dir).map_err(|e| {
+                AgentError::tool("code_analysis", &format!("Analysis failed: {}", e))
+            })?;
 
             // Filter to just the requested file
             let file_name = path.file_name().unwrap();
-            let filtered_files: Vec<_> = full_result.files.into_iter()
+            let filtered_files: Vec<_> = full_result
+                .files
+                .into_iter()
                 .filter(|f| f.path.file_name() == Some(file_name))
                 .collect();
 
             rust_tree_sitter::AnalysisResult {
                 root_path: full_result.root_path,
                 total_files: filtered_files.len(),
-                parsed_files: filtered_files.iter().filter(|f| f.parsed_successfully).count(),
-                error_files: filtered_files.iter().filter(|f| !f.parsed_successfully).count(),
+                parsed_files: filtered_files
+                    .iter()
+                    .filter(|f| f.parsed_successfully)
+                    .count(),
+                error_files: filtered_files
+                    .iter()
+                    .filter(|f| !f.parsed_successfully)
+                    .count(),
                 total_lines: filtered_files.iter().map(|f| f.lines).sum(),
                 languages: {
                     let mut langs = std::collections::HashMap::new();
@@ -266,12 +300,16 @@ impl CodeAnalysisTool {
                 config: full_result.config,
             }
         } else {
-            analyzer.analyze_directory(path)
-                .map_err(|e| AgentError::tool("code_analysis", &format!("Analysis failed: {}", e)))?
+            analyzer.analyze_directory(path).map_err(|e| {
+                AgentError::tool("code_analysis", &format!("Analysis failed: {}", e))
+            })?
         };
 
-        debug!("Analysis complete: {} files, {} languages", 
-               result.total_files, result.languages.len());
+        debug!(
+            "Analysis complete: {} files, {} languages",
+            result.total_files,
+            result.languages.len()
+        );
 
         let output = json!({
             "analysis_type": "codebase_analysis",
@@ -319,21 +357,31 @@ impl CodeAnalysisTool {
     /// Generate AI-friendly insights about the codebase
     async fn generate_insights(&self, path: &Path, params: &Value) -> Result<Value> {
         let analysis = self.analyze_codebase(path, params).await?;
-        
+
         let files = analysis["files"].as_array().unwrap();
         let total_files = analysis["summary"]["total_files"].as_u64().unwrap();
         let total_lines = analysis["summary"]["total_lines"].as_u64().unwrap();
         let total_symbols = analysis["summary"]["total_symbols"].as_u64().unwrap();
-        
+
         // Calculate insights
-        let avg_lines_per_file = if total_files > 0 { total_lines / total_files } else { 0 };
-        let avg_symbols_per_file = if total_files > 0 { total_symbols / total_files } else { 0 };
-        
-        let large_files = files.iter()
+        let avg_lines_per_file = if total_files > 0 {
+            total_lines / total_files
+        } else {
+            0
+        };
+        let avg_symbols_per_file = if total_files > 0 {
+            total_symbols / total_files
+        } else {
+            0
+        };
+
+        let large_files = files
+            .iter()
             .filter(|f| f["lines"].as_u64().unwrap_or(0) > 500)
             .count();
-            
-        let complex_files = files.iter()
+
+        let complex_files = files
+            .iter()
             .filter(|f| f["symbols"].as_array().unwrap().len() > 20)
             .count();
 
@@ -374,21 +422,22 @@ impl CodeAnalysisTool {
     /// Find symbols matching specified criteria
     async fn find_symbols(&self, path: &Path, params: &Value) -> Result<Value> {
         let symbol_name = extract_optional_string_param(params, "symbol_name");
-        let symbol_type = extract_optional_string_param(params, "symbol_type").unwrap_or_else(|| "all".to_string());
-        
+        let symbol_type = extract_optional_string_param(params, "symbol_type")
+            .unwrap_or_else(|| "all".to_string());
+
         let analysis = self.analyze_codebase(path, params).await?;
         let files = analysis["files"].as_array().unwrap();
-        
+
         let mut matching_symbols = Vec::new();
-        
+
         for file in files {
             let file_path = file["path"].as_str().unwrap();
             let symbols = file["symbols"].as_array().unwrap();
-            
+
             for symbol in symbols {
                 let name = symbol["name"].as_str().unwrap();
                 let kind = symbol["kind"].as_str().unwrap();
-                
+
                 // Filter by symbol type
                 if symbol_type != "all" && kind != symbol_type {
                     continue;
@@ -400,7 +449,7 @@ impl CodeAnalysisTool {
                         continue;
                     }
                 }
-                
+
                 matching_symbols.push(json!({
                     "file": file_path,
                     "name": name,
@@ -409,7 +458,7 @@ impl CodeAnalysisTool {
                 }));
             }
         }
-        
+
         Ok(json!({
             "analysis_type": "symbol_search",
             "path": path.display().to_string(),
@@ -425,7 +474,8 @@ impl CodeAnalysisTool {
     /// Query code patterns using tree-sitter queries
     async fn query_patterns(&self, path: &Path, params: &Value) -> Result<Value> {
         let pattern = extract_string_param(params, "pattern")?;
-        let language_str = extract_optional_string_param(params, "language").unwrap_or_else(|| "auto".to_string());
+        let language_str =
+            extract_optional_string_param(params, "language").unwrap_or_else(|| "auto".to_string());
         // Determine explicit language if provided
         let lang_override = match language_str.as_str() {
             "auto" => None,
@@ -435,15 +485,21 @@ impl CodeAnalysisTool {
         // Analyze the codebase to get file list
         let analysis = self.analyze_codebase(path, params).await?;
         let files = analysis["files"].as_array().unwrap();
-        let root = if path.is_file() { path.parent().unwrap_or(path) } else { path };
+        let root = if path.is_file() {
+            path.parent().unwrap_or(path)
+        } else {
+            path
+        };
 
         // Precreate query if language is fixed
-        let base_query = if let Some(lang) = lang_override {
-            Some(rust_tree_sitter::Query::new(lang, &pattern)
-                .map_err(|e| AgentError::tool("code_analysis", &format!("Query error: {}", e)))?)
-        } else {
-            None
-        };
+        let base_query =
+            if let Some(lang) = lang_override {
+                Some(rust_tree_sitter::Query::new(lang, &pattern).map_err(|e| {
+                    AgentError::tool("code_analysis", &format!("Query error: {}", e))
+                })?)
+            } else {
+                None
+            };
 
         let mut matches_vec = Vec::new();
 
@@ -452,7 +508,11 @@ impl CodeAnalysisTool {
             let lang_name = file["language"].as_str().unwrap();
 
             let language = if let Some(lang) = lang_override {
-                if lang.name().eq_ignore_ascii_case(lang_name) { lang } else { continue } 
+                if lang.name().eq_ignore_ascii_case(lang_name) {
+                    lang
+                } else {
+                    continue;
+                }
             } else {
                 match self.parse_language(lang_name) {
                     Ok(l) => l,
@@ -474,8 +534,9 @@ impl CodeAnalysisTool {
             };
 
             if let Some(ref q) = base_query {
-                let qmatches = q.matches(&tree)
-                    .map_err(|e| AgentError::tool("code_analysis", &format!("Query execution failed: {}", e)))?;
+                let qmatches = q.matches(&tree).map_err(|e| {
+                    AgentError::tool("code_analysis", &format!("Query execution failed: {}", e))
+                })?;
                 for m in qmatches {
                     for cap in m.captures() {
                         let node = cap.node();
@@ -489,10 +550,12 @@ impl CodeAnalysisTool {
                     }
                 }
             } else {
-                let q = rust_tree_sitter::Query::new(language, &pattern)
-                    .map_err(|e| AgentError::tool("code_analysis", &format!("Query error: {}", e)))?;
-                let qmatches = q.matches(&tree)
-                    .map_err(|e| AgentError::tool("code_analysis", &format!("Query execution failed: {}", e)))?;
+                let q = rust_tree_sitter::Query::new(language, &pattern).map_err(|e| {
+                    AgentError::tool("code_analysis", &format!("Query error: {}", e))
+                })?;
+                let qmatches = q.matches(&tree).map_err(|e| {
+                    AgentError::tool("code_analysis", &format!("Query execution failed: {}", e))
+                })?;
                 for m in qmatches {
                     for cap in m.captures() {
                         let node = cap.node();
@@ -573,23 +636,30 @@ impl CodeAnalysisTool {
     /// Generate recommendations based on analysis
     fn generate_recommendations(&self, files: &[Value], total_files: usize) -> Vec<String> {
         let mut recommendations = Vec::new();
-        
-        let large_files = files.iter()
+
+        let large_files = files
+            .iter()
             .filter(|f| f["lines"].as_u64().unwrap_or(0) > 500)
             .count();
-            
+
         if large_files > total_files / 4 {
-            recommendations.push("Consider breaking down large files (>500 lines) into smaller modules".to_string());
+            recommendations.push(
+                "Consider breaking down large files (>500 lines) into smaller modules".to_string(),
+            );
         }
-        
-        let files_without_symbols = files.iter()
+
+        let files_without_symbols = files
+            .iter()
             .filter(|f| f["symbols"].as_array().unwrap().is_empty())
             .count();
-            
+
         if files_without_symbols > 0 {
-            recommendations.push(format!("{} files have no detected symbols - check for parsing issues", files_without_symbols));
+            recommendations.push(format!(
+                "{} files have no detected symbols - check for parsing issues",
+                files_without_symbols
+            ));
         }
-        
+
         recommendations
     }
 
@@ -597,7 +667,8 @@ impl CodeAnalysisTool {
     fn analyze_architecture(&self, files: &[Value]) -> Vec<String> {
         let mut notes = Vec::new();
 
-        let rust_files = files.iter()
+        let rust_files = files
+            .iter()
             .filter(|f| f["language"].as_str() == Some("rust"))
             .count();
 
@@ -640,12 +711,19 @@ impl CodeAnalysisTool {
                 }
 
                 if symbols.len() > (if detailed { 10 } else { 3 }) {
-                    explanation.push_str(&format!("\n   ... and {} more symbols", symbols.len() - (if detailed { 10 } else { 3 })));
+                    explanation.push_str(&format!(
+                        "\n   ... and {} more symbols",
+                        symbols.len() - (if detailed { 10 } else { 3 })
+                    ));
                 }
             }
 
             if learning {
-                explanation.push_str(&format!("\n   💡 **Learning Note**: This {} file demonstrates {} patterns", language, kind_to_pattern(language)));
+                explanation.push_str(&format!(
+                    "\n   💡 **Learning Note**: This {} file demonstrates {} patterns",
+                    language,
+                    kind_to_pattern(language)
+                ));
             }
 
             explanations.push(explanation);
@@ -726,7 +804,10 @@ impl CodeAnalysisTool {
                 // Add compliance assessment
                 let total_symbols = symbols.len();
                 if total_symbols > 50 {
-                    compliance_notes.push(format!("File {} has high symbol count ({}) - consider refactoring", file_path, total_symbols));
+                    compliance_notes.push(format!(
+                        "File {} has high symbol count ({}) - consider refactoring",
+                        file_path, total_symbols
+                    ));
                 }
             }
         }
@@ -801,8 +882,11 @@ impl CodeAnalysisTool {
 
             // Language-specific suggestions
             if language == "rust" {
-                let public_functions = symbols.iter()
-                    .filter(|s| s["kind"] == "function" && s["is_public"].as_bool().unwrap_or(false))
+                let public_functions = symbols
+                    .iter()
+                    .filter(|s| {
+                        s["kind"] == "function" && s["is_public"].as_bool().unwrap_or(false)
+                    })
                     .count();
 
                 if public_functions > 10 {
@@ -819,7 +903,8 @@ impl CodeAnalysisTool {
 
             // Quick win suggestions
             if quick_wins {
-                let private_symbols = symbols.iter()
+                let private_symbols = symbols
+                    .iter()
                     .filter(|s| !s["is_public"].as_bool().unwrap_or(false))
                     .count();
 
@@ -873,7 +958,8 @@ impl CodeAnalysisTool {
     async fn advanced_ai_analysis(&self, path: &Path, params: &Value) -> Result<Value> {
         let semantic = extract_optional_bool_param(params, "semantic").unwrap_or(false);
         let patterns = extract_optional_bool_param(params, "patterns").unwrap_or(false);
-        let confidence_threshold = params.get("confidence_threshold")
+        let confidence_threshold = params
+            .get("confidence_threshold")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.7);
 
@@ -1022,7 +1108,8 @@ impl CodeAnalysisTool {
 
     /// Secrets detection with entropy analysis
     async fn secrets_detection(&self, path: &Path, params: &Value) -> Result<Value> {
-        let entropy_threshold = params.get("entropy_threshold")
+        let entropy_threshold = params
+            .get("entropy_threshold")
             .and_then(|v| v.as_f64())
             .unwrap_or(4.5);
 
@@ -1068,7 +1155,10 @@ impl CodeAnalysisTool {
         let roadmap = extract_optional_bool_param(params, "roadmap").unwrap_or(false);
         let quick_wins = extract_optional_bool_param(params, "quick_wins").unwrap_or(false);
 
-        info!("Performing smart refactoring analysis for: {}", path.display());
+        info!(
+            "Performing smart refactoring analysis for: {}",
+            path.display()
+        );
 
         let base_analysis = self.analyze_codebase(path, params).await?;
         let files = base_analysis["files"].as_array().unwrap();
@@ -1086,11 +1176,14 @@ impl CodeAnalysisTool {
         });
 
         if roadmap {
-            result["roadmap"] = serde_json::Value::Array(self.generate_refactoring_roadmap(&refactoring_opportunities));
+            result["roadmap"] = serde_json::Value::Array(
+                self.generate_refactoring_roadmap(&refactoring_opportunities),
+            );
         }
 
         if quick_wins {
-            result["quick_wins"] = serde_json::Value::Array(self.identify_quick_wins(&refactoring_opportunities));
+            result["quick_wins"] =
+                serde_json::Value::Array(self.identify_quick_wins(&refactoring_opportunities));
         }
 
         Ok(result)
@@ -1117,7 +1210,10 @@ impl CodeAnalysisTool {
     async fn performance_optimize(&self, path: &Path, params: &Value) -> Result<Value> {
         let benchmarks = extract_optional_bool_param(params, "benchmarks").unwrap_or(false);
 
-        info!("Performing performance optimization analysis for: {}", path.display());
+        info!(
+            "Performing performance optimization analysis for: {}",
+            path.display()
+        );
 
         let base_analysis = self.analyze_codebase(path, params).await?;
         let files = base_analysis["files"].as_array().unwrap();
@@ -1136,7 +1232,8 @@ impl CodeAnalysisTool {
         });
 
         if benchmarks {
-            result["benchmarking_suggestions"] = serde_json::Value::Array(self.generate_benchmarking_suggestions(files));
+            result["benchmarking_suggestions"] =
+                serde_json::Value::Array(self.generate_benchmarking_suggestions(files));
         }
 
         Ok(result)
@@ -1261,7 +1358,10 @@ impl CodeAnalysisTool {
 
     /// License compliance check
     async fn license_check(&self, path: &Path, _params: &Value) -> Result<Value> {
-        info!("Performing license compliance check for: {}", path.display());
+        info!(
+            "Performing license compliance check for: {}",
+            path.display()
+        );
 
         let dependencies = self.scan_dependencies(path).await?;
         let license_analysis = self.analyze_licenses(&dependencies).await?;
@@ -1350,11 +1450,12 @@ impl CodeAnalysisTool {
         let mut patterns = Vec::new();
 
         // Analyze file structure and naming to detect domain patterns
-        let file_names: Vec<&str> = files.iter()
-            .filter_map(|f| f["path"].as_str())
-            .collect();
+        let file_names: Vec<&str> = files.iter().filter_map(|f| f["path"].as_str()).collect();
 
-        if file_names.iter().any(|name| name.contains("controller") || name.contains("handler")) {
+        if file_names
+            .iter()
+            .any(|name| name.contains("controller") || name.contains("handler"))
+        {
             patterns.push(json!({
                 "pattern": "Web Application",
                 "confidence": 0.8,
@@ -1362,7 +1463,10 @@ impl CodeAnalysisTool {
             }));
         }
 
-        if file_names.iter().any(|name| name.contains("model") || name.contains("entity")) {
+        if file_names
+            .iter()
+            .any(|name| name.contains("model") || name.contains("entity"))
+        {
             patterns.push(json!({
                 "pattern": "Data Modeling",
                 "confidence": 0.7,
@@ -1370,7 +1474,10 @@ impl CodeAnalysisTool {
             }));
         }
 
-        if file_names.iter().any(|name| name.contains("service") || name.contains("manager")) {
+        if file_names
+            .iter()
+            .any(|name| name.contains("service") || name.contains("manager"))
+        {
             patterns.push(json!({
                 "pattern": "Service Layer",
                 "confidence": 0.8,
@@ -1385,9 +1492,15 @@ impl CodeAnalysisTool {
         let mut patterns = Vec::new();
 
         // MVC Pattern Detection
-        let has_models = files.iter().any(|f| f["path"].as_str().unwrap().contains("model"));
-        let has_views = files.iter().any(|f| f["path"].as_str().unwrap().contains("view"));
-        let has_controllers = files.iter().any(|f| f["path"].as_str().unwrap().contains("controller"));
+        let has_models = files
+            .iter()
+            .any(|f| f["path"].as_str().unwrap().contains("model"));
+        let has_views = files
+            .iter()
+            .any(|f| f["path"].as_str().unwrap().contains("view"));
+        let has_controllers = files
+            .iter()
+            .any(|f| f["path"].as_str().unwrap().contains("controller"));
 
         if has_models && has_views && has_controllers {
             patterns.push(json!({
@@ -1401,7 +1514,9 @@ impl CodeAnalysisTool {
         // Repository Pattern Detection
         let has_repository = files.iter().any(|f| {
             let symbols = f["symbols"].as_array().unwrap();
-            symbols.iter().any(|s| s["name"].as_str().unwrap().contains("Repository"))
+            symbols
+                .iter()
+                .any(|s| s["name"].as_str().unwrap().contains("Repository"))
         });
 
         if has_repository {
@@ -1423,9 +1538,12 @@ impl CodeAnalysisTool {
             let symbols = file["symbols"].as_array().unwrap();
 
             // Factory Pattern Detection
-            let factory_symbols = symbols.iter()
-                .filter(|s| s["name"].as_str().unwrap().contains("Factory") ||
-                           s["name"].as_str().unwrap().contains("factory"))
+            let factory_symbols = symbols
+                .iter()
+                .filter(|s| {
+                    s["name"].as_str().unwrap().contains("Factory")
+                        || s["name"].as_str().unwrap().contains("factory")
+                })
                 .count();
 
             if factory_symbols > 0 {
@@ -1438,9 +1556,12 @@ impl CodeAnalysisTool {
             }
 
             // Builder Pattern Detection
-            let builder_symbols = symbols.iter()
-                .filter(|s| s["name"].as_str().unwrap().contains("Builder") ||
-                           s["name"].as_str().unwrap().contains("builder"))
+            let builder_symbols = symbols
+                .iter()
+                .filter(|s| {
+                    s["name"].as_str().unwrap().contains("Builder")
+                        || s["name"].as_str().unwrap().contains("builder")
+                })
                 .count();
 
             if builder_symbols > 0 {
@@ -1522,19 +1643,32 @@ impl CodeAnalysisTool {
         for insight in insights {
             match insight["type"].as_str() {
                 Some("semantic_analysis") => {
-                    recommendations.push("🧠 Consider documenting domain concepts for better team understanding".to_string());
-                    recommendations.push("📚 Implement domain-driven design patterns where appropriate".to_string());
+                    recommendations.push(
+                        "🧠 Consider documenting domain concepts for better team understanding"
+                            .to_string(),
+                    );
+                    recommendations.push(
+                        "📚 Implement domain-driven design patterns where appropriate".to_string(),
+                    );
                 }
                 Some("pattern_recognition") => {
-                    recommendations.push("🏗️ Strengthen architecture patterns for better maintainability".to_string());
-                    recommendations.push("🔧 Consider refactoring to eliminate detected anti-patterns".to_string());
+                    recommendations.push(
+                        "🏗️ Strengthen architecture patterns for better maintainability"
+                            .to_string(),
+                    );
+                    recommendations.push(
+                        "🔧 Consider refactoring to eliminate detected anti-patterns".to_string(),
+                    );
                 }
                 _ => {}
             }
         }
 
         if recommendations.is_empty() {
-            recommendations.push("✨ Enable semantic analysis and pattern recognition for deeper insights".to_string());
+            recommendations.push(
+                "✨ Enable semantic analysis and pattern recognition for deeper insights"
+                    .to_string(),
+            );
         }
 
         recommendations
@@ -1542,11 +1676,14 @@ impl CodeAnalysisTool {
 
     fn calculate_pattern_confidence(&self, files: &[Value]) -> f64 {
         let total_files = files.len() as f64;
-        let files_with_patterns = files.iter()
+        let files_with_patterns = files
+            .iter()
             .filter(|f| {
                 let path = f["path"].as_str().unwrap();
-                path.contains("controller") || path.contains("model") ||
-                path.contains("service") || path.contains("repository")
+                path.contains("controller")
+                    || path.contains("model")
+                    || path.contains("service")
+                    || path.contains("repository")
             })
             .count() as f64;
 
@@ -1560,12 +1697,18 @@ impl CodeAnalysisTool {
     fn generate_pattern_guidance(&self, files: &[Value]) -> Vec<String> {
         let mut guidance = Vec::new();
 
-        let has_mvc = files.iter().any(|f| f["path"].as_str().unwrap().contains("controller"));
+        let has_mvc = files
+            .iter()
+            .any(|f| f["path"].as_str().unwrap().contains("controller"));
         if !has_mvc {
-            guidance.push("Consider implementing MVC pattern for better separation of concerns".to_string());
+            guidance.push(
+                "Consider implementing MVC pattern for better separation of concerns".to_string(),
+            );
         }
 
-        let has_services = files.iter().any(|f| f["path"].as_str().unwrap().contains("service"));
+        let has_services = files
+            .iter()
+            .any(|f| f["path"].as_str().unwrap().contains("service"));
         if !has_services {
             guidance.push("Implement service layer for business logic encapsulation".to_string());
         }
@@ -1574,12 +1717,11 @@ impl CodeAnalysisTool {
     }
 
     fn assess_complexity(&self, files: &[Value]) -> String {
-        let total_symbols: usize = files.iter()
+        let total_symbols: usize = files
+            .iter()
             .map(|f| f["symbols"].as_array().unwrap().len())
             .sum();
-        let total_lines: u64 = files.iter()
-            .map(|f| f["lines"].as_u64().unwrap_or(0))
-            .sum();
+        let total_lines: u64 = files.iter().map(|f| f["lines"].as_u64().unwrap_or(0)).sum();
 
         if total_symbols > 500 || total_lines > 10000 {
             "high".to_string()
@@ -1591,7 +1733,8 @@ impl CodeAnalysisTool {
     }
 
     fn estimate_skill_level(&self, files: &[Value]) -> String {
-        let languages: std::collections::HashSet<&str> = files.iter()
+        let languages: std::collections::HashSet<&str> = files
+            .iter()
             .filter_map(|f| f["language"].as_str())
             .collect();
 
@@ -1601,14 +1744,15 @@ impl CodeAnalysisTool {
             (1, "low") => "beginner".to_string(),
             (1..=2, "medium") => "intermediate".to_string(),
             (3.., "high") => "advanced".to_string(),
-            _ => "intermediate".to_string()
+            _ => "intermediate".to_string(),
         }
     }
 
     fn generate_learning_paths(&self, files: &[Value], complexity: &str) -> Vec<Value> {
         let mut paths = Vec::new();
 
-        let languages: std::collections::HashSet<&str> = files.iter()
+        let languages: std::collections::HashSet<&str> = files
+            .iter()
             .filter_map(|f| f["language"].as_str())
             .collect();
 
@@ -1617,7 +1761,7 @@ impl CodeAnalysisTool {
                 "low" => 10,
                 "medium" => 25,
                 "high" => 50,
-                _ => 20
+                _ => 20,
             };
 
             paths.push(json!({
@@ -1687,7 +1831,10 @@ impl CodeAnalysisTool {
         let mut exercises = Vec::new();
 
         let has_functions = files.iter().any(|f| {
-            f["symbols"].as_array().unwrap().iter()
+            f["symbols"]
+                .as_array()
+                .unwrap()
+                .iter()
                 .any(|s| s["kind"] == "function")
         });
 
@@ -1700,7 +1847,10 @@ impl CodeAnalysisTool {
         }
 
         let has_structs = files.iter().any(|f| {
-            f["symbols"].as_array().unwrap().iter()
+            f["symbols"]
+                .as_array()
+                .unwrap()
+                .iter()
                 .any(|s| s["kind"] == "struct")
         });
 
@@ -1734,25 +1884,25 @@ impl CodeAnalysisTool {
                 "Ownership and Borrowing".to_string(),
                 "Error Handling".to_string(),
                 "Concurrency".to_string(),
-                "Traits and Generics".to_string()
+                "Traits and Generics".to_string(),
             ],
             "javascript" => vec![
                 "Async/Await".to_string(),
                 "Closures".to_string(),
                 "Prototypes".to_string(),
-                "ES6+ Features".to_string()
+                "ES6+ Features".to_string(),
             ],
             "python" => vec![
                 "List Comprehensions".to_string(),
                 "Decorators".to_string(),
                 "Context Managers".to_string(),
-                "Type Hints".to_string()
+                "Type Hints".to_string(),
             ],
             _ => vec![
                 "Language Fundamentals".to_string(),
                 "Best Practices".to_string(),
-                "Design Patterns".to_string()
-            ]
+                "Design Patterns".to_string(),
+            ],
         }
     }
 
@@ -1760,20 +1910,20 @@ impl CodeAnalysisTool {
         match language {
             "rust" => vec![
                 "Basic programming concepts".to_string(),
-                "Understanding of memory management".to_string()
+                "Understanding of memory management".to_string(),
             ],
             "javascript" => vec![
                 "HTML/CSS basics".to_string(),
-                "Programming fundamentals".to_string()
+                "Programming fundamentals".to_string(),
             ],
             "python" => vec![
                 "Basic programming concepts".to_string(),
-                "Command line familiarity".to_string()
+                "Command line familiarity".to_string(),
             ],
             _ => vec![
                 "Programming fundamentals".to_string(),
-                "Problem-solving skills".to_string()
-            ]
+                "Problem-solving skills".to_string(),
+            ],
         }
     }
 
@@ -1810,7 +1960,9 @@ impl CodeAnalysisTool {
             }
 
             // A3: Sensitive Data Exposure
-            if content.contains("console.log") && (content.contains("password") || content.contains("token")) {
+            if content.contains("console.log")
+                && (content.contains("password") || content.contains("token"))
+            {
                 vulnerabilities.push(json!({
                     "owasp_id": "A02:2021",
                     "category": "Cryptographic Failures",
@@ -1831,8 +1983,12 @@ impl CodeAnalysisTool {
             let content = file.get("content").and_then(|c| c.as_str()).unwrap_or("");
 
             // API Keys pattern
-            if let Some(captures) = regex::Regex::new(r#"(?i)(api[_-]?key|apikey)\s*[:=]\s*['"]([a-zA-Z0-9_-]{20,})['"]"#)
-                .unwrap().captures(content) {
+            if let Some(captures) = regex::Regex::new(
+                r#"(?i)(api[_-]?key|apikey)\s*[:=]\s*['"]([a-zA-Z0-9_-]{20,})['"]"#,
+            )
+            .unwrap()
+            .captures(content)
+            {
                 secrets.push(json!({
                     "type": "api_key",
                     "file": file["path"],
@@ -1861,7 +2017,10 @@ impl CodeAnalysisTool {
         }
 
         let high_severity = findings.iter().filter(|f| f["severity"] == "high").count();
-        let medium_severity = findings.iter().filter(|f| f["severity"] == "medium").count();
+        let medium_severity = findings
+            .iter()
+            .filter(|f| f["severity"] == "medium")
+            .count();
         let low_severity = findings.iter().filter(|f| f["severity"] == "low").count();
 
         let penalty = (high_severity * 20) + (medium_severity * 10) + (low_severity * 5);
@@ -1870,13 +2029,14 @@ impl CodeAnalysisTool {
 
     fn assess_owasp_compliance(&self, findings: &[Value]) -> Value {
         let owasp_categories = [
-            "A01:2021", "A02:2021", "A03:2021", "A04:2021", "A05:2021",
-            "A06:2021", "A07:2021", "A08:2021", "A09:2021", "A10:2021"
+            "A01:2021", "A02:2021", "A03:2021", "A04:2021", "A05:2021", "A06:2021", "A07:2021",
+            "A08:2021", "A09:2021", "A10:2021",
         ];
 
         let mut compliance = json!({});
         for category in &owasp_categories {
-            let violations = findings.iter()
+            let violations = findings
+                .iter()
                 .filter(|f| f["owasp_id"].as_str().unwrap_or("") == *category)
                 .count();
             compliance[category] = json!({
@@ -1891,7 +2051,8 @@ impl CodeAnalysisTool {
     fn generate_security_roadmap(&self, findings: &[Value]) -> Vec<Value> {
         let mut roadmap = Vec::new();
 
-        let high_priority = findings.iter()
+        let high_priority = findings
+            .iter()
             .filter(|f| f["severity"] == "high")
             .collect::<Vec<_>>();
 
@@ -1979,14 +2140,15 @@ impl CodeAnalysisTool {
     }
 
     fn assess_secrets_risk(&self, secrets: &[Value]) -> Value {
-        let high_risk = secrets.iter()
+        let high_risk = secrets
+            .iter()
             .filter(|s| s["confidence"].as_f64().unwrap_or(0.0) > 0.8)
             .count();
 
         json!({
             "total_secrets": secrets.len(),
             "high_risk_secrets": high_risk,
-            "risk_level": if high_risk > 0 { "high" } else if secrets.len() > 0 { "medium" } else { "low" }
+            "risk_level": if high_risk > 0 { "high" } else if !secrets.is_empty() { "medium" } else { "low" }
         })
     }
 
@@ -1994,7 +2156,8 @@ impl CodeAnalysisTool {
         let mut remediation = Vec::new();
 
         if !secrets.is_empty() {
-            remediation.push("🔐 Move secrets to environment variables or secure vaults".to_string());
+            remediation
+                .push("🔐 Move secrets to environment variables or secure vaults".to_string());
             remediation.push("🔍 Implement secrets scanning in CI/CD pipeline".to_string());
             remediation.push("📝 Create secrets management policy".to_string());
             remediation.push("🔄 Rotate any exposed credentials immediately".to_string());
@@ -2039,9 +2202,18 @@ impl CodeAnalysisTool {
     }
 
     fn categorize_vulnerabilities(&self, vulnerabilities: &[Value]) -> Value {
-        let high = vulnerabilities.iter().filter(|v| v["severity"] == "high").count();
-        let medium = vulnerabilities.iter().filter(|v| v["severity"] == "medium").count();
-        let low = vulnerabilities.iter().filter(|v| v["severity"] == "low").count();
+        let high = vulnerabilities
+            .iter()
+            .filter(|v| v["severity"] == "high")
+            .count();
+        let medium = vulnerabilities
+            .iter()
+            .filter(|v| v["severity"] == "medium")
+            .count();
+        let low = vulnerabilities
+            .iter()
+            .filter(|v| v["severity"] == "low")
+            .count();
 
         json!({
             "high": high,
@@ -2052,13 +2224,16 @@ impl CodeAnalysisTool {
     }
 
     fn map_to_cwe(&self, vulnerabilities: &[Value]) -> Vec<Value> {
-        vulnerabilities.iter()
+        vulnerabilities
+            .iter()
             .filter_map(|v| {
-                v.get("cwe").map(|cwe| json!({
-                    "cwe": cwe,
-                    "type": v["type"],
-                    "file": v["file"]
-                }))
+                v.get("cwe").map(|cwe| {
+                    json!({
+                        "cwe": cwe,
+                        "type": v["type"],
+                        "file": v["file"]
+                    })
+                })
             })
             .collect()
     }
@@ -2070,7 +2245,7 @@ impl CodeAnalysisTool {
                 "high" => 0,
                 "medium" => 1,
                 "low" => 2,
-                _ => 3
+                _ => 3,
             };
 
             let a_severity = a["severity"].as_str().unwrap_or("low");
@@ -2124,7 +2299,8 @@ impl CodeAnalysisTool {
             }
 
             // Duplicate Code (simplified detection)
-            let function_names: Vec<&str> = symbols.iter()
+            let function_names: Vec<&str> = symbols
+                .iter()
                 .filter(|s| s["kind"] == "function")
                 .filter_map(|s| s["name"].as_str())
                 .collect();
@@ -2154,7 +2330,8 @@ impl CodeAnalysisTool {
             let symbols = file["symbols"].as_array().unwrap();
 
             // Extract Method opportunities
-            let long_functions = symbols.iter()
+            let long_functions = symbols
+                .iter()
                 .filter(|s| s["kind"] == "function")
                 .filter(|s| s["name"].as_str().unwrap().len() > 30)
                 .count();
@@ -2192,17 +2369,22 @@ impl CodeAnalysisTool {
         let smell_penalty = code_smells.len() as f64 * 5.0;
         let opportunity_bonus = opportunities.len() as f64 * 2.0;
 
-        (100.0 - smell_penalty + opportunity_bonus).max(0.0).min(100.0)
+        (100.0 - smell_penalty + opportunity_bonus)
+            .max(0.0)
+            .min(100.0)
     }
 
     fn analyze_refactoring_impact(&self, opportunities: &[Value]) -> Value {
-        let high_priority = opportunities.iter()
+        let high_priority = opportunities
+            .iter()
             .filter(|o| o["priority"] == "high")
             .count();
-        let medium_priority = opportunities.iter()
+        let medium_priority = opportunities
+            .iter()
             .filter(|o| o["priority"] == "medium")
             .count();
-        let low_priority = opportunities.iter()
+        let low_priority = opportunities
+            .iter()
             .filter(|o| o["priority"] == "low")
             .count();
 
@@ -2226,7 +2408,8 @@ impl CodeAnalysisTool {
     fn generate_refactoring_roadmap(&self, opportunities: &[Value]) -> Vec<Value> {
         let mut roadmap = Vec::new();
 
-        let high_priority: Vec<&Value> = opportunities.iter()
+        let high_priority: Vec<&Value> = opportunities
+            .iter()
             .filter(|o| o["priority"] == "high")
             .collect();
 
@@ -2239,7 +2422,8 @@ impl CodeAnalysisTool {
             }));
         }
 
-        let medium_priority: Vec<&Value> = opportunities.iter()
+        let medium_priority: Vec<&Value> = opportunities
+            .iter()
             .filter(|o| o["priority"] == "medium")
             .collect();
 
@@ -2256,9 +2440,12 @@ impl CodeAnalysisTool {
     }
 
     fn identify_quick_wins(&self, opportunities: &[Value]) -> Vec<Value> {
-        opportunities.iter()
-            .filter(|o| o["effort"].as_str().unwrap_or("high") == "low" ||
-                       o["effort"].as_str().unwrap_or("high") == "medium")
+        opportunities
+            .iter()
+            .filter(|o| {
+                o["effort"].as_str().unwrap_or("high") == "low"
+                    || o["effort"].as_str().unwrap_or("high") == "medium"
+            })
             .cloned()
             .collect()
     }
@@ -2267,10 +2454,18 @@ impl CodeAnalysisTool {
         let mut recommendations = Vec::new();
 
         // Analyze code structure to recommend patterns
-        let has_many_similar_classes = files.iter()
-            .map(|f| f["symbols"].as_array().unwrap().iter()
-                .filter(|s| s["kind"] == "struct").count())
-            .sum::<usize>() > 10;
+        let has_many_similar_classes = files
+            .iter()
+            .map(|f| {
+                f["symbols"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|s| s["kind"] == "struct")
+                    .count()
+            })
+            .sum::<usize>()
+            > 10;
 
         if has_many_similar_classes {
             recommendations.push(json!({
@@ -2354,17 +2549,18 @@ impl CodeAnalysisTool {
                     "Better maintainability",
                     "Reduced coupling"
                 ]
-            })
+            }),
         ]
     }
 
     fn calculate_total_effort(&self, opportunities: &[Value]) -> String {
-        let total_weeks = opportunities.iter()
+        let total_weeks = opportunities
+            .iter()
             .map(|o| match o["effort"].as_str().unwrap_or("medium") {
                 "low" => 1,
                 "medium" => 3,
                 "high" => 6,
-                _ => 3
+                _ => 3,
             })
             .sum::<i32>();
 
@@ -2504,7 +2700,10 @@ impl CodeAnalysisTool {
 
         // Check for nested loops that might benefit from different algorithms
         let nested_loop_count = content.matches("for ").count();
-        if nested_loop_count > 2 && content.contains("for ") && content.lines().any(|line| line.trim().starts_with("for ")) {
+        if nested_loop_count > 2
+            && content.contains("for ")
+            && content.lines().any(|line| line.trim().starts_with("for "))
+        {
             suggestions.push(json!({
                 "optimization": "Consider algorithmic improvements for nested loops",
                 "description": "Multiple nested loops detected. Consider if algorithm can be optimized",
@@ -2558,7 +2757,9 @@ impl CodeAnalysisTool {
         let mut suggestions = Vec::new();
 
         // Check for synchronous I/O in async context
-        if content.contains("async fn") && (content.contains("std::fs::read") || content.contains("std::fs::write")) {
+        if content.contains("async fn")
+            && (content.contains("std::fs::read") || content.contains("std::fs::write"))
+        {
             suggestions.push(json!({
                 "optimization": "Use async I/O operations",
                 "description": "Synchronous I/O detected in async function",
@@ -2653,7 +2854,10 @@ impl CodeAnalysisTool {
         }
 
         if content.contains("sort_by(") && content.contains("cmp(") {
-            suggestions.push(format!("📊 {} Use sort_by_key() instead of sort_by() when comparing by a single field", file_path));
+            suggestions.push(format!(
+                "📊 {} Use sort_by_key() instead of sort_by() when comparing by a single field",
+                file_path
+            ));
         }
 
         if content.matches("sort").count() > 2 {
@@ -2667,15 +2871,24 @@ impl CodeAnalysisTool {
         let mut suggestions = Vec::new();
 
         if content.contains("iter().find(") && content.contains("sort") {
-            suggestions.push(format!("🔍 {} Use binary_search() on sorted data instead of linear search", file_path));
+            suggestions.push(format!(
+                "🔍 {} Use binary_search() on sorted data instead of linear search",
+                file_path
+            ));
         }
 
         if content.matches("iter().find(").count() > 3 {
-            suggestions.push(format!("📈 {} Multiple linear searches detected - consider using HashMap or BTreeMap", file_path));
+            suggestions.push(format!(
+                "📈 {} Multiple linear searches detected - consider using HashMap or BTreeMap",
+                file_path
+            ));
         }
 
         if content.contains("contains(") && content.contains("Vec") {
-            suggestions.push(format!("🗂️ {} Use HashSet for membership testing instead of Vec::contains()", file_path));
+            suggestions.push(format!(
+                "🗂️ {} Use HashSet for membership testing instead of Vec::contains()",
+                file_path
+            ));
         }
 
         suggestions
@@ -2685,19 +2898,31 @@ impl CodeAnalysisTool {
         let mut suggestions = Vec::new();
 
         if content.contains("collect::<Vec<_>>()") && content.contains("iter()") {
-            suggestions.push(format!("🔄 {} Consider using iterator chains without intermediate collections", file_path));
+            suggestions.push(format!(
+                "🔄 {} Consider using iterator chains without intermediate collections",
+                file_path
+            ));
         }
 
         if content.matches("map(").count() > 2 && content.contains("collect()") {
-            suggestions.push(format!("⚡ {} Chain multiple map operations before collecting", file_path));
+            suggestions.push(format!(
+                "⚡ {} Chain multiple map operations before collecting",
+                file_path
+            ));
         }
 
         if content.contains("filter(") && content.contains("map(") {
-            suggestions.push(format!("🎯 {} Use filter_map() to combine filtering and mapping", file_path));
+            suggestions.push(format!(
+                "🎯 {} Use filter_map() to combine filtering and mapping",
+                file_path
+            ));
         }
 
         if content.contains("for ") && content.contains("push(") {
-            suggestions.push(format!("📊 {} Consider using iterator methods instead of manual loops", file_path));
+            suggestions.push(format!(
+                "📊 {} Consider using iterator methods instead of manual loops",
+                file_path
+            ));
         }
 
         suggestions
@@ -2706,20 +2931,39 @@ impl CodeAnalysisTool {
     fn analyze_concurrency_opportunities(&self, content: &str, file_path: &str) -> Vec<String> {
         let mut suggestions = Vec::new();
 
-        if content.contains("for ") && (content.contains("expensive") || content.contains("compute") || content.contains("process")) {
-            suggestions.push(format!("🚀 {} Consider using rayon for parallel processing of independent operations", file_path));
+        if content.contains("for ")
+            && (content.contains("expensive")
+                || content.contains("compute")
+                || content.contains("process"))
+        {
+            suggestions.push(format!(
+                "🚀 {} Consider using rayon for parallel processing of independent operations",
+                file_path
+            ));
         }
 
-        if content.contains("async fn") && content.contains("await") && content.matches("await").count() > 3 {
-            suggestions.push(format!("⚡ {} Use join! or select! for concurrent async operations", file_path));
+        if content.contains("async fn")
+            && content.contains("await")
+            && content.matches("await").count() > 3
+        {
+            suggestions.push(format!(
+                "⚡ {} Use join! or select! for concurrent async operations",
+                file_path
+            ));
         }
 
         if content.contains("Mutex") && content.contains("lock()") {
-            suggestions.push(format!("🔒 {} Consider using RwLock for read-heavy workloads", file_path));
+            suggestions.push(format!(
+                "🔒 {} Consider using RwLock for read-heavy workloads",
+                file_path
+            ));
         }
 
         if content.contains("Arc<Mutex<") {
-            suggestions.push(format!("🔄 {} Consider using channels for communication instead of shared state", file_path));
+            suggestions.push(format!(
+                "🔄 {} Consider using channels for communication instead of shared state",
+                file_path
+            ));
         }
 
         suggestions
@@ -2755,15 +2999,24 @@ impl CodeAnalysisTool {
         }
 
         if content.contains("Vec::new()") && content.contains("push(") {
-            suggestions.push(format!("📏 {} Use Vec::with_capacity() when final size is known", file_path));
+            suggestions.push(format!(
+                "📏 {} Use Vec::with_capacity() when final size is known",
+                file_path
+            ));
         }
 
         if content.contains("String::new()") && content.contains("push_str(") {
-            suggestions.push(format!("📝 {} Use String::with_capacity() for string building", file_path));
+            suggestions.push(format!(
+                "📝 {} Use String::with_capacity() for string building",
+                file_path
+            ));
         }
 
         if content.matches("vec!").count() > 5 {
-            suggestions.push(format!("🗂️ {} Consider using arrays or const slices for static data", file_path));
+            suggestions.push(format!(
+                "🗂️ {} Consider using arrays or const slices for static data",
+                file_path
+            ));
         }
 
         suggestions
@@ -2773,19 +3026,31 @@ impl CodeAnalysisTool {
         let mut suggestions = Vec::new();
 
         if content.matches(".clone()").count() > 5 {
-            suggestions.push(format!("💾 {} Reduce cloning by using references (&T) or Rc<T>/Arc<T>", file_path));
+            suggestions.push(format!(
+                "💾 {} Reduce cloning by using references (&T) or Rc<T>/Arc<T>",
+                file_path
+            ));
         }
 
         if content.contains("to_owned()") || content.contains("to_string()") {
-            suggestions.push(format!("🔄 {} Consider using Cow<str> for conditional ownership", file_path));
+            suggestions.push(format!(
+                "🔄 {} Consider using Cow<str> for conditional ownership",
+                file_path
+            ));
         }
 
         if content.contains("Arc<") && content.contains("clone()") {
-            suggestions.push(format!("🔗 {} Arc cloning is cheap - avoid unnecessary intermediate variables", file_path));
+            suggestions.push(format!(
+                "🔗 {} Arc cloning is cheap - avoid unnecessary intermediate variables",
+                file_path
+            ));
         }
 
         if content.contains("Rc<RefCell<") {
-            suggestions.push(format!("🔒 {} Consider redesigning to avoid interior mutability", file_path));
+            suggestions.push(format!(
+                "🔒 {} Consider redesigning to avoid interior mutability",
+                file_path
+            ));
         }
 
         suggestions
@@ -2795,19 +3060,34 @@ impl CodeAnalysisTool {
         let mut suggestions = Vec::new();
 
         if content.contains("HashMap::new()") && !content.contains("with_capacity") {
-            suggestions.push(format!("🗺️ {} Use HashMap::with_capacity() when size is predictable", file_path));
+            suggestions.push(format!(
+                "🗺️ {} Use HashMap::with_capacity() when size is predictable",
+                file_path
+            ));
         }
 
-        if content.contains("BTreeMap") && content.contains("get(") && content.matches("get(").count() > 3 {
-            suggestions.push(format!("🌳 {} Consider HashMap for better lookup performance if ordering isn't needed", file_path));
+        if content.contains("BTreeMap")
+            && content.contains("get(")
+            && content.matches("get(").count() > 3
+        {
+            suggestions.push(format!(
+                "🌳 {} Consider HashMap for better lookup performance if ordering isn't needed",
+                file_path
+            ));
         }
 
         if content.contains("Vec") && content.contains("remove(0)") {
-            suggestions.push(format!("📋 {} Use VecDeque for efficient front removal", file_path));
+            suggestions.push(format!(
+                "📋 {} Use VecDeque for efficient front removal",
+                file_path
+            ));
         }
 
         if content.contains("HashSet") && content.contains("iter().collect()") {
-            suggestions.push(format!("🎯 {} Use from_iter() or extend() instead of iter().collect()", file_path));
+            suggestions.push(format!(
+                "🎯 {} Use from_iter() or extend() instead of iter().collect()",
+                file_path
+            ));
         }
 
         suggestions
@@ -2817,19 +3097,31 @@ impl CodeAnalysisTool {
         let mut suggestions = Vec::new();
 
         if content.contains("format!(") && content.contains("&format!(") {
-            suggestions.push(format!("📝 {} Avoid temporary String allocation in format! chains", file_path));
+            suggestions.push(format!(
+                "📝 {} Avoid temporary String allocation in format! chains",
+                file_path
+            ));
         }
 
         if content.matches("String::from(").count() > 3 {
-            suggestions.push(format!("🔤 {} Use &str when possible, String only when ownership is needed", file_path));
+            suggestions.push(format!(
+                "🔤 {} Use &str when possible, String only when ownership is needed",
+                file_path
+            ));
         }
 
         if content.contains("split(") && content.contains("collect()") {
-            suggestions.push(format!("✂️ {} Consider using split() iterator directly instead of collecting", file_path));
+            suggestions.push(format!(
+                "✂️ {} Consider using split() iterator directly instead of collecting",
+                file_path
+            ));
         }
 
         if content.contains("replace(") && content.contains("replace(") {
-            suggestions.push(format!("🔄 {} Chain string operations or use regex for complex replacements", file_path));
+            suggestions.push(format!(
+                "🔄 {} Chain string operations or use regex for complex replacements",
+                file_path
+            ));
         }
 
         suggestions
@@ -2867,7 +3159,11 @@ impl CodeAnalysisTool {
         benchmarks
     }
 
-    fn identify_performance_critical_functions(&self, content: &str, file_path: &str) -> Vec<Value> {
+    fn identify_performance_critical_functions(
+        &self,
+        content: &str,
+        file_path: &str,
+    ) -> Vec<Value> {
         let mut benchmarks = Vec::new();
 
         // Look for functions that might be called frequently
@@ -2934,10 +3230,13 @@ impl CodeAnalysisTool {
     }
 
     fn analyze_test_coverage(&self, files: &[Value]) -> Value {
-        let test_files = files.iter().filter(|f| {
-            f["path"].as_str().unwrap().contains("test") ||
-            f["path"].as_str().unwrap().contains("spec")
-        }).count();
+        let test_files = files
+            .iter()
+            .filter(|f| {
+                f["path"].as_str().unwrap().contains("test")
+                    || f["path"].as_str().unwrap().contains("spec")
+            })
+            .count();
 
         let total_files = files.len();
         let coverage_percentage = if total_files > 0 {
@@ -2979,7 +3278,8 @@ impl CodeAnalysisTool {
     }
 
     fn assess_test_quality(&self, files: &[Value]) -> Value {
-        let test_files: Vec<&Value> = files.iter()
+        let test_files: Vec<&Value> = files
+            .iter()
             .filter(|f| f["path"].as_str().unwrap().contains("test"))
             .collect();
 
@@ -3000,7 +3300,7 @@ impl CodeAnalysisTool {
             "🧪 Add unit tests for all public functions".to_string(),
             "🔄 Implement integration tests for critical workflows".to_string(),
             "📊 Add property-based tests for complex logic".to_string(),
-            "🎯 Achieve at least 80% code coverage".to_string()
+            "🎯 Achieve at least 80% code coverage".to_string(),
         ]
     }
 
@@ -3010,9 +3310,7 @@ impl CodeAnalysisTool {
         for file in files {
             if !file["path"].as_str().unwrap().contains("test") {
                 let symbols = file["symbols"].as_array().unwrap();
-                let public_functions = symbols.iter()
-                    .filter(|s| s["kind"] == "function")
-                    .count();
+                let public_functions = symbols.iter().filter(|s| s["kind"] == "function").count();
 
                 if public_functions > 0 {
                     candidates.push(json!({
@@ -3044,19 +3342,17 @@ impl CodeAnalysisTool {
                 "test_type": "Integration Tests",
                 "framework": "Tokio Test",
                 "example": "#[tokio::test] async fn test_async_function() { ... }"
-            })
+            }),
         ]
     }
 
     fn detect_flaky_tests(&self, _files: &[Value]) -> Vec<Value> {
         // Simplified flaky test detection
-        vec![
-            json!({
-                "indicator": "Time-dependent tests",
-                "description": "Tests that depend on current time or sleep",
-                "recommendation": "Use mock time or deterministic delays"
-            })
-        ]
+        vec![json!({
+            "indicator": "Time-dependent tests",
+            "description": "Tests that depend on current time or sleep",
+            "recommendation": "Use mock time or deterministic delays"
+        })]
     }
 
     fn suggest_test_improvements(&self, _files: &[Value]) -> Vec<String> {
@@ -3064,7 +3360,7 @@ impl CodeAnalysisTool {
             "🎯 Use descriptive test names that explain the scenario".to_string(),
             "🔧 Implement proper test setup and teardown".to_string(),
             "📝 Add assertions with meaningful error messages".to_string(),
-            "🏗️ Use test builders for complex test data".to_string()
+            "🏗️ Use test builders for complex test data".to_string(),
         ]
     }
 
@@ -3074,9 +3370,7 @@ impl CodeAnalysisTool {
         for file in files {
             if !file["path"].as_str().unwrap().contains("test") {
                 let symbols = file["symbols"].as_array().unwrap();
-                let untested_functions = symbols.iter()
-                    .filter(|s| s["kind"] == "function")
-                    .count();
+                let untested_functions = symbols.iter().filter(|s| s["kind"] == "function").count();
 
                 if untested_functions > 0 {
                     gaps.push(json!({
@@ -3092,7 +3386,8 @@ impl CodeAnalysisTool {
     }
 
     fn identify_critical_gaps(&self, files: &[Value]) -> Vec<Value> {
-        self.identify_coverage_gaps(files).into_iter()
+        self.identify_coverage_gaps(files)
+            .into_iter()
             .filter(|gap| gap["untested_functions"].as_u64().unwrap_or(0) > 3)
             .collect()
     }
@@ -3102,7 +3397,7 @@ impl CodeAnalysisTool {
             "🎯 Start with testing public API functions".to_string(),
             "🔄 Add tests for error handling paths".to_string(),
             "📊 Focus on business logic functions first".to_string(),
-            "🧪 Use test-driven development for new features".to_string()
+            "🧪 Use test-driven development for new features".to_string(),
         ]
     }
 
@@ -3137,8 +3432,12 @@ impl CodeAnalysisTool {
     }
 
     async fn scan_cargo_dependencies(&self, cargo_toml: &Path) -> Result<Vec<Value>> {
-        let content = tokio::fs::read_to_string(cargo_toml).await
-            .map_err(|e| AgentError::tool("code_analysis", &format!("Failed to read Cargo.toml: {}", e)))?;
+        let content = tokio::fs::read_to_string(cargo_toml).await.map_err(|e| {
+            AgentError::tool(
+                "code_analysis",
+                &format!("Failed to read Cargo.toml: {}", e),
+            )
+        })?;
 
         let mut dependencies = Vec::new();
         let mut current_section = None;
@@ -3154,12 +3453,15 @@ impl CodeAnalysisTool {
 
             // Parse dependencies
             if let Some(ref section) = current_section {
-                if section == "[dependencies]" || section == "[dev-dependencies]" || section == "[build-dependencies]" {
+                if section == "[dependencies]"
+                    || section == "[dev-dependencies]"
+                    || section == "[build-dependencies]"
+                {
                     if let Some((name, version_info)) = self.parse_cargo_dependency_line(line) {
                         let dep_type = match section.as_str() {
                             "[dev-dependencies]" => "dev",
                             "[build-dependencies]" => "build",
-                            _ => "direct"
+                            _ => "direct",
                         };
 
                         dependencies.push(json!({
@@ -3192,13 +3494,16 @@ impl CodeAnalysisTool {
             // Simple version string
             if value_part.starts_with('"') && value_part.ends_with('"') {
                 let version = value_part.trim_matches('"').to_string();
-                return Some((name, DependencyInfo {
-                    version,
-                    features: None,
-                    optional: false,
-                    git: None,
-                    path: None,
-                }));
+                return Some((
+                    name,
+                    DependencyInfo {
+                        version,
+                        features: None,
+                        optional: false,
+                        git: None,
+                        path: None,
+                    },
+                ));
             }
 
             // Complex dependency specification
@@ -3210,7 +3515,11 @@ impl CodeAnalysisTool {
         None
     }
 
-    fn parse_complex_cargo_dependency(&self, name: &str, spec: &str) -> Option<(String, DependencyInfo)> {
+    fn parse_complex_cargo_dependency(
+        &self,
+        name: &str,
+        spec: &str,
+    ) -> Option<(String, DependencyInfo)> {
         let mut version = "unknown".to_string();
         let features = None;
         let mut optional = false;
@@ -3249,21 +3558,29 @@ impl CodeAnalysisTool {
             }
         }
 
-        Some((name.to_string(), DependencyInfo {
-            version,
-            features,
-            optional,
-            git,
-            path,
-        }))
+        Some((
+            name.to_string(),
+            DependencyInfo {
+                version,
+                features,
+                optional,
+                git,
+                path,
+            },
+        ))
     }
 
     async fn scan_npm_dependencies(&self, package_json: &Path) -> Result<Vec<Value>> {
-        let content = tokio::fs::read_to_string(package_json).await
-            .map_err(|e| AgentError::tool("code_analysis", &format!("Failed to read package.json: {}", e)))?;
+        let content = tokio::fs::read_to_string(package_json).await.map_err(|e| {
+            AgentError::tool(
+                "code_analysis",
+                &format!("Failed to read package.json: {}", e),
+            )
+        })?;
 
-        let package: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| AgentError::tool("code_analysis", &format!("Invalid package.json: {}", e)))?;
+        let package: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
+            AgentError::tool("code_analysis", &format!("Invalid package.json: {}", e))
+        })?;
 
         let mut dependencies = Vec::new();
 
@@ -3307,8 +3624,14 @@ impl CodeAnalysisTool {
     }
 
     async fn scan_python_dependencies(&self, requirements_txt: &Path) -> Result<Vec<Value>> {
-        let content = tokio::fs::read_to_string(requirements_txt).await
-            .map_err(|e| AgentError::tool("code_analysis", &format!("Failed to read requirements.txt: {}", e)))?;
+        let content = tokio::fs::read_to_string(requirements_txt)
+            .await
+            .map_err(|e| {
+                AgentError::tool(
+                    "code_analysis",
+                    &format!("Failed to read requirements.txt: {}", e),
+                )
+            })?;
 
         let mut dependencies = Vec::new();
 
@@ -3347,8 +3670,9 @@ impl CodeAnalysisTool {
     }
 
     async fn scan_go_dependencies(&self, go_mod: &Path) -> Result<Vec<Value>> {
-        let content = tokio::fs::read_to_string(go_mod).await
-            .map_err(|e| AgentError::tool("code_analysis", &format!("Failed to read go.mod: {}", e)))?;
+        let content = tokio::fs::read_to_string(go_mod).await.map_err(|e| {
+            AgentError::tool("code_analysis", &format!("Failed to read go.mod: {}", e))
+        })?;
 
         let mut dependencies = Vec::new();
         let mut in_require_block = false;
@@ -3457,7 +3781,10 @@ impl CodeAnalysisTool {
 
     fn calculate_dependency_depth(&self, dependencies: &[Value]) -> u32 {
         // Simplified depth calculation
-        let direct_deps = dependencies.iter().filter(|d| d["type"] == "direct").count();
+        let direct_deps = dependencies
+            .iter()
+            .filter(|d| d["type"] == "direct")
+            .count();
         let _dev_deps = dependencies.iter().filter(|d| d["type"] == "dev").count();
 
         // Estimate depth based on number of dependencies
@@ -3465,13 +3792,14 @@ impl CodeAnalysisTool {
             0..=5 => 1,
             6..=15 => 2,
             16..=30 => 3,
-            _ => 4
+            _ => 4,
         }
     }
 
     fn calculate_graph_complexity(&self, dependencies: &[Value]) -> f64 {
         let total_deps = dependencies.len() as f64;
-        let ecosystems = dependencies.iter()
+        let ecosystems = dependencies
+            .iter()
             .map(|d| d["ecosystem"].as_str().unwrap_or("unknown"))
             .collect::<std::collections::HashSet<_>>()
             .len() as f64;
@@ -3515,7 +3843,12 @@ impl CodeAnalysisTool {
         circular_deps
     }
 
-    fn find_potential_cycles(&self, name: &str, ecosystem: &str, dependency_map: &std::collections::HashMap<String, String>) -> Vec<Vec<String>> {
+    fn find_potential_cycles(
+        &self,
+        name: &str,
+        ecosystem: &str,
+        dependency_map: &std::collections::HashMap<String, String>,
+    ) -> Vec<Vec<String>> {
         let mut cycles = Vec::new();
 
         // Look for dependencies with similar names that might create cycles
@@ -3537,20 +3870,28 @@ impl CodeAnalysisTool {
         let name2_lower = name2.to_lowercase();
 
         // Check for complementary names
-        (name1_lower.contains("client") && name2_lower.contains("server")) ||
-        (name1_lower.contains("server") && name2_lower.contains("client")) ||
-        (name1_lower.contains("core") && name2_lower.contains("utils") && name1_lower.contains(&name2_lower[..3])) ||
-        (name1_lower.contains("api") && name2_lower.contains("impl") && name1_lower.contains(&name2_lower[..3]))
+        (name1_lower.contains("client") && name2_lower.contains("server"))
+            || (name1_lower.contains("server") && name2_lower.contains("client"))
+            || (name1_lower.contains("core")
+                && name2_lower.contains("utils")
+                && name1_lower.contains(&name2_lower[..3]))
+            || (name1_lower.contains("api")
+                && name2_lower.contains("impl")
+                && name1_lower.contains(&name2_lower[..3]))
     }
 
     fn detect_common_circular_patterns(&self, dependencies: &[Value]) -> Vec<Value> {
         let mut patterns = Vec::new();
 
         // Group dependencies by ecosystem
-        let mut ecosystem_groups: std::collections::HashMap<String, Vec<&Value>> = std::collections::HashMap::new();
+        let mut ecosystem_groups: std::collections::HashMap<String, Vec<&Value>> =
+            std::collections::HashMap::new();
         for dep in dependencies {
             let ecosystem = dep["ecosystem"].as_str().unwrap_or("unknown");
-            ecosystem_groups.entry(ecosystem.to_string()).or_default().push(dep);
+            ecosystem_groups
+                .entry(ecosystem.to_string())
+                .or_default()
+                .push(dep);
         }
 
         // Check for patterns within each ecosystem
@@ -3565,12 +3906,14 @@ impl CodeAnalysisTool {
             }
 
             // Check for dev dependencies that might conflict with main dependencies
-            let main_deps: Vec<&str> = deps.iter()
+            let main_deps: Vec<&str> = deps
+                .iter()
                 .filter(|d| d["type"] == "direct")
                 .filter_map(|d| d["name"].as_str())
                 .collect();
 
-            let dev_deps: Vec<&str> = deps.iter()
+            let dev_deps: Vec<&str> = deps
+                .iter()
                 .filter(|d| d["type"] == "dev")
                 .filter_map(|d| d["name"].as_str())
                 .collect();
@@ -3596,7 +3939,7 @@ impl CodeAnalysisTool {
         vec![
             "📦 Remove unused dependencies".to_string(),
             "⬆️ Update to latest stable versions".to_string(),
-            "🔄 Consider lighter alternatives for heavy dependencies".to_string()
+            "🔄 Consider lighter alternatives for heavy dependencies".to_string(),
         ]
     }
 
@@ -3635,7 +3978,9 @@ impl CodeAnalysisTool {
         Ok(vulnerabilities)
     }
 
-    fn get_known_vulnerabilities(&self) -> std::collections::HashMap<String, Vec<VulnerabilityInfo>> {
+    fn get_known_vulnerabilities(
+        &self,
+    ) -> std::collections::HashMap<String, Vec<VulnerabilityInfo>> {
         use std::collections::HashMap;
 
         let mut vulns = HashMap::new();
@@ -3643,8 +3988,9 @@ impl CodeAnalysisTool {
         // Comprehensive vulnerability database with real-world examples
 
         // Rust ecosystem vulnerabilities
-        vulns.insert("rust:serde".to_string(), vec![
-            VulnerabilityInfo {
+        vulns.insert(
+            "rust:serde".to_string(),
+            vec![VulnerabilityInfo {
                 id: "RUSTSEC-2022-0040".to_string(),
                 severity: "high".to_string(),
                 description: "Deserialization of untrusted data in serde".to_string(),
@@ -3652,11 +3998,12 @@ impl CodeAnalysisTool {
                 fixed_version: Some("1.0.145".to_string()),
                 cve: Some("CVE-2022-31394".to_string()),
                 published: "2022-08-01".to_string(),
-            }
-        ]);
+            }],
+        );
 
-        vulns.insert("rust:openssl".to_string(), vec![
-            VulnerabilityInfo {
+        vulns.insert(
+            "rust:openssl".to_string(),
+            vec![VulnerabilityInfo {
                 id: "RUSTSEC-2023-0044".to_string(),
                 severity: "critical".to_string(),
                 description: "Memory corruption in OpenSSL bindings".to_string(),
@@ -3664,12 +4011,13 @@ impl CodeAnalysisTool {
                 fixed_version: Some("0.10.55".to_string()),
                 cve: Some("CVE-2023-2975".to_string()),
                 published: "2023-07-14".to_string(),
-            }
-        ]);
+            }],
+        );
 
         // NPM ecosystem vulnerabilities
-        vulns.insert("npm:lodash".to_string(), vec![
-            VulnerabilityInfo {
+        vulns.insert(
+            "npm:lodash".to_string(),
+            vec![VulnerabilityInfo {
                 id: "GHSA-jf85-cpcp-j695".to_string(),
                 severity: "high".to_string(),
                 description: "Prototype Pollution in lodash".to_string(),
@@ -3677,11 +4025,12 @@ impl CodeAnalysisTool {
                 fixed_version: Some("4.17.21".to_string()),
                 cve: Some("CVE-2021-23337".to_string()),
                 published: "2021-02-15".to_string(),
-            }
-        ]);
+            }],
+        );
 
-        vulns.insert("npm:axios".to_string(), vec![
-            VulnerabilityInfo {
+        vulns.insert(
+            "npm:axios".to_string(),
+            vec![VulnerabilityInfo {
                 id: "GHSA-wf5p-g6vw-rhxx".to_string(),
                 severity: "medium".to_string(),
                 description: "Cross-Site Request Forgery in axios".to_string(),
@@ -3689,12 +4038,13 @@ impl CodeAnalysisTool {
                 fixed_version: Some("1.6.0".to_string()),
                 cve: Some("CVE-2023-45857".to_string()),
                 published: "2023-11-08".to_string(),
-            }
-        ]);
+            }],
+        );
 
         // Python ecosystem vulnerabilities
-        vulns.insert("python:django".to_string(), vec![
-            VulnerabilityInfo {
+        vulns.insert(
+            "python:django".to_string(),
+            vec![VulnerabilityInfo {
                 id: "PYSEC-2023-123".to_string(),
                 severity: "critical".to_string(),
                 description: "SQL injection vulnerability in Django ORM".to_string(),
@@ -3702,11 +4052,12 @@ impl CodeAnalysisTool {
                 fixed_version: Some("4.2.5".to_string()),
                 cve: Some("CVE-2023-41164".to_string()),
                 published: "2023-09-04".to_string(),
-            }
-        ]);
+            }],
+        );
 
-        vulns.insert("python:requests".to_string(), vec![
-            VulnerabilityInfo {
+        vulns.insert(
+            "python:requests".to_string(),
+            vec![VulnerabilityInfo {
                 id: "PYSEC-2023-74".to_string(),
                 severity: "medium".to_string(),
                 description: "Certificate verification bypass in requests".to_string(),
@@ -3714,12 +4065,13 @@ impl CodeAnalysisTool {
                 fixed_version: Some("2.31.0".to_string()),
                 cve: Some("CVE-2023-32681".to_string()),
                 published: "2023-05-26".to_string(),
-            }
-        ]);
+            }],
+        );
 
         // Go ecosystem vulnerabilities
-        vulns.insert("go:github.com/gin-gonic/gin".to_string(), vec![
-            VulnerabilityInfo {
+        vulns.insert(
+            "go:github.com/gin-gonic/gin".to_string(),
+            vec![VulnerabilityInfo {
                 id: "GO-2023-1234".to_string(),
                 severity: "medium".to_string(),
                 description: "Directory traversal in Gin framework".to_string(),
@@ -3727,11 +4079,12 @@ impl CodeAnalysisTool {
                 fixed_version: Some("1.9.1".to_string()),
                 cve: Some("CVE-2023-29401".to_string()),
                 published: "2023-06-08".to_string(),
-            }
-        ]);
+            }],
+        );
 
-        vulns.insert("go:github.com/gorilla/websocket".to_string(), vec![
-            VulnerabilityInfo {
+        vulns.insert(
+            "go:github.com/gorilla/websocket".to_string(),
+            vec![VulnerabilityInfo {
                 id: "GO-2023-2102".to_string(),
                 severity: "high".to_string(),
                 description: "Memory exhaustion in websocket handling".to_string(),
@@ -3739,21 +4092,19 @@ impl CodeAnalysisTool {
                 fixed_version: Some("1.5.1".to_string()),
                 cve: Some("CVE-2023-44487".to_string()),
                 published: "2023-10-10".to_string(),
-            }
-        ]);
+            }],
+        );
 
         vulns
     }
 
     fn version_matches_vulnerability(&self, version: &str, affected_range: &str) -> bool {
         // Simplified version matching - in production, use a proper semver library
-        if affected_range.starts_with('<') {
-            let target_version = &affected_range[1..];
+        if let Some(target_version) = affected_range.strip_prefix('<') {
             return self.version_less_than(version, target_version);
         }
 
-        if affected_range.starts_with(">=") {
-            let target_version = &affected_range[2..];
+        if let Some(target_version) = affected_range.strip_prefix(">=") {
             return !self.version_less_than(version, target_version);
         }
 
@@ -3786,9 +4137,8 @@ impl CodeAnalysisTool {
         let mut problematic_licenses = Vec::new();
 
         // Known problematic licenses for commercial use
-        let problematic_license_patterns = vec![
-            "GPL", "AGPL", "LGPL", "SSPL", "BUSL", "Commons Clause"
-        ];
+        let problematic_license_patterns =
+            vec!["GPL", "AGPL", "LGPL", "SSPL", "BUSL", "Commons Clause"];
 
         for dep in dependencies {
             let name = dep["name"].as_str().unwrap_or("");
@@ -3874,9 +4224,15 @@ impl CodeAnalysisTool {
         db.insert("rust:clap".to_string(), "MIT OR Apache-2.0".to_string());
         db.insert("rust:reqwest".to_string(), "MIT OR Apache-2.0".to_string());
         db.insert("rust:anyhow".to_string(), "MIT OR Apache-2.0".to_string());
-        db.insert("rust:thiserror".to_string(), "MIT OR Apache-2.0".to_string());
+        db.insert(
+            "rust:thiserror".to_string(),
+            "MIT OR Apache-2.0".to_string(),
+        );
         db.insert("rust:tracing".to_string(), "MIT".to_string());
-        db.insert("rust:async-trait".to_string(), "MIT OR Apache-2.0".to_string());
+        db.insert(
+            "rust:async-trait".to_string(),
+            "MIT OR Apache-2.0".to_string(),
+        );
 
         // NPM ecosystem
         db.insert("npm:react".to_string(), "MIT".to_string());
@@ -3897,8 +4253,14 @@ impl CodeAnalysisTool {
 
         // Go ecosystem
         db.insert("go:github.com/gin-gonic/gin".to_string(), "MIT".to_string());
-        db.insert("go:github.com/gorilla/mux".to_string(), "BSD-3-Clause".to_string());
-        db.insert("go:github.com/stretchr/testify".to_string(), "MIT".to_string());
+        db.insert(
+            "go:github.com/gorilla/mux".to_string(),
+            "BSD-3-Clause".to_string(),
+        );
+        db.insert(
+            "go:github.com/stretchr/testify".to_string(),
+            "MIT".to_string(),
+        );
 
         db
     }
@@ -3949,11 +4311,13 @@ impl CodeAnalysisTool {
     }
 
     fn calculate_license_risk_level(&self, issues: &[Value]) -> &'static str {
-        let high_severity_count = issues.iter()
+        let high_severity_count = issues
+            .iter()
             .filter(|issue| issue["severity"].as_str() == Some("high"))
             .count();
 
-        let medium_severity_count = issues.iter()
+        let medium_severity_count = issues
+            .iter()
             .filter(|issue| issue["severity"].as_str() == Some("medium"))
             .count();
 
@@ -3969,7 +4333,10 @@ impl CodeAnalysisTool {
     }
 
     fn identify_license_issues(&self, license_analysis: &Value) -> Vec<Value> {
-        license_analysis["issues"].as_array().unwrap_or(&vec![]).clone()
+        license_analysis["issues"]
+            .as_array()
+            .unwrap_or(&vec![])
+            .clone()
     }
 
     fn categorize_dependency_vulnerabilities(&self, _vulnerabilities: &[Value]) -> Value {
@@ -3985,7 +4352,7 @@ impl CodeAnalysisTool {
         vec![
             "🔒 Update vulnerable dependencies immediately".to_string(),
             "🔍 Run regular security audits".to_string(),
-            "📋 Maintain dependency inventory".to_string()
+            "📋 Maintain dependency inventory".to_string(),
         ]
     }
 
@@ -4001,8 +4368,10 @@ impl CodeAnalysisTool {
             if let Some(latest_version) = self.get_latest_version(name, ecosystem).await {
                 if self.is_version_outdated(current_version, &latest_version) {
                     let update_type = self.classify_update_type(current_version, &latest_version);
-                    let breaking_changes = self.has_breaking_changes(current_version, &latest_version);
-                    let security_update = self.is_security_update(name, current_version, &latest_version);
+                    let breaking_changes =
+                        self.has_breaking_changes(current_version, &latest_version);
+                    let security_update =
+                        self.is_security_update(name, current_version, &latest_version);
 
                     outdated.push(json!({
                         "package": name,
@@ -4026,7 +4395,7 @@ impl CodeAnalysisTool {
         vec![
             "⬆️ Update dependencies in order of importance".to_string(),
             "🧪 Test thoroughly after updates".to_string(),
-            "📝 Review changelogs for breaking changes".to_string()
+            "📝 Review changelogs for breaking changes".to_string(),
         ]
     }
 
@@ -4053,7 +4422,7 @@ impl CodeAnalysisTool {
         let risk_level = match breaking_count {
             0 => "low",
             1..=3 => "medium",
-            _ => "high"
+            _ => "high",
         };
 
         json!({
@@ -4110,11 +4479,26 @@ impl CodeAnalysisTool {
         db.insert("python:sqlalchemy".to_string(), "2.0.23".to_string());
 
         // Go ecosystem - current stable versions
-        db.insert("go:github.com/gin-gonic/gin".to_string(), "v1.9.1".to_string());
-        db.insert("go:github.com/gorilla/mux".to_string(), "v1.8.1".to_string());
-        db.insert("go:github.com/stretchr/testify".to_string(), "v1.8.4".to_string());
-        db.insert("go:github.com/spf13/cobra".to_string(), "v1.8.0".to_string());
-        db.insert("go:github.com/gorilla/websocket".to_string(), "v1.5.1".to_string());
+        db.insert(
+            "go:github.com/gin-gonic/gin".to_string(),
+            "v1.9.1".to_string(),
+        );
+        db.insert(
+            "go:github.com/gorilla/mux".to_string(),
+            "v1.8.1".to_string(),
+        );
+        db.insert(
+            "go:github.com/stretchr/testify".to_string(),
+            "v1.8.4".to_string(),
+        );
+        db.insert(
+            "go:github.com/spf13/cobra".to_string(),
+            "v1.8.0".to_string(),
+        );
+        db.insert(
+            "go:github.com/gorilla/websocket".to_string(),
+            "v1.5.1".to_string(),
+        );
         db.insert("go:gorm.io/gorm".to_string(), "v1.25.5".to_string());
 
         db
@@ -4162,8 +4546,9 @@ impl CodeAnalysisTool {
             if vuln_key.contains(name) {
                 for vuln in vulns {
                     if let Some(fixed_version) = &vuln.fixed_version {
-                        if self.version_less_than(current, fixed_version) &&
-                           !self.version_less_than(latest, fixed_version) {
+                        if self.version_less_than(current, fixed_version)
+                            && !self.version_less_than(latest, fixed_version)
+                        {
                             return true;
                         }
                     }
@@ -4183,7 +4568,7 @@ impl CodeAnalysisTool {
         }
 
         // Estimate days based on version difference (very simplified)
-        let major_diff = latest_parts.get(0).unwrap_or(&0) - current_parts.get(0).unwrap_or(&0);
+        let major_diff = latest_parts.first().unwrap_or(&0) - current_parts.first().unwrap_or(&0);
         let minor_diff = latest_parts.get(1).unwrap_or(&0) - current_parts.get(1).unwrap_or(&0);
         let patch_diff = latest_parts.get(2).unwrap_or(&0) - current_parts.get(2).unwrap_or(&0);
 
@@ -4191,7 +4576,12 @@ impl CodeAnalysisTool {
         major_diff * 365 + minor_diff * 30 + patch_diff * 7
     }
 
-    fn calculate_update_priority(&self, update_type: &str, breaking_changes: bool, security_update: bool) -> String {
+    fn calculate_update_priority(
+        &self,
+        update_type: &str,
+        breaking_changes: bool,
+        security_update: bool,
+    ) -> String {
         if security_update {
             return "critical".to_string();
         }
@@ -4204,7 +4594,7 @@ impl CodeAnalysisTool {
             "patch" => "high".to_string(),
             "minor" => "medium".to_string(),
             "major" => "low".to_string(),
-            _ => "medium".to_string()
+            _ => "medium".to_string(),
         }
     }
 
@@ -4217,12 +4607,17 @@ impl CodeAnalysisTool {
 
         match risk_level {
             "high" => {
-                recommendations.push("🚨 Immediate action required: Replace high-risk licensed dependencies".to_string());
-                recommendations.push("⚖️ Consult legal team for license compliance review".to_string());
+                recommendations.push(
+                    "🚨 Immediate action required: Replace high-risk licensed dependencies"
+                        .to_string(),
+                );
+                recommendations
+                    .push("⚖️ Consult legal team for license compliance review".to_string());
                 recommendations.push("📋 Create dependency replacement roadmap".to_string());
             }
             "medium" => {
-                recommendations.push("⚠️ Review medium-risk licenses for compatibility".to_string());
+                recommendations
+                    .push("⚠️ Review medium-risk licenses for compatibility".to_string());
                 recommendations.push("📄 Document license decisions and rationale".to_string());
                 recommendations.push("🔍 Schedule regular license compliance audits".to_string());
             }
@@ -4253,7 +4648,7 @@ fn kind_to_pattern(language: &str) -> &str {
         "python" => "dynamic typing and duck typing",
         "c" => "procedural and low-level memory management",
         "cpp" => "object-oriented and template metaprogramming",
-        _ => "general programming"
+        _ => "general programming",
     }
 }
 
@@ -4306,9 +4701,9 @@ fn calculate_impact_areas(suggestions: &[Value]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use tempfile::tempdir;
     use tokio::fs;
-    use serde_json::json;
 
     #[tokio::test]
     async fn test_parse_success_rate_computed() {
@@ -4319,9 +4714,14 @@ mod tests {
         fs::write(&file2, "pub fn helper() {}\n").await.unwrap();
 
         let tool = CodeAnalysisTool::new();
-        let result = tool.generate_insights(dir.path(), &json!({})).await.unwrap();
+        let result = tool
+            .generate_insights(dir.path(), &json!({}))
+            .await
+            .unwrap();
         let parsed = result["metrics"]["total_files"].as_u64().unwrap();
-        let rate = result["quality_indicators"]["parse_success_rate"].as_f64().unwrap();
+        let rate = result["quality_indicators"]["parse_success_rate"]
+            .as_f64()
+            .unwrap();
         assert_eq!(parsed, 2);
         assert_eq!(rate, 100.0);
     }
@@ -4330,7 +4730,9 @@ mod tests {
     async fn test_query_patterns_basic() {
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("lib.rs");
-        fs::write(&file_path, "fn foo() {}\nfn bar() {}\n").await.unwrap();
+        fs::write(&file_path, "fn foo() {}\nfn bar() {}\n")
+            .await
+            .unwrap();
 
         let tool = CodeAnalysisTool::new();
         let params = json!({
@@ -4346,7 +4748,9 @@ mod tests {
     async fn test_dependency_scanning_cargo() {
         let dir = tempdir().unwrap();
         let cargo_toml = dir.path().join("Cargo.toml");
-        fs::write(&cargo_toml, r#"
+        fs::write(
+            &cargo_toml,
+            r#"
 [package]
 name = "test-project"
 version = "0.1.0"
@@ -4357,7 +4761,10 @@ tokio = { version = "1.0", features = ["full"] }
 
 [dev-dependencies]
 tempfile = "3.0"
-"#).await.unwrap();
+"#,
+        )
+        .await
+        .unwrap();
 
         let tool = CodeAnalysisTool::new();
         let result = tool.scan_dependencies(dir.path()).await.unwrap();
@@ -4384,7 +4791,9 @@ tempfile = "3.0"
     async fn test_dependency_scanning_package_json() {
         let dir = tempdir().unwrap();
         let package_json = dir.path().join("package.json");
-        fs::write(&package_json, r#"
+        fs::write(
+            &package_json,
+            r#"
 {
   "name": "test-project",
   "version": "1.0.0",
@@ -4396,7 +4805,10 @@ tempfile = "3.0"
     "jest": "^29.0.0"
   }
 }
-"#).await.unwrap();
+"#,
+        )
+        .await
+        .unwrap();
 
         let tool = CodeAnalysisTool::new();
         let result = tool.scan_dependencies(dir.path()).await.unwrap();
@@ -4419,15 +4831,16 @@ tempfile = "3.0"
         let tool = CodeAnalysisTool::new();
 
         // Test with known vulnerable package
-        let dependencies = vec![
-            json!({
-                "name": "lodash",
-                "version": "4.17.20",
-                "ecosystem": "npm"
-            })
-        ];
+        let dependencies = vec![json!({
+            "name": "lodash",
+            "version": "4.17.20",
+            "ecosystem": "npm"
+        })];
 
-        let vulnerabilities = tool.scan_dependency_vulnerabilities(&dependencies).await.unwrap();
+        let vulnerabilities = tool
+            .scan_dependency_vulnerabilities(&dependencies)
+            .await
+            .unwrap();
 
         // Should detect the lodash vulnerability
         assert!(!vulnerabilities.is_empty());
@@ -4451,7 +4864,7 @@ tempfile = "3.0"
                 "name": "unknown-gpl-package",
                 "version": "1.0.0",
                 "ecosystem": "rust"
-            })
+            }),
         ];
 
         let license_analysis = tool.analyze_licenses(&dependencies).await.unwrap();
@@ -4463,9 +4876,10 @@ tempfile = "3.0"
         assert!(!issues.is_empty());
 
         // Should detect GPL issue
-        let gpl_issue = issues.iter().find(|issue|
-            issue["dependency"].as_str().unwrap().contains("gpl")
-        ).unwrap();
+        let gpl_issue = issues
+            .iter()
+            .find(|issue| issue["dependency"].as_str().unwrap().contains("gpl"))
+            .unwrap();
         assert_eq!(gpl_issue["severity"], "high");
     }
 
@@ -4473,14 +4887,19 @@ tempfile = "3.0"
     async fn test_license_check_integration() {
         let dir = tempdir().unwrap();
         let cargo_toml = dir.path().join("Cargo.toml");
-        fs::write(&cargo_toml, r#"
+        fs::write(
+            &cargo_toml,
+            r#"
 [package]
 name = "test-project"
 version = "0.1.0"
 
 [dependencies]
 serde = "1.0"
-"#).await.unwrap();
+"#,
+        )
+        .await
+        .unwrap();
 
         let tool = CodeAnalysisTool::new();
         let result = tool.license_check(dir.path(), &json!({})).await.unwrap();

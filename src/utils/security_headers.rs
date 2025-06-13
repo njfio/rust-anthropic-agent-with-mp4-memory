@@ -68,7 +68,11 @@ impl SecurityHeadersConfig {
     }
 
     /// Add custom header
-    pub fn with_custom_header<K: Into<String>, V: Into<String>>(mut self, key: K, value: V) -> Self {
+    pub fn with_custom_header<K: Into<String>, V: Into<String>>(
+        mut self,
+        key: K,
+        value: V,
+    ) -> Self {
         self.custom_headers.insert(key.into(), value.into());
         self
     }
@@ -290,7 +294,7 @@ mod tests {
     fn test_default_security_headers() {
         let headers = SecurityHeaders::new();
         let response_headers = headers.build_response_headers();
-        
+
         assert!(response_headers.contains_key("Content-Security-Policy"));
         assert!(response_headers.contains_key("X-Frame-Options"));
         assert!(response_headers.contains_key("X-Content-Type-Options"));
@@ -301,10 +305,14 @@ mod tests {
         let config = SecurityHeadersConfig::strict();
         let headers = SecurityHeaders::with_config(config);
         let response_headers = headers.build_response_headers();
-        
+
         assert!(response_headers.contains_key("Strict-Transport-Security"));
         assert_eq!(
-            response_headers.get("X-Frame-Options").unwrap().to_str().unwrap(),
+            response_headers
+                .get("X-Frame-Options")
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "DENY"
         );
     }
@@ -313,15 +321,21 @@ mod tests {
     fn test_header_validation() {
         let headers = SecurityHeaders::new();
         let mut test_headers = HeaderMap::new();
-        
+
         let issues = headers.validate_response_headers(&test_headers);
         assert!(!issues.is_empty()); // Should have missing header issues
-        
+
         // Add required headers
-        test_headers.insert("Content-Security-Policy", HeaderValue::from_static("default-src 'self'"));
+        test_headers.insert(
+            "Content-Security-Policy",
+            HeaderValue::from_static("default-src 'self'"),
+        );
         test_headers.insert("X-Frame-Options", HeaderValue::from_static("DENY"));
-        test_headers.insert("X-Content-Type-Options", HeaderValue::from_static("nosniff"));
-        
+        test_headers.insert(
+            "X-Content-Type-Options",
+            HeaderValue::from_static("nosniff"),
+        );
+
         let issues = headers.validate_response_headers(&test_headers);
         assert!(issues.len() < 3); // Should have fewer issues now
     }
@@ -331,10 +345,10 @@ mod tests {
         let config = SecurityHeadersConfig::new()
             .with_custom_header("X-Custom-Security", "enabled")
             .with_custom_header("X-API-Version", "1.0");
-        
+
         let headers = SecurityHeaders::with_config(config);
         let request_headers = headers.build_request_headers();
-        
+
         assert!(request_headers.contains_key("X-Custom-Security"));
         assert!(request_headers.contains_key("X-API-Version"));
     }

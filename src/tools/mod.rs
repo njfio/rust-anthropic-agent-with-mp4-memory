@@ -176,10 +176,7 @@ pub fn create_tool_definition(
 }
 
 /// Helper function to extract string parameter from tool input
-pub fn extract_string_param(
-    input: &serde_json::Value,
-    param_name: &str,
-) -> Result<String> {
+pub fn extract_string_param(input: &serde_json::Value, param_name: &str) -> Result<String> {
     input
         .get(param_name)
         .and_then(|v| v.as_str())
@@ -201,10 +198,7 @@ pub fn extract_optional_string_param(
 }
 
 /// Helper function to extract integer parameter from tool input
-pub fn extract_int_param(
-    input: &serde_json::Value,
-    param_name: &str,
-) -> Result<i64> {
+pub fn extract_int_param(input: &serde_json::Value, param_name: &str) -> Result<i64> {
     input
         .get(param_name)
         .and_then(|v| v.as_i64())
@@ -214,18 +208,12 @@ pub fn extract_int_param(
 }
 
 /// Helper function to extract optional integer parameter from tool input
-pub fn extract_optional_int_param(
-    input: &serde_json::Value,
-    param_name: &str,
-) -> Option<i64> {
+pub fn extract_optional_int_param(input: &serde_json::Value, param_name: &str) -> Option<i64> {
     input.get(param_name).and_then(|v| v.as_i64())
 }
 
 /// Helper function to extract boolean parameter from tool input
-pub fn extract_bool_param(
-    input: &serde_json::Value,
-    param_name: &str,
-) -> Result<bool> {
+pub fn extract_bool_param(input: &serde_json::Value, param_name: &str) -> Result<bool> {
     input
         .get(param_name)
         .and_then(|v| v.as_bool())
@@ -235,10 +223,7 @@ pub fn extract_bool_param(
 }
 
 /// Helper function to extract optional boolean parameter from tool input
-pub fn extract_optional_bool_param(
-    input: &serde_json::Value,
-    param_name: &str,
-) -> Option<bool> {
+pub fn extract_optional_bool_param(input: &serde_json::Value, param_name: &str) -> Option<bool> {
     input.get(param_name).and_then(|v| v.as_bool())
 }
 
@@ -266,7 +251,10 @@ mod tests {
             "bool_param": true
         });
 
-        assert_eq!(extract_string_param(&input, "string_param").unwrap(), "test");
+        assert_eq!(
+            extract_string_param(&input, "string_param").unwrap(),
+            "test"
+        );
         assert_eq!(extract_int_param(&input, "int_param").unwrap(), 42);
         assert_eq!(extract_bool_param(&input, "bool_param").unwrap(), true);
 

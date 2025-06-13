@@ -4,27 +4,31 @@ use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 
-use crate::utils::error::{AgentError, Result};
 use super::{RateLimitConfig, RateLimitStorageBackend};
+use crate::utils::error::{AgentError, Result};
 
 /// Rate limiting service trait
 #[async_trait]
 pub trait RateLimitService: Send + Sync {
     /// Check if a request is allowed
-    async fn check_rate_limit(&self, key: &str, limit_type: RateLimitType) -> Result<RateLimitResult>;
-    
+    async fn check_rate_limit(
+        &self,
+        key: &str,
+        limit_type: RateLimitType,
+    ) -> Result<RateLimitResult>;
+
     /// Record a request
     async fn record_request(&self, key: &str, limit_type: RateLimitType) -> Result<()>;
-    
+
     /// Get current usage for a key
     async fn get_usage(&self, key: &str, limit_type: RateLimitType) -> Result<RateLimitUsage>;
-    
+
     /// Reset rate limit for a key
     async fn reset_limit(&self, key: &str, limit_type: RateLimitType) -> Result<()>;
-    
+
     /// Get rate limit statistics
     async fn get_statistics(&self) -> Result<RateLimitStatistics>;
-    
+
     /// Clean up expired entries
     async fn cleanup_expired(&self) -> Result<u32>;
 }
@@ -154,7 +158,11 @@ impl MemoryRateLimitService {
     }
 
     /// Calculate reset time
-    fn calculate_reset_time(&self, entry: &RateLimitEntry, limit_type: &RateLimitType) -> SystemTime {
+    fn calculate_reset_time(
+        &self,
+        entry: &RateLimitEntry,
+        limit_type: &RateLimitType,
+    ) -> SystemTime {
         let window_duration = self.get_window_duration(limit_type);
         entry.window_start + window_duration
     }
@@ -166,13 +174,20 @@ impl MemoryRateLimitService {
         if blocked {
             stats.blocked_requests += 1;
         }
-        *stats.requests_by_type.entry(limit_type.clone()).or_insert(0) += 1;
+        *stats
+            .requests_by_type
+            .entry(limit_type.clone())
+            .or_insert(0) += 1;
     }
 }
 
 #[async_trait]
 impl RateLimitService for MemoryRateLimitService {
-    async fn check_rate_limit(&self, key: &str, limit_type: RateLimitType) -> Result<RateLimitResult> {
+    async fn check_rate_limit(
+        &self,
+        key: &str,
+        limit_type: RateLimitType,
+    ) -> Result<RateLimitResult> {
         if !self.config.enabled {
             return Ok(RateLimitResult {
                 allowed: true,
@@ -201,7 +216,8 @@ impl RateLimitService for MemoryRateLimitService {
                     })
                 } else {
                     // Check if within limit
-                    let allowed = entry.count < limit || entry.count < limit + self.config.burst_allowance;
+                    let allowed =
+                        entry.count < limit || entry.count < limit + self.config.burst_allowance;
                     let reset_time = self.calculate_reset_time(entry, &limit_type);
                     let reset_seconds = reset_time
                         .duration_since(SystemTime::now())
@@ -213,7 +229,7 @@ impl RateLimitService for MemoryRateLimitService {
                         current_count: entry.count,
                         limit,
                         reset_time_seconds: reset_seconds,
-                        remaining: if entry.count < limit { limit - entry.count } else { 0 },
+                        remaining: limit.saturating_sub(entry.count),
                     })
                 }
             } else {
@@ -261,11 +277,14 @@ impl RateLimitService for MemoryRateLimitService {
             }
             None => {
                 // Create new entry
-                entries.insert(entry_key, RateLimitEntry {
-                    count: 1,
-                    window_start: now,
-                    last_request: now,
-                });
+                entries.insert(
+                    entry_key,
+                    RateLimitEntry {
+                        count: 1,
+                        window_start: now,
+                        last_request: now,
+                    },
+                );
             }
         }
 
@@ -280,7 +299,7 @@ impl RateLimitService for MemoryRateLimitService {
 
         if let Some(entry) = entries.get(&entry_key) {
             let reset_time = self.calculate_reset_time(entry, &limit_type);
-            
+
             Ok(RateLimitUsage {
                 count: entry.count,
                 limit,
@@ -310,48 +329,52 @@ impl RateLimitService for MemoryRateLimitService {
     async fn get_statistics(&self) -> Result<RateLimitStatistics> {
         let entries = self.entries.read().await;
         let mut stats = self.statistics.read().await.clone();
-        
+
         stats.active_keys = entries.len() as u32;
-        
+
         // Calculate top limited keys
         let mut key_counts: HashMap<String, u32> = HashMap::new();
         for ((key, _), entry) in entries.iter() {
             *key_counts.entry(key.clone()).or_insert(0) += entry.count;
         }
-        
+
         let mut top_keys: Vec<(String, u32)> = key_counts.into_iter().collect();
         top_keys.sort_by(|a, b| b.1.cmp(&a.1));
         top_keys.truncate(10); // Top 10
         stats.top_limited_keys = top_keys;
-        
+
         Ok(stats)
     }
 
     async fn cleanup_expired(&self) -> Result<u32> {
         let mut entries = self.entries.write().await;
         let mut removed_count = 0;
-        
+
         let expired_keys: Vec<_> = entries
             .iter()
             .filter(|((_, limit_type), entry)| self.is_window_expired(entry, limit_type))
             .map(|(key, _)| key.clone())
             .collect();
-        
+
         for key in expired_keys {
             entries.remove(&key);
             removed_count += 1;
         }
-        
+
         Ok(removed_count)
     }
 }
 
 /// Create a rate limiting service
-pub async fn create_rate_limit_service(config: &RateLimitConfig) -> Result<Box<dyn RateLimitService>> {
+pub async fn create_rate_limit_service(
+    config: &RateLimitConfig,
+) -> Result<Box<dyn RateLimitService>> {
     match config.storage_backend {
         RateLimitStorageBackend::Memory => {
             Ok(Box::new(MemoryRateLimitService::new(config.clone())))
         }
-        _ => Err(AgentError::validation("Rate limit storage backend not supported".to_string())),
+        _ => Err(AgentError::validation(
+            "Rate limit storage backend not supported".to_string(),
+        )),
     }
 }

@@ -1,12 +1,12 @@
 #[cfg(test)]
 mod tests {
     use crate::anthropic::client::AnthropicClient;
-    use crate::anthropic::models::{ChatRequest, ApiMessage};
+    use crate::anthropic::models::{ApiMessage, ChatRequest};
     use crate::config::AnthropicConfig;
     use crate::utils::error::AgentError;
-    use tokio::net::TcpListener;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
 
     fn create_test_config() -> AnthropicConfig {
         AnthropicConfig {
@@ -16,7 +16,7 @@ mod tests {
             max_tokens: 1000,
             temperature: 0.7,
             timeout_seconds: 5, // Short timeout for tests
-            max_retries: 2, // Fewer retries for tests
+            max_retries: 2,     // Fewer retries for tests
         }
     }
 
@@ -44,7 +44,7 @@ mod tests {
     async fn test_client_creation_with_invalid_timeout() {
         let mut config = create_test_config();
         config.timeout_seconds = 0; // Invalid timeout
-        
+
         // This should still work as reqwest handles 0 timeout gracefully
         let client = AnthropicClient::new(config);
         assert!(client.is_ok());
@@ -55,13 +55,13 @@ mod tests {
         let mut config = create_test_config();
         config.base_url = "http://192.0.2.1:80".to_string(); // Non-routable IP for timeout
         config.timeout_seconds = 1; // Very short timeout
-        
+
         let client = AnthropicClient::new(config).unwrap();
         let request = create_test_request();
-        
+
         let result = client.chat(request).await;
         assert!(result.is_err());
-        
+
         match result.unwrap_err() {
             AgentError::Http(_) | AgentError::AnthropicApi { .. } => {
                 // Expected - either HTTP error or API error
@@ -74,10 +74,10 @@ mod tests {
     async fn test_invalid_url_error() {
         let mut config = create_test_config();
         config.base_url = "not-a-valid-url".to_string();
-        
+
         let client = AnthropicClient::new(config).unwrap();
         let request = create_test_request();
-        
+
         let result = client.chat(request).await;
         assert!(result.is_err());
     }
@@ -90,17 +90,13 @@ mod tests {
 
         let server = tokio::spawn(async move {
             // Add timeout to prevent hanging
-            let accept_result = tokio::time::timeout(
-                Duration::from_secs(5),
-                listener.accept()
-            ).await;
+            let accept_result =
+                tokio::time::timeout(Duration::from_secs(5), listener.accept()).await;
 
             if let Ok(Ok((mut socket, _))) = accept_result {
                 let mut buffer = [0; 1024];
-                let _ = tokio::time::timeout(
-                    Duration::from_secs(1),
-                    socket.read(&mut buffer)
-                ).await;
+                let _ =
+                    tokio::time::timeout(Duration::from_secs(1), socket.read(&mut buffer)).await;
 
                 let response = "HTTP/1.1 401 Unauthorized\r\n\
                                Content-Type: application/json\r\n\
@@ -119,10 +115,7 @@ mod tests {
         let request = create_test_request();
 
         // Add timeout to the test itself
-        let result = tokio::time::timeout(
-            Duration::from_secs(10),
-            client.chat(request)
-        ).await;
+        let result = tokio::time::timeout(Duration::from_secs(10), client.chat(request)).await;
 
         match result {
             Ok(Ok(_)) => panic!("Expected error but got success"),
@@ -150,17 +143,13 @@ mod tests {
 
         let server = tokio::spawn(async move {
             // Add timeout to prevent hanging
-            let accept_result = tokio::time::timeout(
-                Duration::from_secs(5),
-                listener.accept()
-            ).await;
+            let accept_result =
+                tokio::time::timeout(Duration::from_secs(5), listener.accept()).await;
 
             if let Ok(Ok((mut socket, _))) = accept_result {
                 let mut buffer = [0; 1024];
-                let _ = tokio::time::timeout(
-                    Duration::from_secs(1),
-                    socket.read(&mut buffer)
-                ).await;
+                let _ =
+                    tokio::time::timeout(Duration::from_secs(1), socket.read(&mut buffer)).await;
 
                 let response = "HTTP/1.1 429 Too Many Requests\r\n\
                                Content-Type: application/json\r\n\
@@ -179,10 +168,7 @@ mod tests {
         let request = create_test_request();
 
         // Add timeout to the test itself
-        let result = tokio::time::timeout(
-            Duration::from_secs(10),
-            client.chat(request)
-        ).await;
+        let result = tokio::time::timeout(Duration::from_secs(10), client.chat(request)).await;
 
         match result {
             Ok(Ok(_)) => panic!("Expected error but got success"),
@@ -211,17 +197,13 @@ mod tests {
         let server = tokio::spawn(async move {
             // Add timeout to prevent hanging
             for _ in 0..2 {
-                let accept_result = tokio::time::timeout(
-                    Duration::from_secs(5),
-                    listener.accept()
-                ).await;
+                let accept_result =
+                    tokio::time::timeout(Duration::from_secs(5), listener.accept()).await;
 
                 if let Ok(Ok((mut socket, _))) = accept_result {
                     let mut buffer = [0; 1024];
-                    let _ = tokio::time::timeout(
-                        Duration::from_secs(1),
-                        socket.read(&mut buffer)
-                    ).await;
+                    let _ = tokio::time::timeout(Duration::from_secs(1), socket.read(&mut buffer))
+                        .await;
 
                     let error_response = "HTTP/1.1 500 Internal Server Error\r\n\
                                          Content-Type: application/json\r\n\
@@ -246,10 +228,7 @@ mod tests {
         let request = create_test_request();
 
         // Add timeout to the test itself
-        let result = tokio::time::timeout(
-            Duration::from_secs(10),
-            client.chat(request)
-        ).await;
+        let result = tokio::time::timeout(Duration::from_secs(10), client.chat(request)).await;
 
         match result {
             Ok(Ok(_)) => {
@@ -277,17 +256,13 @@ mod tests {
 
         let server = tokio::spawn(async move {
             // Add timeout to prevent hanging
-            let accept_result = tokio::time::timeout(
-                Duration::from_secs(5),
-                listener.accept()
-            ).await;
+            let accept_result =
+                tokio::time::timeout(Duration::from_secs(5), listener.accept()).await;
 
             if let Ok(Ok((mut socket, _))) = accept_result {
                 let mut buffer = [0; 1024];
-                let _ = tokio::time::timeout(
-                    Duration::from_secs(1),
-                    socket.read(&mut buffer)
-                ).await;
+                let _ =
+                    tokio::time::timeout(Duration::from_secs(1), socket.read(&mut buffer)).await;
 
                 let response = "HTTP/1.1 529 Service Overloaded\r\n\
                                Content-Type: application/json\r\n\
@@ -311,10 +286,7 @@ mod tests {
         let request = create_test_request();
 
         // Add timeout to the test itself
-        let result = tokio::time::timeout(
-            Duration::from_secs(10),
-            client.chat(request)
-        ).await;
+        let result = tokio::time::timeout(Duration::from_secs(10), client.chat(request)).await;
 
         match result {
             Ok(Ok(_)) => panic!("Expected error but got success"),
@@ -343,17 +315,13 @@ mod tests {
 
         let server = tokio::spawn(async move {
             // Add timeout to prevent hanging
-            let accept_result = tokio::time::timeout(
-                Duration::from_secs(5),
-                listener.accept()
-            ).await;
+            let accept_result =
+                tokio::time::timeout(Duration::from_secs(5), listener.accept()).await;
 
             if let Ok(Ok((mut socket, _))) = accept_result {
                 let mut buffer = [0; 1024];
-                let _ = tokio::time::timeout(
-                    Duration::from_secs(1),
-                    socket.read(&mut buffer)
-                ).await;
+                let _ =
+                    tokio::time::timeout(Duration::from_secs(1), socket.read(&mut buffer)).await;
 
                 let response = "HTTP/1.1 200 OK\r\n\
                                Content-Type: application/json\r\n\
@@ -376,10 +344,7 @@ mod tests {
         let request = create_test_request();
 
         // Add timeout to the test itself
-        let result = tokio::time::timeout(
-            Duration::from_secs(10),
-            client.chat(request)
-        ).await;
+        let result = tokio::time::timeout(Duration::from_secs(10), client.chat(request)).await;
 
         match result {
             Ok(Ok(_)) => panic!("Expected error but got success"),
@@ -403,11 +368,11 @@ mod tests {
     async fn test_config_update() {
         let config = create_test_config();
         let mut client = AnthropicClient::new(config).unwrap();
-        
+
         let mut new_config = create_test_config();
         new_config.timeout_seconds = 10;
         new_config.model = "claude-new".to_string();
-        
+
         let result = client.update_config(new_config.clone());
         assert!(result.is_ok());
         assert_eq!(client.config().timeout_seconds, 10);

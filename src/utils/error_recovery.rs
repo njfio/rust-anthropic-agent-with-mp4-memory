@@ -1,6 +1,6 @@
-use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tokio::time::sleep;
 
 use crate::utils::error::{AgentError, Result};
@@ -29,9 +29,7 @@ pub enum RecoveryStrategy {
         fallback_fn: String, // Function name for fallback
     },
     /// Graceful degradation
-    GracefulDegradation {
-        reduced_functionality: bool,
-    },
+    GracefulDegradation { reduced_functionality: bool },
     /// No recovery - fail fast
     FailFast,
 }
@@ -52,25 +50,34 @@ pub struct ErrorRecoveryConfig {
 impl Default for ErrorRecoveryConfig {
     fn default() -> Self {
         let mut error_strategies = HashMap::new();
-        
+
         // Configure strategies for different error types
-        error_strategies.insert("network".to_string(), RecoveryStrategy::ExponentialBackoff {
-            max_retries: 3,
-            base_delay: Duration::from_millis(100),
-            max_delay: Duration::from_secs(5),
-        });
-        
-        error_strategies.insert("rate_limit".to_string(), RecoveryStrategy::FixedInterval {
-            max_retries: 5,
-            interval: Duration::from_secs(1),
-        });
-        
+        error_strategies.insert(
+            "network".to_string(),
+            RecoveryStrategy::ExponentialBackoff {
+                max_retries: 3,
+                base_delay: Duration::from_millis(100),
+                max_delay: Duration::from_secs(5),
+            },
+        );
+
+        error_strategies.insert(
+            "rate_limit".to_string(),
+            RecoveryStrategy::FixedInterval {
+                max_retries: 5,
+                interval: Duration::from_secs(1),
+            },
+        );
+
         error_strategies.insert("authentication".to_string(), RecoveryStrategy::FailFast);
-        
-        error_strategies.insert("memory".to_string(), RecoveryStrategy::GracefulDegradation {
-            reduced_functionality: true,
-        });
-        
+
+        error_strategies.insert(
+            "memory".to_string(),
+            RecoveryStrategy::GracefulDegradation {
+                reduced_functionality: true,
+            },
+        );
+
         Self {
             default_strategy: RecoveryStrategy::ExponentialBackoff {
                 max_retries: 2,
@@ -123,27 +130,51 @@ impl ErrorRecoveryManager {
         let start_time = Instant::now();
         let error_type = self.classify_error_type(operation_id);
         let strategy = self.get_strategy_for_error(&error_type);
-        
+
         match strategy {
-            RecoveryStrategy::ExponentialBackoff { max_retries, base_delay, max_delay } => {
+            RecoveryStrategy::ExponentialBackoff {
+                max_retries,
+                base_delay,
+                max_delay,
+            } => {
                 self.execute_with_exponential_backoff(
-                    operation_id, operation, max_retries, base_delay, max_delay, start_time
-                ).await
-            },
-            RecoveryStrategy::FixedInterval { max_retries, interval } => {
+                    operation_id,
+                    operation,
+                    max_retries,
+                    base_delay,
+                    max_delay,
+                    start_time,
+                )
+                .await
+            }
+            RecoveryStrategy::FixedInterval {
+                max_retries,
+                interval,
+            } => {
                 self.execute_with_fixed_interval(
-                    operation_id, operation, max_retries, interval, start_time
-                ).await
-            },
+                    operation_id,
+                    operation,
+                    max_retries,
+                    interval,
+                    start_time,
+                )
+                .await
+            }
             RecoveryStrategy::FailFast => {
                 // Execute once, fail immediately on error
                 operation().await
-            },
+            }
             _ => {
                 // For other strategies, use default exponential backoff
                 self.execute_with_exponential_backoff(
-                    operation_id, operation, 2, Duration::from_millis(50), Duration::from_secs(2), start_time
-                ).await
+                    operation_id,
+                    operation,
+                    2,
+                    Duration::from_millis(50),
+                    Duration::from_secs(2),
+                    start_time,
+                )
+                .await
             }
         }
     }
@@ -164,49 +195,66 @@ impl ErrorRecoveryManager {
     {
         let mut attempt = 0;
         let mut delay = base_delay;
-        
+
         loop {
             // Check if we've exceeded the maximum recovery time
             if start_time.elapsed() > self.config.max_recovery_time {
-                return Err(AgentError::tool("error_recovery", &format!(
-                    "Recovery timeout exceeded for operation: {}", operation_id
-                )));
+                return Err(AgentError::tool(
+                    "error_recovery",
+                    &format!("Recovery timeout exceeded for operation: {}", operation_id),
+                ));
             }
-            
+
             match operation().await {
                 Ok(result) => {
                     if attempt > 0 && self.config.enable_logging {
-                        tracing::info!("Operation {} succeeded after {} attempts", operation_id, attempt + 1);
+                        tracing::info!(
+                            "Operation {} succeeded after {} attempts",
+                            operation_id,
+                            attempt + 1
+                        );
                     }
                     return Ok(result);
-                },
+                }
                 Err(e) => {
                     attempt += 1;
-                    
+
                     // Record recovery attempt
-                    self.record_recovery_attempt(operation_id, RecoveryAttempt {
-                        attempt_number: attempt,
-                        strategy: RecoveryStrategy::ExponentialBackoff {
-                            max_retries,
-                            base_delay,
-                            max_delay,
+                    self.record_recovery_attempt(
+                        operation_id,
+                        RecoveryAttempt {
+                            attempt_number: attempt,
+                            strategy: RecoveryStrategy::ExponentialBackoff {
+                                max_retries,
+                                base_delay,
+                                max_delay,
+                            },
+                            error: e.to_string(),
+                            timestamp: Instant::now(),
+                            delay: Some(delay),
                         },
-                        error: e.to_string(),
-                        timestamp: Instant::now(),
-                        delay: Some(delay),
-                    });
-                    
+                    );
+
                     if attempt >= max_retries {
-                        return Err(AgentError::tool("error_recovery", &format!(
-                            "Operation {} failed after {} attempts: {}", operation_id, max_retries, e
-                        )));
+                        return Err(AgentError::tool(
+                            "error_recovery",
+                            &format!(
+                                "Operation {} failed after {} attempts: {}",
+                                operation_id, max_retries, e
+                            ),
+                        ));
                     }
-                    
+
                     if self.config.enable_logging {
-                        tracing::warn!("Operation {} failed (attempt {}), retrying in {:?}: {}", 
-                                     operation_id, attempt, delay, e);
+                        tracing::warn!(
+                            "Operation {} failed (attempt {}), retrying in {:?}: {}",
+                            operation_id,
+                            attempt,
+                            delay,
+                            e
+                        );
                     }
-                    
+
                     sleep(delay).await;
                     delay = std::cmp::min(delay * 2, max_delay);
                 }
@@ -228,45 +276,65 @@ impl ErrorRecoveryManager {
         Fut: std::future::Future<Output = Result<T>> + Send,
     {
         let mut attempt = 0;
-        
+
         loop {
             // Check if we've exceeded the maximum recovery time
             if start_time.elapsed() > self.config.max_recovery_time {
-                return Err(AgentError::tool("error_recovery", &format!(
-                    "Recovery timeout exceeded for operation: {}", operation_id
-                )));
+                return Err(AgentError::tool(
+                    "error_recovery",
+                    &format!("Recovery timeout exceeded for operation: {}", operation_id),
+                ));
             }
-            
+
             match operation().await {
                 Ok(result) => {
                     if attempt > 0 && self.config.enable_logging {
-                        tracing::info!("Operation {} succeeded after {} attempts", operation_id, attempt + 1);
+                        tracing::info!(
+                            "Operation {} succeeded after {} attempts",
+                            operation_id,
+                            attempt + 1
+                        );
                     }
                     return Ok(result);
-                },
+                }
                 Err(e) => {
                     attempt += 1;
-                    
+
                     // Record recovery attempt
-                    self.record_recovery_attempt(operation_id, RecoveryAttempt {
-                        attempt_number: attempt,
-                        strategy: RecoveryStrategy::FixedInterval { max_retries, interval },
-                        error: e.to_string(),
-                        timestamp: Instant::now(),
-                        delay: Some(interval),
-                    });
-                    
+                    self.record_recovery_attempt(
+                        operation_id,
+                        RecoveryAttempt {
+                            attempt_number: attempt,
+                            strategy: RecoveryStrategy::FixedInterval {
+                                max_retries,
+                                interval,
+                            },
+                            error: e.to_string(),
+                            timestamp: Instant::now(),
+                            delay: Some(interval),
+                        },
+                    );
+
                     if attempt >= max_retries {
-                        return Err(AgentError::tool("error_recovery", &format!(
-                            "Operation {} failed after {} attempts: {}", operation_id, max_retries, e
-                        )));
+                        return Err(AgentError::tool(
+                            "error_recovery",
+                            &format!(
+                                "Operation {} failed after {} attempts: {}",
+                                operation_id, max_retries, e
+                            ),
+                        ));
                     }
-                    
+
                     if self.config.enable_logging {
-                        tracing::warn!("Operation {} failed (attempt {}), retrying in {:?}: {}", 
-                                     operation_id, attempt, interval, e);
+                        tracing::warn!(
+                            "Operation {} failed (attempt {}), retrying in {:?}: {}",
+                            operation_id,
+                            attempt,
+                            interval,
+                            e
+                        );
                     }
-                    
+
                     sleep(interval).await;
                 }
             }
@@ -275,7 +343,10 @@ impl ErrorRecoveryManager {
 
     /// Classify error type based on operation ID and context
     fn classify_error_type(&self, operation_id: &str) -> String {
-        if operation_id.contains("network") || operation_id.contains("http") || operation_id.contains("api") {
+        if operation_id.contains("network")
+            || operation_id.contains("http")
+            || operation_id.contains("api")
+        {
             "network".to_string()
         } else if operation_id.contains("auth") || operation_id.contains("login") {
             "authentication".to_string()
@@ -290,7 +361,8 @@ impl ErrorRecoveryManager {
 
     /// Get recovery strategy for error type
     fn get_strategy_for_error(&self, error_type: &str) -> RecoveryStrategy {
-        self.config.error_strategies
+        self.config
+            .error_strategies
             .get(error_type)
             .cloned()
             .unwrap_or_else(|| self.config.default_strategy.clone())
@@ -299,7 +371,8 @@ impl ErrorRecoveryManager {
     /// Record a recovery attempt
     fn record_recovery_attempt(&self, operation_id: &str, attempt: RecoveryAttempt) {
         if let Ok(mut history) = self.recovery_history.lock() {
-            history.entry(operation_id.to_string())
+            history
+                .entry(operation_id.to_string())
                 .or_insert_with(Vec::new)
                 .push(attempt);
         }
@@ -352,22 +425,22 @@ impl RecoveryStats {
         let mut failed_recoveries = 0;
         let mut total_recovery_time = Duration::new(0, 0);
         let mut error_counts = HashMap::new();
-        
+
         // Group attempts by operation (assuming consecutive attempts are for the same operation)
         let mut current_operation_attempts = 0;
         let mut operation_success_attempts = Vec::new();
-        
+
         for (i, attempt) in attempts.iter().enumerate() {
             current_operation_attempts += 1;
-            
+
             // Count error types
             *error_counts.entry(attempt.error.clone()).or_insert(0) += 1;
-            
+
             // Check if this is the last attempt or if the next attempt is for a new operation
             let is_last_attempt = i == attempts.len() - 1;
-            let is_operation_end = is_last_attempt || 
-                (i + 1 < attempts.len() && attempts[i + 1].attempt_number == 1);
-            
+            let is_operation_end =
+                is_last_attempt || (i + 1 < attempts.len() && attempts[i + 1].attempt_number == 1);
+
             if is_operation_end {
                 if attempt.error.contains("succeeded") || attempt.attempt_number == 1 {
                     successful_recoveries += 1;
@@ -377,22 +450,24 @@ impl RecoveryStats {
                 }
                 current_operation_attempts = 0;
             }
-            
+
             if let Some(delay) = attempt.delay {
                 total_recovery_time += delay;
             }
         }
-        
+
         let average_attempts_to_success = if !operation_success_attempts.is_empty() {
-            operation_success_attempts.iter().sum::<usize>() as f64 / operation_success_attempts.len() as f64
+            operation_success_attempts.iter().sum::<usize>() as f64
+                / operation_success_attempts.len() as f64
         } else {
             0.0
         };
-        
-        let most_common_error = error_counts.into_iter()
+
+        let most_common_error = error_counts
+            .into_iter()
             .max_by_key(|(_, count)| *count)
             .map(|(error, _)| error);
-        
+
         Self {
             total_attempts,
             successful_recoveries,
@@ -435,13 +510,23 @@ mod tests {
             })
         };
 
-        let result = manager.execute_with_recovery("test_operation", operation).await;
-        assert!(result.is_ok(), "Expected success but got error: {:?}", result.err());
+        let result = manager
+            .execute_with_recovery("test_operation", operation)
+            .await;
+        assert!(
+            result.is_ok(),
+            "Expected success but got error: {:?}",
+            result.err()
+        );
         assert_eq!(result.unwrap(), "Success");
 
         // Should have made exactly 3 attempts (fails on 0, 1, succeeds on 2)
         let final_count = call_count.load(Ordering::SeqCst);
-        assert_eq!(final_count, 3, "Expected exactly 3 attempts, got {}", final_count);
+        assert_eq!(
+            final_count, 3,
+            "Expected exactly 3 attempts, got {}",
+            final_count
+        );
     }
 
     #[tokio::test]
@@ -465,7 +550,9 @@ mod tests {
             })
         };
 
-        let result = manager.execute_with_recovery("test_operation", operation).await;
+        let result = manager
+            .execute_with_recovery("test_operation", operation)
+            .await;
         assert!(result.is_err());
         assert_eq!(call_count.load(Ordering::SeqCst), 2);
     }
@@ -473,10 +560,13 @@ mod tests {
     #[tokio::test]
     async fn test_fixed_interval_recovery() {
         let mut config = ErrorRecoveryConfig::default();
-        config.error_strategies.insert("test".to_string(), RecoveryStrategy::FixedInterval {
-            max_retries: 3,
-            interval: Duration::from_millis(1),
-        });
+        config.error_strategies.insert(
+            "test".to_string(),
+            RecoveryStrategy::FixedInterval {
+                max_retries: 3,
+                interval: Duration::from_millis(1),
+            },
+        );
 
         let manager = ErrorRecoveryManager::new(config);
 
@@ -494,7 +584,9 @@ mod tests {
             })
         };
 
-        let result = manager.execute_with_recovery("test_operation", operation).await;
+        let result = manager
+            .execute_with_recovery("test_operation", operation)
+            .await;
         assert!(result.is_ok());
         assert_eq!(call_count.load(Ordering::SeqCst), 2);
     }
@@ -502,7 +594,9 @@ mod tests {
     #[tokio::test]
     async fn test_fail_fast_strategy() {
         let mut config = ErrorRecoveryConfig::default();
-        config.error_strategies.insert("auth".to_string(), RecoveryStrategy::FailFast);
+        config
+            .error_strategies
+            .insert("auth".to_string(), RecoveryStrategy::FailFast);
 
         let manager = ErrorRecoveryManager::new(config);
 
@@ -516,7 +610,9 @@ mod tests {
             })
         };
 
-        let result = manager.execute_with_recovery("auth_operation", operation).await;
+        let result = manager
+            .execute_with_recovery("auth_operation", operation)
+            .await;
         assert!(result.is_err());
         assert_eq!(call_count.load(Ordering::SeqCst), 1);
     }
@@ -530,7 +626,10 @@ mod tests {
         assert_eq!(manager.classify_error_type("http_call"), "network");
         assert_eq!(manager.classify_error_type("api_request"), "network");
         assert_eq!(manager.classify_error_type("auth_login"), "authentication");
-        assert_eq!(manager.classify_error_type("rate_limit_check"), "rate_limit");
+        assert_eq!(
+            manager.classify_error_type("rate_limit_check"),
+            "rate_limit"
+        );
         assert_eq!(manager.classify_error_type("memory_allocation"), "memory");
         assert_eq!(manager.classify_error_type("unknown_operation"), "unknown");
     }
@@ -541,21 +640,27 @@ mod tests {
         let manager = ErrorRecoveryManager::new(config);
 
         // Record some recovery attempts
-        manager.record_recovery_attempt("test_op", RecoveryAttempt {
-            attempt_number: 1,
-            strategy: RecoveryStrategy::FailFast,
-            error: "First error".to_string(),
-            timestamp: Instant::now(),
-            delay: Some(Duration::from_millis(100)),
-        });
+        manager.record_recovery_attempt(
+            "test_op",
+            RecoveryAttempt {
+                attempt_number: 1,
+                strategy: RecoveryStrategy::FailFast,
+                error: "First error".to_string(),
+                timestamp: Instant::now(),
+                delay: Some(Duration::from_millis(100)),
+            },
+        );
 
-        manager.record_recovery_attempt("test_op", RecoveryAttempt {
-            attempt_number: 2,
-            strategy: RecoveryStrategy::FailFast,
-            error: "Second error".to_string(),
-            timestamp: Instant::now(),
-            delay: Some(Duration::from_millis(200)),
-        });
+        manager.record_recovery_attempt(
+            "test_op",
+            RecoveryAttempt {
+                attempt_number: 2,
+                strategy: RecoveryStrategy::FailFast,
+                error: "Second error".to_string(),
+                timestamp: Instant::now(),
+                delay: Some(Duration::from_millis(200)),
+            },
+        );
 
         let stats = manager.get_recovery_stats("test_op");
         assert!(stats.is_some());
@@ -578,12 +683,14 @@ mod tests {
         let manager = ErrorRecoveryManager::new(config);
 
         let operation = || {
-            Box::pin(async move {
-                Err::<&str, AgentError>(AgentError::tool("test", "Always fails"))
-            })
+            Box::pin(
+                async move { Err::<&str, AgentError>(AgentError::tool("test", "Always fails")) },
+            )
         };
 
-        let result = manager.execute_with_recovery("timeout_test", operation).await;
+        let result = manager
+            .execute_with_recovery("timeout_test", operation)
+            .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("timeout"));
     }
@@ -617,7 +724,10 @@ mod tests {
         assert!(config.error_strategies.contains_key("authentication"));
         assert!(config.error_strategies.contains_key("memory"));
 
-        assert_eq!(config.error_strategies["authentication"], RecoveryStrategy::FailFast);
+        assert_eq!(
+            config.error_strategies["authentication"],
+            RecoveryStrategy::FailFast
+        );
         assert!(config.enable_logging);
         assert_eq!(config.max_recovery_time, Duration::from_secs(30));
     }
