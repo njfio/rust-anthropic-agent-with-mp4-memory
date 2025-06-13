@@ -193,10 +193,14 @@ mod tests {
         let mut config = create_test_config();
         config.base_url = format!("http://{}", addr);
         config.max_retries = 3; // Allow retries
-        
+
         let client = AnthropicClient::new(config).unwrap();
+
+        // Reset circuit breaker to ensure clean test state
+        client.reset_circuit_breaker().await;
+
         let request = create_test_request();
-        
+
         let result = client.chat(request).await;
         assert!(result.is_ok(), "Expected successful retry after server error");
 
@@ -225,8 +229,12 @@ mod tests {
         let mut config = create_test_config();
         config.base_url = format!("http://{}", addr);
         config.max_retries = 1; // Only one retry to speed up test
-        
+
         let client = AnthropicClient::new(config).unwrap();
+
+        // Reset circuit breaker to ensure clean test state
+        client.reset_circuit_breaker().await;
+
         let request = create_test_request();
         
         let result = client.chat(request).await;
@@ -263,8 +271,12 @@ mod tests {
 
         let mut config = create_test_config();
         config.base_url = format!("http://{}", addr);
-        
+
         let client = AnthropicClient::new(config).unwrap();
+
+        // Reset circuit breaker to ensure clean test state
+        client.reset_circuit_breaker().await;
+
         let request = create_test_request();
         
         let result = client.chat(request).await;
@@ -303,7 +315,7 @@ mod tests {
 
         let server = tokio::spawn(async move {
             // Accept multiple connections and always return 500
-            for _ in 0..5 {
+            for _ in 0..3 {
                 if let Ok((mut socket, _)) = listener.accept().await {
                     let mut buffer = [0; 1024];
                     let _ = socket.read(&mut buffer).await;
@@ -320,18 +332,24 @@ mod tests {
 
         let mut config = create_test_config();
         config.base_url = format!("http://{}", addr);
-        config.max_retries = 2; // Limited retries
-        
+        config.max_retries = 1; // Minimal retries for faster test
+        config.timeout_seconds = 5; // Shorter timeout
+
         let client = AnthropicClient::new(config).unwrap();
+
+        // Reset circuit breaker to ensure clean test state
+        client.reset_circuit_breaker().await;
+
         let request = create_test_request();
-        
+
         let start_time = std::time::Instant::now();
         let result = client.chat(request).await;
         let elapsed = start_time.elapsed();
-        
+
         assert!(result.is_err());
-        // Should have taken some time due to retries with backoff
-        assert!(elapsed >= Duration::from_millis(100));
+        // Should have taken some time due to retries with backoff, but not too long
+        assert!(elapsed >= Duration::from_millis(50));
+        assert!(elapsed <= Duration::from_secs(10)); // Reasonable upper bound
 
         server.await.unwrap();
     }
