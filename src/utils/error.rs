@@ -50,6 +50,10 @@ pub enum AgentError {
     #[error("Plugin error: {message}")]
     Plugin { message: String },
 
+    /// Validation errors
+    #[error("Validation error: {message}")]
+    Validation { message: String },
+
     /// Generic errors
     #[error("Agent error: {0}")]
     Generic(#[from] anyhow::Error),
@@ -109,6 +113,13 @@ impl AgentError {
     /// Create a new plugin error
     pub fn plugin<S: Into<String>>(message: S) -> Self {
         Self::Plugin {
+            message: message.into(),
+        }
+    }
+
+    /// Create a new validation error
+    pub fn validation<S: Into<String>>(message: S) -> Self {
+        Self::Validation {
             message: message.into(),
         }
     }
