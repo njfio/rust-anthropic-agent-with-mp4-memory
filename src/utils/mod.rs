@@ -6,3 +6,4 @@ pub mod audit_logger;
 pub mod circuit_breaker;
 pub mod security_headers;
 pub mod resource_monitor;
+pub mod error_recovery;
