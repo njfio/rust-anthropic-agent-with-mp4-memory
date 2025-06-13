@@ -138,15 +138,32 @@ impl Agent {
         let timeout_duration = std::time::Duration::from_secs(self.config.anthropic.timeout_seconds + 30);
         info!("Using timeout of {} seconds for API call", timeout_duration.as_secs());
 
-        let initial_api_call = self.anthropic_client.chat(request.clone());
-        let mut response = match tokio::time::timeout(timeout_duration, initial_api_call).await {
-            Ok(result) => {
-                info!("Initial API call completed successfully");
-                result?
+        // Use streaming if enabled, otherwise use regular chat
+        let mut response = if self.config.agent.enable_streaming {
+            info!("Using streaming API call");
+            let api_call = self.anthropic_client.chat_stream(request.clone());
+            match tokio::time::timeout(timeout_duration, api_call).await {
+                Ok(result) => {
+                    info!("Initial streaming API call completed successfully");
+                    result?
+                }
+                Err(_) => {
+                    error!("Initial streaming API call timed out after {} seconds!", timeout_duration.as_secs());
+                    return Err(AgentError::anthropic_api(format!("Initial streaming API call timed out after {} seconds - this may indicate a network issue or API problem", timeout_duration.as_secs())));
+                }
             }
-            Err(_) => {
-                error!("Initial API call timed out after {} seconds!", timeout_duration.as_secs());
-                return Err(AgentError::anthropic_api(format!("Initial API call timed out after {} seconds - this may indicate a network issue or API problem", timeout_duration.as_secs())));
+        } else {
+            info!("Using non-streaming API call");
+            let api_call = self.anthropic_client.chat(request.clone());
+            match tokio::time::timeout(timeout_duration, api_call).await {
+                Ok(result) => {
+                    info!("Initial API call completed successfully");
+                    result?
+                }
+                Err(_) => {
+                    error!("Initial API call timed out after {} seconds!", timeout_duration.as_secs());
+                    return Err(AgentError::anthropic_api(format!("Initial API call timed out after {} seconds - this may indicate a network issue or API problem", timeout_duration.as_secs())));
+                }
             }
         };
 
@@ -171,7 +188,7 @@ impl Agent {
                     match block {
                         crate::anthropic::models::ContentBlock::ToolUse { name, input, .. } |
                         crate::anthropic::models::ContentBlock::ServerToolUse { name, input, .. } => {
-                            Some(format!("{}:{}", name, serde_json::to_string(input).unwrap_or_default()))
+                            Some(format!("{}:{}", name, serde_json::to_string(&input).unwrap_or_default()))
                         }
                         _ => None,
                     }
@@ -392,17 +409,33 @@ impl Agent {
 
             // Add timeout to prevent infinite hanging (use HTTP client timeout + buffer)
             let timeout_duration = std::time::Duration::from_secs(self.config.anthropic.timeout_seconds + 30);
-            let api_call_future = self.anthropic_client.chat(request.clone());
-            match tokio::time::timeout(timeout_duration, api_call_future).await {
-                Ok(result) => {
-                    response = result?;
-                    info!("Follow-up API call completed successfully");
+
+            // Use streaming if enabled, otherwise use regular chat
+            response = if self.config.agent.enable_streaming {
+                let api_call = self.anthropic_client.chat_stream(request.clone());
+                match tokio::time::timeout(timeout_duration, api_call).await {
+                    Ok(result) => {
+                        info!("Follow-up streaming API call completed successfully");
+                        result?
+                    }
+                    Err(_) => {
+                        error!("Follow-up streaming API call timed out after {} seconds!", timeout_duration.as_secs());
+                        return Err(AgentError::anthropic_api(format!("Follow-up streaming API call timed out after {} seconds - this may indicate a network issue or API problem", timeout_duration.as_secs())));
+                    }
                 }
-                Err(_) => {
-                    error!("Follow-up API call timed out after {} seconds!", timeout_duration.as_secs());
-                    return Err(AgentError::anthropic_api(format!("Follow-up API call timed out after {} seconds - this may indicate a network issue or API problem", timeout_duration.as_secs())));
+            } else {
+                let api_call = self.anthropic_client.chat(request.clone());
+                match tokio::time::timeout(timeout_duration, api_call).await {
+                    Ok(result) => {
+                        info!("Follow-up API call completed successfully");
+                        result?
+                    }
+                    Err(_) => {
+                        error!("Follow-up API call timed out after {} seconds!", timeout_duration.as_secs());
+                        return Err(AgentError::anthropic_api(format!("Follow-up API call timed out after {} seconds - this may indicate a network issue or API problem", timeout_duration.as_secs())));
+                    }
                 }
-            }
+            };
         }
 
         // Tool iterations completed (either no more tool uses or max iterations reached)
@@ -606,6 +639,16 @@ impl Agent {
     /// Set a custom system prompt
     pub fn set_system_prompt<S: Into<String>>(&mut self, prompt: Option<S>) {
         self.config.agent.system_prompt = prompt.map(|p| p.into());
+    }
+
+    /// Enable or disable streaming responses
+    pub fn set_streaming_enabled(&mut self, enabled: bool) {
+        self.config.agent.enable_streaming = enabled;
+    }
+
+    /// Check if streaming is enabled
+    pub fn is_streaming_enabled(&self) -> bool {
+        self.config.agent.enable_streaming
     }
 
     /// Validate and clean conversation history to prevent tool_use/tool_result pairing issues
