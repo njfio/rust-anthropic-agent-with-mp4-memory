@@ -13,6 +13,10 @@ categories = ["development-tools", "science", "text-processing"]
 name = "memvid-agent"
 path = "src/main.rs"
 
+[[example]]
+name = "caching_demo"
+path = "examples/caching_demo.rs"
+
 
 
 [dependencies]
