@@ -41,6 +41,7 @@ pub mod cli;
 pub mod compliance;
 pub mod config;
 pub mod memory;
+pub mod monitoring;
 pub mod plugins;
 pub mod security;
 pub mod tools;
