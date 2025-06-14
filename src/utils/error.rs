@@ -54,6 +54,10 @@ pub enum AgentError {
     #[error("Validation error: {message}")]
     Validation { message: String },
 
+    /// Security errors
+    #[error("Security error: {message}")]
+    Security { message: String },
+
     /// Generic errors
     #[error("Agent error: {0}")]
     Generic(#[from] anyhow::Error),
@@ -124,6 +128,13 @@ impl AgentError {
         }
     }
 
+    /// Create a new security error
+    pub fn security<S: Into<String>>(message: S) -> Self {
+        Self::Security {
+            message: message.into(),
+        }
+    }
+
     /// Check if this error is retryable
     pub fn is_retryable(&self) -> bool {
         matches!(
@@ -140,5 +151,10 @@ impl AgentError {
     /// Check if this error is due to rate limiting
     pub fn is_rate_limit(&self) -> bool {
         matches!(self, AgentError::RateLimit { .. })
+    }
+
+    /// Check if this error is due to security
+    pub fn is_security_error(&self) -> bool {
+        matches!(self, AgentError::Security { .. })
     }
 }

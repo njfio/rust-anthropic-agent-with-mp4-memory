@@ -600,6 +600,22 @@ impl SecurityManager {
 
         Ok(())
     }
+
+    /// Check if a user has permission to perform an action on a resource
+    pub async fn check_permission(
+        &self,
+        context: &SecurityContext,
+        resource: &str,
+        action: &str,
+    ) -> Result<bool> {
+        let authz_service = self.authz_service.read().await;
+        authz_service.check_permission(context, resource, action).await
+    }
+
+    /// Get authorization service (for advanced operations)
+    pub async fn get_authorization_service(&self) -> tokio::sync::RwLockReadGuard<'_, Box<dyn authorization::AuthorizationService>> {
+        self.authz_service.read().await
+    }
 }
 
 impl std::fmt::Debug for SecurityManager {

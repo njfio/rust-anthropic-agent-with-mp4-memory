@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::anthropic::{AnthropicClient, ChatMessage, ChatRequest, MessageRole};
 use crate::config::AgentConfig;
 use crate::memory::MemoryManager;
-use crate::security::SecurityManager;
+use crate::security::{SecurityManager, SecurityContext, SecurityEvent};
 use crate::utils::error::{AgentError, Result};
 
 pub use conversation::ConversationManager;
@@ -34,6 +34,8 @@ pub struct Agent {
     conversation_manager: ConversationManager,
     /// Security manager
     security_manager: Option<Arc<SecurityManager>>,
+    /// Current security context
+    security_context: Option<SecurityContext>,
     /// Current conversation ID
     current_conversation_id: Option<String>,
 }
@@ -101,8 +103,168 @@ impl Agent {
             tool_orchestrator,
             conversation_manager,
             security_manager,
+            security_context: None,
             current_conversation_id: None,
         })
+    }
+
+    /// Initialize security context for the agent
+    pub async fn initialize_security_context(
+        &mut self,
+        user_id: String,
+        ip_address: Option<String>,
+    ) -> Result<()> {
+        if let Some(security_manager) = &self.security_manager {
+            let context = security_manager
+                .create_context(user_id, ip_address)
+                .await?;
+
+            // Initialize default roles for agent operations
+            let mut enhanced_context = context;
+            enhanced_context.add_role("agent_user".to_string());
+            enhanced_context.add_permission("chat".to_string());
+            enhanced_context.add_permission("tool_execution".to_string());
+            enhanced_context.add_permission("memory_access".to_string());
+
+            self.security_context = Some(enhanced_context);
+
+            info!("Security context initialized for agent operations");
+        } else {
+            debug!("No security manager configured, skipping security context initialization");
+        }
+        Ok(())
+    }
+
+    /// Validate security context and check permissions
+    async fn validate_security_context(&self, action: &str, resource: &str) -> Result<bool> {
+        if let (Some(security_manager), Some(context)) = (&self.security_manager, &self.security_context) {
+            // Validate the security context
+            if !security_manager.validate_context(context).await? {
+                return Err(AgentError::security("Invalid security context".to_string()));
+            }
+
+            // Check specific permission for the action
+            let has_permission = security_manager
+                .check_permission(context, resource, action)
+                .await?;
+
+            if !has_permission {
+                // Log authorization failure
+                security_manager
+                    .log_security_event(SecurityEvent::AuthorizationCheck {
+                        user_id: context.user_id.clone(),
+                        resource: resource.to_string(),
+                        action: action.to_string(),
+                        granted: false,
+                    })
+                    .await?;
+
+                return Err(AgentError::security(format!(
+                    "Permission denied: {} on {}",
+                    action, resource
+                )));
+            }
+
+            // Log successful authorization
+            security_manager
+                .log_security_event(SecurityEvent::AuthorizationCheck {
+                    user_id: context.user_id.clone(),
+                    resource: resource.to_string(),
+                    action: action.to_string(),
+                    granted: true,
+                })
+                .await?;
+
+            Ok(true)
+        } else {
+            // If no security manager is configured, allow the operation but log it
+            debug!("No security context available, allowing operation: {} on {}", action, resource);
+            Ok(true)
+        }
+    }
+
+    /// Validate and sanitize input message for security
+    async fn validate_input_message(&self, message: &str) -> Result<String> {
+        if let Some(security_manager) = &self.security_manager {
+            // Check for potential security threats in the input
+            if message.len() > 50000 {
+                return Err(AgentError::security(
+                    "Input message exceeds maximum allowed length".to_string(),
+                ));
+            }
+
+            // Check for potential injection patterns
+            let suspicious_patterns = [
+                "javascript:",
+                "<script",
+                "eval(",
+                "exec(",
+                "system(",
+                "shell_exec(",
+                "passthru(",
+                "file_get_contents(",
+                "file_put_contents(",
+                "fopen(",
+                "fwrite(",
+                "include(",
+                "require(",
+            ];
+
+            let lower_message = message.to_lowercase();
+            for pattern in &suspicious_patterns {
+                if lower_message.contains(pattern) {
+                    // Log security incident
+                    if let Some(_context) = &self.security_context {
+                        security_manager
+                            .log_security_event(SecurityEvent::SecurityIncident {
+                                incident_type: "potential_injection".to_string(),
+                                severity: "medium".to_string(),
+                                description: format!("Suspicious pattern detected: {}", pattern),
+                            })
+                            .await?;
+                    }
+
+                    warn!("Suspicious pattern detected in input: {}", pattern);
+                }
+            }
+
+            // Basic sanitization - remove null bytes and control characters
+            let sanitized = message
+                .chars()
+                .filter(|c| !c.is_control() || *c == '\n' || *c == '\r' || *c == '\t')
+                .collect::<String>();
+
+            Ok(sanitized)
+        } else {
+            Ok(message.to_string())
+        }
+    }
+
+    /// Log security event for tool execution
+    async fn log_tool_execution_event(&self, tool_name: &str, _success: bool) -> Result<()> {
+        if let (Some(security_manager), Some(context)) = (&self.security_manager, &self.security_context) {
+            security_manager
+                .log_security_event(SecurityEvent::DataAccess {
+                    user_id: context.user_id.clone(),
+                    resource: format!("tool:{}", tool_name),
+                    action: "execute".to_string(),
+                    sensitive: tool_name.contains("file") || tool_name.contains("system"),
+                })
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Terminate security context
+    pub async fn terminate_security_context(&mut self, reason: String) -> Result<()> {
+        if let (Some(security_manager), Some(context)) = (&self.security_manager, &self.security_context) {
+            security_manager
+                .terminate_context(context, reason)
+                .await?;
+            self.security_context = None;
+            info!("Security context terminated");
+        }
+        Ok(())
     }
 
     /// Start a new conversation
@@ -119,13 +281,19 @@ impl Agent {
         let message = message.into();
         debug!("Processing chat message: {} chars", message.len());
 
+        // Security validation: Check permissions for chat operation
+        self.validate_security_context("chat", "conversation").await?;
+
+        // Security validation: Sanitize input message
+        let sanitized_message = self.validate_input_message(&message).await?;
+
         // Ensure we have an active conversation
         if self.current_conversation_id.is_none() {
             self.start_conversation(None).await?;
         }
 
-        // Add user message to conversation
-        let user_message = ChatMessage::user(message);
+        // Add user message to conversation (using sanitized message)
+        let user_message = ChatMessage::user(sanitized_message);
         self.conversation_manager
             .add_message(user_message.clone())
             .await?;
@@ -320,6 +488,18 @@ impl Agent {
             self.conversation_manager
                 .add_message(assistant_message)
                 .await?;
+
+            // Security validation: Check permissions for tool execution
+            self.validate_security_context("execute", "tools").await?;
+
+            // Log tool execution attempt for security audit
+            for block in &response.content {
+                if let crate::anthropic::models::ContentBlock::ToolUse { name, .. }
+                | crate::anthropic::models::ContentBlock::ServerToolUse { name, .. } = block
+                {
+                    self.log_tool_execution_event(name, true).await?;
+                }
+            }
 
             // Execute tools and collect results
             info!("Executing tools for iteration {}...", tool_iterations);
@@ -619,6 +799,9 @@ impl Agent {
         query: S,
         limit: usize,
     ) -> Result<Vec<crate::memory::SearchResult>> {
+        // Security validation: Check permissions for memory search
+        self.validate_security_context("read", "memory").await?;
+
         let memory_manager = self.memory_manager.lock().await;
         memory_manager.search_raw(&query.into(), limit).await
     }
@@ -629,6 +812,9 @@ impl Agent {
         content: S,
         entry_type: S,
     ) -> Result<()> {
+        // Security validation: Check permissions for memory write
+        self.validate_security_context("write", "memory").await?;
+
         let mut memory_manager = self.memory_manager.lock().await;
         let metadata = std::collections::HashMap::new();
         memory_manager
@@ -639,6 +825,9 @@ impl Agent {
 
     /// Get memory statistics
     pub async fn get_memory_stats(&self) -> Result<crate::memory::MemoryStats> {
+        // Security validation: Check permissions for memory stats
+        self.validate_security_context("read", "memory_stats").await?;
+
         let memory_manager = self.memory_manager.lock().await;
         memory_manager.get_stats().await
     }
@@ -659,6 +848,12 @@ impl Agent {
         tool_name: &str,
         input: serde_json::Value,
     ) -> Result<crate::tools::ToolResult> {
+        // Security validation: Check permissions for direct tool execution
+        self.validate_security_context("execute", "tools").await?;
+
+        // Log tool execution for security audit
+        self.log_tool_execution_event(tool_name, true).await?;
+
         self.tool_orchestrator
             .execute_tool_direct(tool_name, input)
             .await
