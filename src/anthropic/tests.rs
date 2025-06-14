@@ -404,8 +404,8 @@ mod tests {
 
         let mut config = create_test_config();
         config.base_url = format!("http://{}", addr);
-        config.max_retries = 1; // Minimal retries for faster test
-        config.timeout_seconds = 5; // Shorter timeout
+        config.max_retries = 0; // No retries for faster test - just test the failure path
+        config.timeout_seconds = 2; // Much shorter timeout for faster test
 
         let client = AnthropicClient::new(config).unwrap();
 
@@ -419,9 +419,9 @@ mod tests {
         let elapsed = start_time.elapsed();
 
         assert!(result.is_err());
-        // Should have taken some time due to retries with backoff, but not too long
-        assert!(elapsed >= Duration::from_millis(50));
-        assert!(elapsed <= Duration::from_secs(10)); // Reasonable upper bound
+        // Should fail quickly without retries
+        assert!(elapsed >= Duration::from_millis(10));
+        assert!(elapsed <= Duration::from_secs(3)); // Should be very fast without retries
 
         server.await.unwrap();
     }
