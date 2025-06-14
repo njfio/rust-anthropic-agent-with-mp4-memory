@@ -38,13 +38,13 @@
 pub mod agent;
 pub mod anthropic;
 pub mod cli;
+pub mod compliance;
 pub mod config;
 pub mod memory;
 pub mod plugins;
 pub mod security;
 pub mod tools;
 pub mod utils;
-// pub mod security;  // Temporarily disabled until files are created
 
 // Re-export main types for convenience
 pub use agent::{Agent, AgentBuilder};
