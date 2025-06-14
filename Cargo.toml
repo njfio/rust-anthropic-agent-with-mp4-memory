@@ -80,10 +80,10 @@ walkdir = "2.3"
 tempfile = "3.8"
 
 # Memory integration - using rust-synaptic (state-of-the-art AI memory system with FULL POWER!)
-synaptic = { git = "https://github.com/njfio/rust-synaptic.git", rev = "3aa522cb0d44074274261b4022c0921a7ffc4f1c", features = ["bincode"], default-features = false }
+synaptic = { git = "https://github.com/njfio/rust-synaptic.git", rev = "b446afa41d2cfeae18d715a03960a138b4457976", features = ["bincode"], default-features = false }
 
 # Code analysis integration - using rust-treesitter-agent-code-utility
-rust_tree_sitter = { git = "https://github.com/njfio/rust-treesitter-agent-code-utility.git", branch = "main" }
+rust_tree_sitter = { git = "https://github.com/njfio/rust-treesitter-agent-code-utility.git", rev = "ca16ef7968403b30fccfb6aa1ac610a72eeca2cc" }
 
 # Text processing
 regex = "1.0"
