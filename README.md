@@ -1,51 +1,51 @@
 # Rust Anthropic Agent
 
-A production-ready Rust agent system with Anthropic Claude integration, comprehensive audio processing, and enterprise security features.
+A Rust agent system with Anthropic Claude integration and audio processing capabilities.
 
 ## Features
 
 ### Core Agent System
-- **Anthropic Claude Integration**: Full support for Claude Sonnet 4 with proper tool calling
-- **Async/Await Architecture**: High-performance async operations throughout
-- **Tool System**: Extensible tool framework with built-in tools
-- **Memory Management**: JSON-based persistent memory with search capabilities
-- **Configuration**: Flexible TOML-based configuration system
-- **Error Handling**: Comprehensive error types and recovery mechanisms
+- **Anthropic Claude Integration**: Claude Sonnet 4 with tool calling
+- **Async/Await Architecture**: Async operations using tokio
+- **Tool System**: Tool framework with built-in tools
+- **Memory Management**: JSON-based persistent memory with search
+- **Configuration**: TOML-based configuration
+- **Error Handling**: Error types and recovery mechanisms
 
 ### Audio Processing System
 - **Multi-Format Support**: WAV, MP3, FLAC, OGG, AAC, M4A encoding/decoding
-- **Real-Time Streaming**: Cross-platform audio I/O with CPAL
+- **Audio I/O**: Cross-platform audio I/O with CPAL
 - **Audio Effects**: Noise reduction, normalization, filtering, fade effects
-- **Metadata Extraction**: Comprehensive audio metadata reading and validation
-- **Speech-to-Text**: OpenAI Whisper API integration for transcription
-- **Text-to-Speech**: OpenAI TTS API integration for synthesis
+- **Metadata Extraction**: Audio metadata reading and validation
+- **Speech-to-Text**: OpenAI Whisper API integration
+- **Text-to-Speech**: OpenAI TTS API integration
 - **Audio Analysis**: RMS, peak detection, dynamic range analysis
 
 ### Security Features
 - **Input Validation**: Path traversal protection, command injection prevention
-- **Rate Limiting**: Configurable per-tool and global rate limits
-- **Audit Logging**: Structured JSON logging with automatic rotation
-- **Resource Monitoring**: Memory and CPU usage monitoring with limits
-- **Security Headers**: HTTP security headers for web requests
+- **Rate Limiting**: Per-tool and global rate limits
+- **Audit Logging**: JSON logging with rotation
+- **Resource Monitoring**: Memory and CPU usage monitoring
+- **Security Headers**: HTTP security headers
 
 ## Built-in Tools
 
 - **Memory Tools**: Save, search, and manage persistent memory entries
 - **File System Tools**: Read, write, and list files with security validation
-- **Text Editor**: View and edit files with proper parameter handling
-- **HTTP Client**: Make web requests with security headers and domain filtering
-- **Audio Processing**: Comprehensive audio encoding, decoding, and effects processing
+- **Text Editor**: View and edit files
+- **HTTP Client**: Web requests with security headers and domain filtering
+- **Audio Processing**: Audio encoding, decoding, and effects processing
 - **UUID Generator**: Generate unique identifiers
 - **Shell Commands**: Execute system commands with security filtering
 
 ## Test Coverage
 
-The project includes comprehensive test coverage:
+Test coverage includes:
 
-- **Audio Module**: 34 tests covering all audio processing functionality
+- **Audio Module**: 34 tests covering audio processing functionality
 - **Security Tests**: Input validation, rate limiting, and audit logging
-- **Tool Tests**: All built-in tools with error handling scenarios
-- **Integration Tests**: End-to-end agent functionality
+- **Tool Tests**: Built-in tools with error handling scenarios
+- **Integration Tests**: Agent functionality
 - **Memory Tests**: JSON storage and search functionality
 
 ## Quick Start
@@ -89,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
     let response = agent.chat("Hello! Can you help me write some Rust code?").await?;
     println!("Agent: {}", response);
 
-    // The agent can use tools, search memory, and maintain context
+    // Agent can use tools, search memory, and maintain context
     let response = agent.chat("Save a note that I'm learning Rust").await?;
     println!("Agent: {}", response);
 
@@ -191,13 +191,13 @@ cargo test --features all-tools
 
 ## Architecture
 
-The system follows a modular architecture:
+System architecture:
 
 - **Agent Core**: Manages conversations and coordinates tool usage
-- **Tool System**: Extensible framework for adding new capabilities
+- **Tool System**: Framework for adding new capabilities
 - **Memory Manager**: JSON-based persistent storage with search
 - **Anthropic Client**: HTTP client with retry logic and error handling
-- **Audio Processing**: Comprehensive audio codec and effects system
+- **Audio Processing**: Audio codec and effects system
 - **Security Layer**: Input validation, rate limiting, and audit logging
 
 ## Dependencies
