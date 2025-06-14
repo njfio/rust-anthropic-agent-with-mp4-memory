@@ -616,6 +616,72 @@ impl SecurityManager {
     pub async fn get_authorization_service(&self) -> tokio::sync::RwLockReadGuard<'_, Box<dyn authorization::AuthorizationService>> {
         self.authz_service.read().await
     }
+
+    /// Encrypt sensitive data using the encryption service
+    pub async fn encrypt_data(&self, data: &[u8], key_id: &str) -> Result<encryption::EncryptedData> {
+        let encryption_service = self.encryption_service.read().await;
+        encryption_service.encrypt(data, key_id).await
+    }
+
+    /// Decrypt sensitive data using the encryption service
+    pub async fn decrypt_data(&self, encrypted_data: &encryption::EncryptedData, key_id: &str) -> Result<Vec<u8>> {
+        let encryption_service = self.encryption_service.read().await;
+        encryption_service.decrypt(encrypted_data, key_id).await
+    }
+
+    /// Encrypt a string using the encryption service
+    pub async fn encrypt_string(&self, data: &str, key_id: &str) -> Result<String> {
+        let encryption_service = self.encryption_service.read().await;
+        encryption_service.encrypt_string(data, key_id).await
+    }
+
+    /// Decrypt a string using the encryption service
+    pub async fn decrypt_string(&self, encrypted_data: &str, key_id: &str) -> Result<String> {
+        let encryption_service = self.encryption_service.read().await;
+        encryption_service.decrypt_string(encrypted_data, key_id).await
+    }
+
+    /// Generate an encryption key
+    pub async fn generate_encryption_key(&self, key_id: &str, algorithm: EncryptionAlgorithm) -> Result<()> {
+        let encryption_service = self.encryption_service.read().await;
+        encryption_service.generate_key(key_id, algorithm).await
+    }
+
+    /// Check if an encryption key exists
+    pub async fn encryption_key_exists(&self, key_id: &str) -> Result<bool> {
+        let encryption_service = self.encryption_service.read().await;
+        encryption_service.key_exists(key_id).await
+    }
+
+    /// Evaluate a security policy
+    pub async fn evaluate_policy(&self, policy_name: &str, context: &SecurityContext) -> Result<policy::PolicyDecision> {
+        let policy_engine = self.policy_engine.read().await;
+        policy_engine.evaluate_policy(policy_name, context).await
+    }
+
+    /// Evaluate all applicable policies for a resource and action
+    pub async fn evaluate_all_policies(&self, context: &SecurityContext, resource: &str, action: &str) -> Result<policy::PolicyDecision> {
+        let policy_engine = self.policy_engine.read().await;
+        policy_engine.evaluate_all_policies(context, resource, action).await
+    }
+
+    /// Add a security policy
+    pub async fn add_security_policy(&self, policy: policy::SecurityPolicy) -> Result<()> {
+        let policy_engine = self.policy_engine.read().await;
+        policy_engine.add_policy(policy).await
+    }
+
+    /// Check if a security policy exists
+    pub async fn security_policy_exists(&self, policy_name: &str) -> Result<bool> {
+        let policy_engine = self.policy_engine.read().await;
+        policy_engine.policy_exists(policy_name).await
+    }
+
+    /// Get policy evaluation statistics
+    pub async fn get_policy_statistics(&self) -> Result<policy::PolicyStatistics> {
+        let policy_engine = self.policy_engine.read().await;
+        policy_engine.get_evaluation_statistics().await
+    }
 }
 
 impl std::fmt::Debug for SecurityManager {
