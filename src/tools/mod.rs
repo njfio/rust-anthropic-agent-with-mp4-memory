@@ -4,6 +4,7 @@ pub mod custom_tools;
 pub mod http_client;
 pub mod local_file_ops;
 pub mod memory_tools;
+pub mod websocket_client;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

@@ -33,6 +33,9 @@ thiserror = "1.0"
 # HTTP client for Anthropic API
 reqwest = { version = "0.11.27", features = ["json", "stream"] }
 
+# WebSocket support
+tokio-tungstenite = { version = "0.20", features = ["native-tls"] }
+
 # CLI
 clap = { version = "4.0", features = ["derive", "env"] }
 colored = "2.1"
