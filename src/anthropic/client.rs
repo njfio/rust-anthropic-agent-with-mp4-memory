@@ -1,18 +1,18 @@
-use reqwest::{Client, RequestBuilder};
-use serde_json::json;
+use reqwest::Client;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
-
 use crate::anthropic::models::{ChatRequest, ChatResponse};
 use crate::config::AnthropicConfig;
+use crate::utils::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 use crate::utils::error::{AgentError, Result};
 
 /// HTTP client for the Anthropic API
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct AnthropicClient {
     client: Client,
     config: AnthropicConfig,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl AnthropicClient {
@@ -27,17 +27,41 @@ impl AnthropicClient {
             .build()
             .map_err(|e| AgentError::config(format!("Failed to create HTTP client: {}", e)))?;
 
-        Ok(Self { client, config })
+        // Configure circuit breaker based on API characteristics
+        let circuit_config = CircuitBreakerConfig {
+            failure_threshold: 5,
+            recovery_timeout: Duration::from_secs(60),
+            success_threshold: 3,
+            failure_window: Duration::from_secs(300),
+        };
+        let circuit_breaker = CircuitBreaker::new(circuit_config);
+
+        Ok(Self {
+            client,
+            config,
+            circuit_breaker,
+        })
     }
 
     /// Send a chat request to the Anthropic API
     pub async fn chat(&self, request: ChatRequest) -> Result<ChatResponse> {
+        // Check circuit breaker before attempting request
+        if !self.circuit_breaker.can_execute().await {
+            return Err(AgentError::anthropic_api(
+                "Circuit breaker is open - API requests are temporarily blocked due to repeated failures".to_string()
+            ));
+        }
+
         let mut retries = 0;
         let max_retries = self.config.max_retries;
 
         loop {
             match self.send_chat_request(&request).await {
-                Ok(response) => return Ok(response),
+                Ok(response) => {
+                    // Record success with circuit breaker
+                    self.circuit_breaker.record_success().await;
+                    return Ok(response);
+                }
                 Err(e) if retries < max_retries && e.is_retryable() => {
                     retries += 1;
 
@@ -49,11 +73,12 @@ impl AnthropicClient {
                     let delay = Duration::from_millis(base_delay + jitter);
 
                     // For 529 overloaded errors, use longer delays
-                    let final_delay = if e.to_string().contains("529") || e.to_string().contains("overloaded") {
-                        Duration::from_millis((base_delay + jitter) * 2)
-                    } else {
-                        delay
-                    };
+                    let final_delay =
+                        if e.to_string().contains("529") || e.to_string().contains("overloaded") {
+                            Duration::from_millis((base_delay + jitter) * 2)
+                        } else {
+                            delay
+                        };
 
                     warn!(
                         "Request failed (attempt {}/{}), retrying in {:?}: {}",
@@ -61,7 +86,11 @@ impl AnthropicClient {
                     );
                     tokio::time::sleep(final_delay).await;
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    // Record failure with circuit breaker
+                    self.circuit_breaker.record_failure().await;
+                    return Err(e);
+                }
             }
         }
     }
@@ -106,9 +135,15 @@ impl AnthropicClient {
             .map_err(|e| {
                 error!("❌ HTTP request failed: {}", e);
                 if e.is_timeout() {
-                    AgentError::anthropic_api("Request timed out - consider increasing timeout_seconds in config".to_string())
+                    AgentError::anthropic_api(
+                        "Request timed out - consider increasing timeout_seconds in config"
+                            .to_string(),
+                    )
                 } else if e.is_connect() {
-                    AgentError::anthropic_api("Connection failed - check internet connection and API endpoint".to_string())
+                    AgentError::anthropic_api(
+                        "Connection failed - check internet connection and API endpoint"
+                            .to_string(),
+                    )
                 } else {
                     AgentError::Http(e)
                 }
@@ -117,21 +152,17 @@ impl AnthropicClient {
         let status = response.status();
 
         // Try to get response as bytes first, then convert to string with better error handling
-        let response_bytes = response
-            .bytes()
-            .await
-            .map_err(|e| AgentError::Http(e))?;
+        let response_bytes = response.bytes().await.map_err(AgentError::Http)?;
 
         let response_text = match String::from_utf8(response_bytes.to_vec()) {
             Ok(text) => text,
             Err(e) => {
                 error!("❌ Response contains invalid UTF-8: {}", e);
                 // Try to recover by replacing invalid UTF-8 sequences
-                match String::from_utf8_lossy(&response_bytes).into_owned() {
-                    recovered => {
-                        warn!("🔄 Recovered response text with lossy UTF-8 conversion");
-                        recovered
-                    }
+                let recovered = String::from_utf8_lossy(&response_bytes).into_owned();
+                {
+                    warn!("🔄 Recovered response text with lossy UTF-8 conversion");
+                    recovered
                 }
             }
         };
@@ -145,12 +176,11 @@ impl AnthropicClient {
             return self.handle_error_response(status, &response_text);
         }
 
-        let chat_response: ChatResponse = serde_json::from_str(&response_text)
-            .map_err(|e| {
-                error!("Failed to parse JSON response: {}", e);
-                error!("Response text: {}", response_text);
-                AgentError::Json(e)
-            })?;
+        let chat_response: ChatResponse = serde_json::from_str(&response_text).map_err(|e| {
+            error!("Failed to parse JSON response: {}", e);
+            error!("Response text: {}", response_text);
+            AgentError::Json(e)
+        })?;
 
         info!(
             "Chat request successful. Input tokens: {}, Output tokens: {}",
@@ -198,7 +228,11 @@ impl AnthropicClient {
     }
 
     /// Handle error responses from the API
-    fn handle_error_response(&self, status: reqwest::StatusCode, body: &str) -> Result<ChatResponse> {
+    fn handle_error_response(
+        &self,
+        status: reqwest::StatusCode,
+        body: &str,
+    ) -> Result<ChatResponse> {
         error!("API request failed with status {}: {}", status, body);
 
         // Try to parse error response
@@ -225,7 +259,7 @@ impl AnthropicClient {
                         "API overloaded ({}): {}",
                         status, error_message
                     )))
-                },
+                }
                 400..=499 => Err(AgentError::anthropic_api(format!(
                     "Client error ({}): {}",
                     status, error_message
@@ -257,7 +291,8 @@ impl AnthropicClient {
             .post(&url)
             .header("x-api-key", &self.config.api_key)
             .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json");
+            .header("content-type", "application/json")
+            .header("accept", "text/event-stream");
 
         if self.needs_beta_headers(&request) {
             let beta_headers = self.get_beta_headers(&request);
@@ -322,7 +357,10 @@ impl AnthropicClient {
                             let role = msg
                                 .get("role")
                                 .cloned()
-                                .map_or(Ok(crate::anthropic::models::MessageRole::Assistant), serde_json::from_value)
+                                .map_or(
+                                    Ok(crate::anthropic::models::MessageRole::Assistant),
+                                    serde_json::from_value,
+                                )
                                 .unwrap_or(crate::anthropic::models::MessageRole::Assistant);
                             let stop_reason = msg
                                 .get("stop_reason")
@@ -356,7 +394,9 @@ impl AnthropicClient {
                     Some("message_delta") => {
                         if usage.is_none() {
                             if let Some(u) = value.get("usage") {
-                                match serde_json::from_value::<crate::anthropic::models::Usage>(u.clone()) {
+                                match serde_json::from_value::<crate::anthropic::models::Usage>(
+                                    u.clone(),
+                                ) {
                                     Ok(u) => usage = Some(u),
                                     Err(e) => error!("Failed to parse usage: {}", e),
                                 }
@@ -410,6 +450,10 @@ impl AnthropicClient {
         if config.timeout_seconds != self.config.timeout_seconds {
             self.client = Client::builder()
                 .timeout(Duration::from_secs(config.timeout_seconds))
+                .connect_timeout(Duration::from_secs(30))
+                .tcp_keepalive(Duration::from_secs(60))
+                .pool_idle_timeout(Duration::from_secs(90))
+                .pool_max_idle_per_host(10)
                 .build()
                 .map_err(|e| AgentError::config(format!("Failed to create HTTP client: {}", e)))?;
         }
@@ -417,14 +461,26 @@ impl AnthropicClient {
         self.config = config;
         Ok(())
     }
+
+    /// Get circuit breaker statistics
+    pub async fn get_circuit_breaker_stats(
+        &self,
+    ) -> crate::utils::circuit_breaker::CircuitBreakerStats {
+        self.circuit_breaker.get_stats().await
+    }
+
+    /// Reset the circuit breaker (useful for testing or manual recovery)
+    pub async fn reset_circuit_breaker(&self) {
+        self.circuit_breaker.reset().await;
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::net::TcpListener;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
 
     async fn write_chunk(socket: &mut tokio::net::TcpStream, data: &str) {
         let header = format!("{:X}\r\n", data.len());
@@ -452,9 +508,17 @@ mod tests {
 
             write_chunk(&mut socket, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"1\",\"model\":\"test\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":\"stop\"}}\n\n").await;
             tokio::time::sleep(Duration::from_millis(10)).await;
-            write_chunk(&mut socket, "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hello \"}}\n\n").await;
+            write_chunk(
+                &mut socket,
+                "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hello \"}}\n\n",
+            )
+            .await;
             tokio::time::sleep(Duration::from_millis(10)).await;
-            write_chunk(&mut socket, "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"world\"}}\n\n").await;
+            write_chunk(
+                &mut socket,
+                "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"world\"}}\n\n",
+            )
+            .await;
             tokio::time::sleep(Duration::from_millis(10)).await;
             write_chunk(&mut socket, "data: {\"type\":\"message_delta\",\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}\n\n").await;
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -492,6 +556,71 @@ mod tests {
         assert_eq!(content, "Hello world");
         assert_eq!(response.usage.input_tokens, 1);
         assert_eq!(response.usage.output_tokens, 2);
+
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_chat_stream_single_chunk() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = socket.read(&mut buf).await;
+
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n",
+                )
+                .await
+                .unwrap();
+
+            write_chunk(&mut socket, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"1\",\"model\":\"test\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":\"stop\"}}\n\n").await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            write_chunk(
+                &mut socket,
+                "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hi\"}}\n\n",
+            )
+            .await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            write_chunk(&mut socket, "data: {\"type\":\"message_delta\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}\n\n").await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            write_chunk(&mut socket, "data: {\"type\":\"message_stop\"}\n\n").await;
+            socket.write_all(b"0\r\n\r\n").await.unwrap();
+        });
+
+        let config = AnthropicConfig {
+            api_key: "test".into(),
+            base_url: format!("http://{}", addr),
+            model: "test".into(),
+            max_tokens: 10,
+            temperature: 0.0,
+            timeout_seconds: 30,
+            max_retries: 0,
+        };
+        let client = AnthropicClient::new(config).unwrap();
+
+        let request = ChatRequest {
+            model: "test".into(),
+            max_tokens: 10,
+            messages: vec![crate::anthropic::models::ApiMessage::user("Hi")],
+            system: None,
+            tools: None,
+            tool_choice: None,
+            temperature: Some(0.0),
+            stream: Some(true),
+        };
+
+        let response = client.chat_stream(request).await.unwrap();
+        let content = match &response.content[0] {
+            crate::anthropic::models::ContentBlock::Text { text } => text.clone(),
+            _ => String::new(),
+        };
+        assert_eq!(content, "Hi");
+        assert_eq!(response.usage.input_tokens, 1);
+        assert_eq!(response.usage.output_tokens, 1);
 
         server.await.unwrap();
     }

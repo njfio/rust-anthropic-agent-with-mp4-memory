@@ -51,11 +51,7 @@ pub struct AuditEvent {
 
 impl AuditEvent {
     /// Create a new audit event
-    pub fn new(
-        event_type: AuditEventType,
-        severity: AuditSeverity,
-        operation: String,
-    ) -> Self {
+    pub fn new(event_type: AuditEventType, severity: AuditSeverity, operation: String) -> Self {
         Self {
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -188,19 +184,26 @@ impl AuditLogger {
 
         // Write to file
         {
-            let mut writer = self.writer.lock()
+            let mut writer = self
+                .writer
+                .lock()
                 .map_err(|_| AgentError::config("Audit logger mutex poisoned".to_string()))?;
-            
+
             writeln!(writer, "{}", json_line)?;
-            
+
             // Increment event count
-            let mut count = self.event_count.lock()
+            let mut count = self
+                .event_count
+                .lock()
                 .map_err(|_| AgentError::config("Event count mutex poisoned".to_string()))?;
             *count += 1;
 
             // Flush periodically or on high severity events
-            if matches!(event.severity, AuditSeverity::High | AuditSeverity::Critical) || 
-               *count % 100 == 0 {
+            if matches!(
+                event.severity,
+                AuditSeverity::High | AuditSeverity::Critical
+            ) || *count % 100 == 0
+            {
                 writer.flush()?;
             }
         }
@@ -243,7 +246,9 @@ impl AuditLogger {
     fn rotate_logs(&self) -> Result<()> {
         // Flush current writer
         {
-            let mut writer = self.writer.lock()
+            let mut writer = self
+                .writer
+                .lock()
                 .map_err(|_| AgentError::config("Audit logger mutex poisoned".to_string()))?;
             writer.flush()?;
         }
@@ -252,7 +257,7 @@ impl AuditLogger {
         for i in (1..self.config.max_files).rev() {
             let old_path = format!("{}.{}", self.config.log_file_path.display(), i);
             let new_path = format!("{}.{}", self.config.log_file_path.display(), i + 1);
-            
+
             if Path::new(&old_path).exists() {
                 if i + 1 >= self.config.max_files {
                     // Delete oldest file
@@ -275,7 +280,9 @@ impl AuditLogger {
 
         // Replace writer
         {
-            let mut writer = self.writer.lock()
+            let mut writer = self
+                .writer
+                .lock()
                 .map_err(|_| AgentError::config("Audit logger mutex poisoned".to_string()))?;
             *writer = BufWriter::new(file);
         }
@@ -286,7 +293,9 @@ impl AuditLogger {
 
     /// Flush all pending writes
     pub fn flush(&self) -> Result<()> {
-        let mut writer = self.writer.lock()
+        let mut writer = self
+            .writer
+            .lock()
             .map_err(|_| AgentError::config("Audit logger mutex poisoned".to_string()))?;
         writer.flush()?;
         Ok(())
@@ -294,9 +303,11 @@ impl AuditLogger {
 
     /// Get audit statistics
     pub fn get_stats(&self) -> Result<AuditStats> {
-        let count = *self.event_count.lock()
+        let count = *self
+            .event_count
+            .lock()
             .map_err(|_| AgentError::config("Event count mutex poisoned".to_string()))?;
-        
+
         let file_size = std::fs::metadata(&self.config.log_file_path)
             .map(|m| m.len())
             .unwrap_or(0);
@@ -323,17 +334,15 @@ static AUDIT_LOGGER_INIT: std::sync::Once = std::sync::Once::new();
 
 /// Initialize global audit logger
 pub fn init_audit_logger(config: AuditLoggerConfig) -> Result<()> {
-    AUDIT_LOGGER_INIT.call_once(|| {
-        match AuditLogger::new(config) {
-            Ok(logger) => {
-                unsafe {
-                    AUDIT_LOGGER = Some(Arc::new(logger));
-                }
-                info!("Audit logger initialized");
+    AUDIT_LOGGER_INIT.call_once(|| match AuditLogger::new(config) {
+        Ok(logger) => {
+            unsafe {
+                AUDIT_LOGGER = Some(Arc::new(logger));
             }
-            Err(e) => {
-                error!("Failed to initialize audit logger: {}", e);
-            }
+            info!("Audit logger initialized");
+        }
+        Err(e) => {
+            error!("Failed to initialize audit logger: {}", e);
         }
     });
     Ok(())

@@ -37,7 +37,7 @@ impl AnthropicTool {
         Self {
             tool_type: ToolType::TextEditor20250429,
             name: "str_replace_based_edit_tool".to_string(),
-            description: None, // Built-in tools don't accept descriptions
+            description: None,  // Built-in tools don't accept descriptions
             input_schema: None, // Schema is built into the model
             max_uses: None,
             allowed_domains: None,
@@ -50,7 +50,7 @@ impl AnthropicTool {
         Self {
             tool_type: ToolType::TextEditor20250124,
             name: "str_replace_editor".to_string(),
-            description: None, // Built-in tools don't accept descriptions
+            description: None,  // Built-in tools don't accept descriptions
             input_schema: None, // Schema is built into the model
             max_uses: None,
             allowed_domains: None,
@@ -63,7 +63,7 @@ impl AnthropicTool {
         Self {
             tool_type: ToolType::TextEditor20241022,
             name: "str_replace_editor".to_string(),
-            description: None, // Built-in tools don't accept descriptions
+            description: None,  // Built-in tools don't accept descriptions
             input_schema: None, // Schema is built into the model
             max_uses: None,
             allowed_domains: None,
@@ -76,7 +76,7 @@ impl AnthropicTool {
         Self {
             tool_type: ToolType::CodeExecution20250522,
             name: "code_execution".to_string(),
-            description: None, // Built-in tools don't accept descriptions
+            description: None,  // Built-in tools don't accept descriptions
             input_schema: None, // Schema is built into the model
             max_uses: None,
             allowed_domains: None,
@@ -89,9 +89,9 @@ impl AnthropicTool {
         Self {
             tool_type: ToolType::WebSearch20250305,
             name: "web_search".to_string(),
-            description: None, // Built-in tools don't accept descriptions
+            description: None,  // Built-in tools don't accept descriptions
             input_schema: None, // Schema is built into the model
-            max_uses: Some(5), // Default limit
+            max_uses: Some(5),  // Default limit
             allowed_domains: None,
             blocked_domains: None,
         }

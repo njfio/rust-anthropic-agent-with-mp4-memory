@@ -2,13 +2,13 @@ use async_trait::async_trait;
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::anthropic::models::ToolDefinition;
 use crate::tools::{create_tool_definition, extract_string_param, Tool, ToolResult};
+use crate::utils::audit_logger::{audit_log, AuditEvent, AuditEventType, AuditSeverity};
 use crate::utils::error::{AgentError, Result};
-use crate::utils::validation::{validate_path, validate_file_content};
-use crate::utils::audit_logger::{AuditEvent, AuditEventType, AuditSeverity, audit_log};
+use crate::utils::validation::{validate_file_content, validate_path};
 
 /// Local implementation of Anthropic's str_replace_based_edit_tool
 /// This tool runs locally and can actually modify files on the user's machine
@@ -49,7 +49,10 @@ impl LocalTextEditorTool {
         }
 
         // Prevent directory traversal attacks with .. components
-        if path.components().any(|comp| matches!(comp, std::path::Component::ParentDir)) {
+        if path
+            .components()
+            .any(|comp| matches!(comp, std::path::Component::ParentDir))
+        {
             return Err(AgentError::invalid_input(
                 "Path traversal not allowed (..). Use relative paths within working directory only.",
             ));
@@ -59,7 +62,9 @@ impl LocalTextEditorTool {
         let resolved = self.working_dir.join(path);
 
         // Additional security check: ensure resolved path is still within working directory
-        let canonical_working_dir = self.working_dir.canonicalize()
+        let canonical_working_dir = self
+            .working_dir
+            .canonicalize()
             .map_err(|_| AgentError::invalid_input("Invalid working directory"))?;
 
         if let Ok(canonical_resolved) = resolved.canonicalize() {
@@ -83,11 +88,14 @@ impl LocalTextEditorTool {
         let resolved_path = self.resolve_path(&path_str)?;
 
         // AUDIT: Log file access attempt
-        audit_log(AuditEvent::new(
-            AuditEventType::FileAccess,
-            AuditSeverity::Low,
-            "file_view".to_string(),
-        ).with_resource(&path_str));
+        audit_log(
+            AuditEvent::new(
+                AuditEventType::FileAccess,
+                AuditSeverity::Low,
+                "file_view".to_string(),
+            )
+            .with_resource(&path_str),
+        );
 
         if !resolved_path.exists() {
             return Ok(ToolResult::error("File not found"));
@@ -97,7 +105,7 @@ impl LocalTextEditorTool {
             // List directory contents
             let entries = fs::read_dir(&resolved_path)?;
             let mut items = Vec::new();
-            
+
             for entry in entries {
                 let entry = entry?;
                 let file_name = entry.file_name().to_string_lossy().to_string();
@@ -146,7 +154,10 @@ impl LocalTextEditorTool {
     async fn handle_create(&self, input: &serde_json::Value) -> Result<ToolResult> {
         info!("📝 CREATE operation");
         // SECURITY: Move sensitive parameter logging to DEBUG level
-        debug!("🔍 ALL PARAMETERS: {}", serde_json::to_string_pretty(input).unwrap_or_else(|_| "Invalid JSON".to_string()));
+        debug!(
+            "🔍 ALL PARAMETERS: {}",
+            serde_json::to_string_pretty(input).unwrap_or_else(|_| "Invalid JSON".to_string())
+        );
 
         // List all available keys in the input
         if let Some(obj) = input.as_object() {
@@ -157,13 +168,13 @@ impl LocalTextEditorTool {
         // Try to get path parameter with better error handling
         let path_str = match extract_string_param(input, "path") {
             Ok(path) => {
-                debug!("📁 Path: {}", path);  // SECURITY: Move to DEBUG level
-                // SECURITY: Validate path input
+                debug!("📁 Path: {}", path); // SECURITY: Move to DEBUG level
+                                             // SECURITY: Validate path input
                 validate_path(&path)?;
                 path
-            },
+            }
             Err(_) => {
-                debug!("❌ Missing path parameter");  // SECURITY: Move to DEBUG level
+                debug!("❌ Missing path parameter"); // SECURITY: Move to DEBUG level
                 return Ok(ToolResult::error(
                     "Missing required parameter 'path' for create command. Please provide the file path."
                 ));
@@ -172,60 +183,73 @@ impl LocalTextEditorTool {
 
         // Try multiple possible parameter names for file content
         let file_text = if let Ok(text) = extract_string_param(input, "file_text") {
-            debug!("📄 Found file_text parameter: {} chars", text.len());  // SECURITY: Move to DEBUG level
-            // SECURITY: Validate file content
+            debug!("📄 Found file_text parameter: {} chars", text.len()); // SECURITY: Move to DEBUG level
+                                                                          // SECURITY: Validate file content
             validate_file_content(&text)?;
             text
         } else if let Ok(text) = extract_string_param(input, "content") {
-            debug!("📄 Found content parameter: {} chars", text.len());  // SECURITY: Move to DEBUG level
-            // SECURITY: Validate file content
+            debug!("📄 Found content parameter: {} chars", text.len()); // SECURITY: Move to DEBUG level
+                                                                        // SECURITY: Validate file content
             validate_file_content(&text)?;
             text
         } else if let Ok(text) = extract_string_param(input, "text") {
-            debug!("📄 Found text parameter: {} chars", text.len());  // SECURITY: Move to DEBUG level
-            // SECURITY: Validate file content
+            debug!("📄 Found text parameter: {} chars", text.len()); // SECURITY: Move to DEBUG level
+                                                                     // SECURITY: Validate file content
             validate_file_content(&text)?;
             text
         } else {
-            debug!("❌ Missing file content parameter - tried file_text, content, text");  // SECURITY: Move to DEBUG level
+            debug!("❌ Missing file content parameter - tried file_text, content, text"); // SECURITY: Move to DEBUG level
             return Ok(ToolResult::error(
                 "Missing required parameter for file content. Please provide 'file_text', 'content', or 'text' parameter with the content to write to the file."
             ));
         };
 
         let resolved_path = self.resolve_path(&path_str)?;
-        debug!("📍 Resolved path: {:?}", resolved_path);  // SECURITY: Move to DEBUG level
+        debug!("📍 Resolved path: {:?}", resolved_path); // SECURITY: Move to DEBUG level
 
         if resolved_path.exists() {
-            debug!("❌ File already exists");  // SECURITY: Move to DEBUG level
-            return Ok(ToolResult::error(format!("File already exists: {}", path_str)));
+            debug!("❌ File already exists"); // SECURITY: Move to DEBUG level
+            return Ok(ToolResult::error(format!(
+                "File already exists: {}",
+                path_str
+            )));
         }
 
         // Create parent directories if they don't exist
         if let Some(parent) = resolved_path.parent() {
-            debug!("📂 Creating parent directories: {:?}", parent);  // SECURITY: Move to DEBUG level
+            debug!("📂 Creating parent directories: {:?}", parent); // SECURITY: Move to DEBUG level
             fs::create_dir_all(parent)?;
         }
 
         fs::write(&resolved_path, file_text)?;
-        info!("✅ Successfully created file");  // SECURITY: Remove path from INFO log
-        debug!("💾 File written successfully to: {:?}", resolved_path);  // SECURITY: Move detailed info to DEBUG
+        info!("✅ Successfully created file"); // SECURITY: Remove path from INFO log
+        debug!("💾 File written successfully to: {:?}", resolved_path); // SECURITY: Move detailed info to DEBUG
 
         // AUDIT: Log successful file creation
-        audit_log(AuditEvent::new(
-            AuditEventType::FileModification,
-            AuditSeverity::Medium,
-            "file_create".to_string(),
-        ).with_resource(&path_str).with_success(true));
+        audit_log(
+            AuditEvent::new(
+                AuditEventType::FileModification,
+                AuditSeverity::Medium,
+                "file_create".to_string(),
+            )
+            .with_resource(&path_str)
+            .with_success(true),
+        );
 
-        Ok(ToolResult::success(format!("File created successfully at {}", path_str)))
+        Ok(ToolResult::success(format!(
+            "File created successfully at {}",
+            path_str
+        )))
     }
 
     /// Handle the str_replace command
     async fn handle_str_replace(&self, input: &serde_json::Value) -> Result<ToolResult> {
         info!("🔄 STR_REPLACE operation");
         // SECURITY: Move sensitive parameter logging to DEBUG level
-        debug!("🔍 ALL PARAMETERS: {}", serde_json::to_string_pretty(input).unwrap_or_else(|_| "Invalid JSON".to_string()));
+        debug!(
+            "🔍 ALL PARAMETERS: {}",
+            serde_json::to_string_pretty(input).unwrap_or_else(|_| "Invalid JSON".to_string())
+        );
 
         // List all available keys in the input
         if let Some(obj) = input.as_object() {
@@ -237,7 +261,7 @@ impl LocalTextEditorTool {
             Ok(path) => {
                 info!("📁 Path: {}", path);
                 path
-            },
+            }
             Err(_) => {
                 info!("❌ Missing path parameter");
                 return Ok(ToolResult::error(
@@ -250,7 +274,7 @@ impl LocalTextEditorTool {
             Ok(old) => {
                 info!("🔍 Old text: {:?} ({} chars)", old, old.len());
                 old
-            },
+            }
             Err(_) => {
                 info!("❌ Missing old_str parameter");
                 return Ok(ToolResult::error(
@@ -263,7 +287,7 @@ impl LocalTextEditorTool {
             Ok(new) => {
                 info!("✏️  New text: {:?} ({} chars)", new, new.len());
                 new
-            },
+            }
             Err(_) => {
                 info!("❌ Missing new_str parameter");
                 return Ok(ToolResult::error(
@@ -286,13 +310,15 @@ impl LocalTextEditorTool {
             0 => {
                 info!("❌ No match found for replacement");
                 Ok(ToolResult::error("No match found for replacement"))
-            },
+            }
             1 => {
                 let new_content = content.replace(&old_str, &new_str);
                 fs::write(&resolved_path, new_content)?;
                 info!("✅ Successfully replaced text in {:?}", resolved_path);
                 info!("💾 File written successfully!");
-                Ok(ToolResult::success("Successfully replaced text at exactly one location"))
+                Ok(ToolResult::success(
+                    "Successfully replaced text at exactly one location",
+                ))
             }
             n => {
                 info!("⚠️  Found {} matches for replacement text", n);
@@ -300,7 +326,7 @@ impl LocalTextEditorTool {
                     "Found {} matches for replacement text. Please provide more context to make a unique match.",
                     n
                 )))
-            },
+            }
         }
     }
 }
@@ -350,7 +376,10 @@ impl Tool for LocalTextEditorTool {
     async fn execute(&self, input: serde_json::Value) -> Result<ToolResult> {
         // SECURITY: Move sensitive logging to DEBUG level
         info!("🔧 LOCAL TEXT EDITOR TOOL CALLED");
-        debug!("📥 Input received: {}", serde_json::to_string_pretty(&input).unwrap_or_else(|_| "Invalid JSON".to_string()));
+        debug!(
+            "📥 Input received: {}",
+            serde_json::to_string_pretty(&input).unwrap_or_else(|_| "Invalid JSON".to_string())
+        );
 
         let command = extract_string_param(&input, "command")?;
 

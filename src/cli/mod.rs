@@ -1,5 +1,5 @@
-pub mod prompt_system;
 pub mod interactive_console;
+pub mod prompt_system;
 
-pub use prompt_system::{PromptSystem, InputMode};
 pub use interactive_console::InteractiveConsole;
+pub use prompt_system::{InputMode, PromptSystem};

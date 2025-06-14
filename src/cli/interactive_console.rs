@@ -1,8 +1,8 @@
-use std::io::{self, Write, BufRead};
-use std::fs;
-use std::path::Path;
-use colored::*;
 use crate::utils::error::{AgentError, Result};
+use colored::*;
+use std::fs;
+use std::io::{self, BufRead, Write};
+use std::path::Path;
 
 /// Enhanced interactive console with multi-line editing and commands
 pub struct InteractiveConsole {
@@ -23,7 +23,7 @@ impl InteractiveConsole {
     /// Start the interactive console session
     pub fn start(&mut self) -> Result<()> {
         self.print_welcome();
-        
+
         loop {
             match self.get_command()? {
                 ConsoleCommand::Input(text) => {
@@ -43,24 +43,32 @@ impl InteractiveConsole {
     /// Get user input with enhanced editing capabilities
     pub fn get_multiline_input(&mut self, initial_prompt: &str) -> Result<String> {
         println!("{}", initial_prompt.cyan());
-        println!("{}", "Enter your prompt (type 'END' on a new line to finish, ':help' for commands):".yellow());
-        
+        println!(
+            "{}",
+            "Enter your prompt (type 'END' on a new line to finish, ':help' for commands):"
+                .yellow()
+        );
+
         self.current_input.clear();
         let mut line_number = 1;
-        
+
         loop {
-            print!("{} {:3}> ", self.prompt_prefix.blue(), line_number.to_string().bright_black());
+            print!(
+                "{} {:3}> ",
+                self.prompt_prefix.blue(),
+                line_number.to_string().bright_black()
+            );
             io::stdout().flush()?;
-            
+
             let mut line = String::new();
             io::stdin().read_line(&mut line)?;
             let line = line.trim_end_matches('\n');
-            
+
             // Check for end marker
             if line.trim() == "END" {
                 break;
             }
-            
+
             // Handle commands
             if line.starts_with(':') {
                 match self.handle_command(line)? {
@@ -76,20 +84,20 @@ impl InteractiveConsole {
                 line_number += 1;
             }
         }
-        
+
         let input = self.current_input.join("\n").trim().to_string();
         if !input.is_empty() {
             self.add_to_history(input.clone());
         }
-        
+
         Ok(input)
     }
 
     /// Handle console commands
     fn handle_command(&mut self, command: &str) -> Result<CommandResult> {
         let parts: Vec<&str> = command.split_whitespace().collect();
-        
-        match parts.get(0).copied() {
+
+        match parts.first().copied() {
             Some(":help") | Some(":h") => {
                 self.print_help();
                 Ok(CommandResult::Continue)
@@ -132,19 +140,23 @@ impl InteractiveConsole {
                 }
                 Ok(CommandResult::Continue)
             }
-            Some(":finish") | Some(":f") => {
-                Ok(CommandResult::Finish)
-            }
-            Some(":exit") | Some(":quit") | Some(":q") => {
-                Ok(CommandResult::Exit)
-            }
+            Some(":finish") | Some(":f") => Ok(CommandResult::Finish),
+            Some(":exit") | Some(":quit") | Some(":q") => Ok(CommandResult::Exit),
             Some(":paste") | Some(":p") => {
-                println!("{}", "Paste mode - enter multiple lines, then type 'END' to finish:".cyan());
+                println!(
+                    "{}",
+                    "Paste mode - enter multiple lines, then type 'END' to finish:".cyan()
+                );
                 self.paste_mode()?;
                 Ok(CommandResult::Continue)
             }
             _ => {
-                println!("{} {} {}", "Unknown command:".red(), command, "(type :help for available commands)".yellow());
+                println!(
+                    "{} {} {}",
+                    "Unknown command:".red(),
+                    command,
+                    "(type :help for available commands)".yellow()
+                );
                 Ok(CommandResult::Continue)
             }
         }
@@ -156,15 +168,20 @@ impl InteractiveConsole {
             let mut line = String::new();
             io::stdin().read_line(&mut line)?;
             let line = line.trim_end_matches('\n');
-            
+
             if line.trim() == "END" {
                 break;
             }
-            
+
             self.current_input.push(line.to_string());
         }
-        
-        println!("{} {} {}", "Added".green(), self.current_input.len(), "lines from paste.".green());
+
+        println!(
+            "{} {} {}",
+            "Added".green(),
+            self.current_input.len(),
+            "lines from paste.".green()
+        );
         Ok(())
     }
 
@@ -172,11 +189,11 @@ impl InteractiveConsole {
     fn get_command(&mut self) -> Result<ConsoleCommand> {
         print!("{} > ", self.prompt_prefix.blue());
         io::stdout().flush()?;
-        
+
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
         let input = input.trim();
-        
+
         match input {
             "exit" | "quit" | ":q" => Ok(ConsoleCommand::Exit),
             "" => Ok(ConsoleCommand::Continue),
@@ -187,7 +204,12 @@ impl InteractiveConsole {
     /// Print welcome message
     pub fn print_welcome(&self) {
         println!("{}", "=".repeat(60).bright_blue());
-        println!("{}", "🤖 Rust MemVid Agent - Interactive Console".bright_cyan().bold());
+        println!(
+            "{}",
+            "🤖 Rust MemVid Agent - Interactive Console"
+                .bright_cyan()
+                .bold()
+        );
         println!("{}", "=".repeat(60).bright_blue());
         println!();
         println!("{}", "Available modes:".yellow());
@@ -196,7 +218,12 @@ impl InteractiveConsole {
         println!("  {} - Load prompt from file", "file <path>".green());
         println!("  {} - Read from stdin pipe", "pipe".green());
         println!();
-        println!("{} {} for commands or {} to quit.", "Type".yellow(), ":help".green().bold(), "exit".red().bold());
+        println!(
+            "{} {} for commands or {} to quit.",
+            "Type".yellow(),
+            ":help".green().bold(),
+            "exit".red().bold()
+        );
         println!();
     }
 
@@ -205,7 +232,7 @@ impl InteractiveConsole {
         println!();
         println!("{}", "📚 Available Commands:".cyan().bold());
         println!("{}", "-".repeat(40).bright_black());
-        
+
         let commands = vec![
             (":help, :h", "Show this help message"),
             (":history, :hist", "Show input history"),
@@ -219,7 +246,7 @@ impl InteractiveConsole {
             (":exit, :quit, :q", "Exit the console"),
             ("END", "Finish multi-line input (on new line)"),
         ];
-        
+
         for (cmd, desc) in commands {
             println!("  {:<15} - {}", cmd.green(), desc);
         }
@@ -232,26 +259,31 @@ impl InteractiveConsole {
             println!("{}", "No history available.".yellow());
             return;
         }
-        
+
         println!();
         println!("{}", "📜 Input History:".cyan().bold());
         println!("{}", "-".repeat(40).bright_black());
-        
+
         for (i, item) in self.history.iter().enumerate().rev().take(10) {
             let preview = if item.len() > 60 {
                 format!("{}...", &item[..60])
             } else {
                 item.clone()
             };
-            
-            println!("  {}: {}", 
-                format!("{:2}", i + 1).bright_black(), 
+
+            println!(
+                "  {}: {}",
+                format!("{:2}", i + 1).bright_black(),
                 preview.replace('\n', " ").bright_white()
             );
         }
-        
+
         if self.history.len() > 10 {
-            println!("  {} (showing last 10 of {})", "...".bright_black(), self.history.len());
+            println!(
+                "  {} (showing last 10 of {})",
+                "...".bright_black(),
+                self.history.len()
+            );
         }
         println!();
     }
@@ -262,14 +294,15 @@ impl InteractiveConsole {
             println!("{}", "No current input.".yellow());
             return;
         }
-        
+
         println!();
         println!("{}", "📝 Current Input:".cyan().bold());
         println!("{}", "-".repeat(40).bright_black());
-        
+
         for (i, line) in self.current_input.iter().enumerate() {
-            println!("  {:3}: {}", 
-                format!("{}", i + 1).bright_black(), 
+            println!(
+                "  {:3}: {}",
+                format!("{}", i + 1).bright_black(),
                 line.bright_white()
             );
         }
@@ -290,14 +323,15 @@ impl InteractiveConsole {
             println!("{} {}", "File not found:".red(), filename);
             return Ok(());
         }
-        
+
         let content = fs::read_to_string(filename)?;
         self.current_input = content.lines().map(|s| s.to_string()).collect();
-        
-        println!("{} {} {} {}", 
-            "Loaded".green(), 
-            self.current_input.len(), 
-            "lines from".green(), 
+
+        println!(
+            "{} {} {} {}",
+            "Loaded".green(),
+            self.current_input.len(),
+            "lines from".green(),
             filename.bright_white()
         );
         Ok(())
@@ -306,7 +340,7 @@ impl InteractiveConsole {
     /// Add to history
     fn add_to_history(&mut self, input: String) {
         self.history.push(input);
-        
+
         // Keep history reasonable size
         if self.history.len() > 100 {
             self.history.remove(0);
@@ -317,22 +351,25 @@ impl InteractiveConsole {
     pub fn read_from_pipe() -> Result<String> {
         let stdin = io::stdin();
         let mut content = String::new();
-        
+
         for line in stdin.lock().lines() {
             let line = line?;
             content.push_str(&line);
             content.push('\n');
         }
-        
+
         Ok(content.trim().to_string())
     }
 
     /// Load from file (static method)
     pub fn load_file(path: &str) -> Result<String> {
         if !Path::new(path).exists() {
-            return Err(AgentError::invalid_input(format!("File not found: {}", path)));
+            return Err(AgentError::invalid_input(format!(
+                "File not found: {}",
+                path
+            )));
         }
-        
+
         let content = fs::read_to_string(path)?;
         Ok(content.trim().to_string())
     }

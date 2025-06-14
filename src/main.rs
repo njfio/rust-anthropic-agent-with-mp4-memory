@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
+use rust_memvid_agent::cli::InteractiveConsole;
 use rust_memvid_agent::{Agent, AgentConfig};
-use rust_memvid_agent::cli::{InteractiveConsole};
 use std::io::{self, Write};
 use tracing::{error, info};
 
@@ -84,31 +84,31 @@ enum Commands {
         #[arg(short, long)]
         title: Option<String>,
     },
-    
+
     /// Search through memory
     Search {
         /// Search query
         query: String,
-        
+
         /// Maximum number of results
         #[arg(short, long, default_value = "5")]
         limit: usize,
     },
-    
+
     /// Save information to memory
     Save {
         /// Content to save
         content: String,
-        
+
         /// Entry type
         #[arg(short, long, default_value = "note")]
         entry_type: String,
-        
+
         /// Tags (comma-separated)
         #[arg(short, long)]
         tags: Option<String>,
     },
-    
+
     /// Show memory statistics
     Stats,
 
@@ -168,7 +168,7 @@ enum Commands {
 
     /// List available tools
     Tools,
-    
+
     /// Initialize a new agent configuration
     Init {
         /// Output configuration file path
@@ -238,14 +238,48 @@ async fn main() -> anyhow::Result<()> {
         Commands::Search { query, limit } => {
             run_search(config, query, limit).await?;
         }
-        Commands::Save { content, entry_type, tags } => {
+        Commands::Save {
+            content,
+            entry_type,
+            tags,
+        } => {
             run_save(config, content, entry_type, tags).await?;
         }
         Commands::Stats => {
             run_stats(config).await?;
         }
-        Commands::Analyze { path, action, language, format, max_depth, include_hidden, symbol_name, symbol_type, pattern, detailed, learning, compliance, quick_wins } => {
-            run_analyze(config, path, action, language, format, max_depth, include_hidden, symbol_name, symbol_type, pattern, detailed, learning, compliance, quick_wins).await?;
+        Commands::Analyze {
+            path,
+            action,
+            language,
+            format,
+            max_depth,
+            include_hidden,
+            symbol_name,
+            symbol_type,
+            pattern,
+            detailed,
+            learning,
+            compliance,
+            quick_wins,
+        } => {
+            run_analyze(
+                config,
+                path,
+                action,
+                language,
+                format,
+                max_depth,
+                include_hidden,
+                symbol_name,
+                symbol_type,
+                pattern,
+                detailed,
+                learning,
+                compliance,
+                quick_wins,
+            )
+            .await?;
         }
         Commands::Tools => {
             run_tools(config).await?;
@@ -261,9 +295,13 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_chat(config: AgentConfig, initial_message: Option<String>, title: Option<String>) -> anyhow::Result<()> {
+async fn run_chat(
+    config: AgentConfig,
+    initial_message: Option<String>,
+    title: Option<String>,
+) -> anyhow::Result<()> {
     info!("Starting interactive chat session");
-    
+
     let mut agent = Agent::new(config).await?;
     agent.start_conversation(title).await?;
 
@@ -302,7 +340,7 @@ async fn run_chat(config: AgentConfig, initial_message: Option<String>, title: O
     // Finalize memory
     agent.finalize_memory().await?;
     info!("Chat session ended");
-    
+
     Ok(())
 }
 
@@ -323,13 +361,18 @@ async fn run_search(config: AgentConfig, query: String, limit: usize) -> anyhow:
     Ok(())
 }
 
-async fn run_save(config: AgentConfig, content: String, entry_type: String, tags: Option<String>) -> anyhow::Result<()> {
+async fn run_save(
+    config: AgentConfig,
+    content: String,
+    entry_type: String,
+    tags: Option<String>,
+) -> anyhow::Result<()> {
     let mut agent = Agent::new(config).await?;
-    
+
     // entry_type is now just a string for the simple memory system
 
     agent.save_to_memory(content, entry_type).await?;
-    
+
     if let Some(tags) = tags {
         println!("Saved to memory with tags: {}", tags);
     } else {
@@ -347,8 +390,14 @@ async fn run_stats(config: AgentConfig) -> anyhow::Result<()> {
     println!("  Total chunks: {}", stats.total_chunks);
     println!("  Total conversations: {}", stats.total_conversations);
     println!("  Total memories: {}", stats.total_memories);
-    println!("  Memory file size: {:.2} MB", stats.memory_file_size as f64 / 1024.0 / 1024.0);
-    println!("  Index file size: {:.2} KB", stats.index_file_size as f64 / 1024.0);
+    println!(
+        "  Memory file size: {:.2} MB",
+        stats.memory_file_size as f64 / 1024.0 / 1024.0
+    );
+    println!(
+        "  Index file size: {:.2} KB",
+        stats.index_file_size as f64 / 1024.0
+    );
 
     Ok(())
 }
@@ -367,7 +416,7 @@ async fn run_analyze(
     detailed: bool,
     learning: bool,
     compliance: bool,
-    quick_wins: bool
+    quick_wins: bool,
 ) -> anyhow::Result<()> {
     let agent = Agent::new(config).await?;
 
@@ -460,7 +509,9 @@ async fn run_prompt(config: AgentConfig) -> anyhow::Result<()> {
         println!("======================");
         println!("{}", prompt);
         println!("======================");
-        println!("\nTo customize the system prompt, edit your config file or use the AgentConfig API.");
+        println!(
+            "\nTo customize the system prompt, edit your config file or use the AgentConfig API."
+        );
     } else {
         println!("No system prompt configured. Using default Anthropic behavior.");
     }
@@ -471,15 +522,11 @@ async fn run_prompt(config: AgentConfig) -> anyhow::Result<()> {
 async fn run_interactive(config: AgentConfig, title: Option<String>) -> anyhow::Result<()> {
     info!("Starting interactive multi-line session");
 
-
-
     let mut agent = Agent::new(config).await?;
     agent.start_conversation(title).await?;
 
     let mut console = InteractiveConsole::new();
     console.print_welcome();
-
-
 
     loop {
         match console.get_multiline_input("Enter your prompt:") {
@@ -518,7 +565,11 @@ async fn run_interactive(config: AgentConfig, title: Option<String>) -> anyhow::
     Ok(())
 }
 
-async fn run_file_input(config: AgentConfig, path: String, title: Option<String>) -> anyhow::Result<()> {
+async fn run_file_input(
+    config: AgentConfig,
+    path: String,
+    title: Option<String>,
+) -> anyhow::Result<()> {
     info!("Loading prompt from file: {}", path);
 
     let input = InteractiveConsole::load_file(&path)?;
@@ -529,8 +580,13 @@ async fn run_file_input(config: AgentConfig, path: String, title: Option<String>
     }
 
     println!("📄 Loaded prompt from: {}", path);
-    println!("📝 Content preview: {}...",
-        if input.len() > 100 { &input[..100] } else { &input }
+    println!(
+        "📝 Content preview: {}...",
+        if input.len() > 100 {
+            &input[..100]
+        } else {
+            &input
+        }
     );
     println!("\n🤖 Processing...\n");
 
@@ -563,8 +619,13 @@ async fn run_pipe_input(config: AgentConfig, title: Option<String>) -> anyhow::R
     }
 
     println!("📥 Received input from pipe");
-    println!("📝 Content preview: {}...",
-        if input.len() > 100 { &input[..100] } else { &input }
+    println!(
+        "📝 Content preview: {}...",
+        if input.len() > 100 {
+            &input[..100]
+        } else {
+            &input
+        }
     );
     println!("\n🤖 Processing...\n");
 

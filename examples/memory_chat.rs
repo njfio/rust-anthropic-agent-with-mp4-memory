@@ -23,23 +23,31 @@ async fn main() -> anyhow::Result<()> {
     println!("=== Memory-Enhanced Chat Example ===\n");
     println!("Pre-populating memory with some information...\n");
 
-    agent.save_to_memory(
-        "The user's name is Alice and she works as a software engineer at TechCorp.",
-        "fact"
-    ).await?;
+    agent
+        .save_to_memory(
+            "The user's name is Alice and she works as a software engineer at TechCorp.",
+            "fact",
+        )
+        .await?;
 
-    agent.save_to_memory(
-        "Alice is interested in Rust programming and AI/ML technologies.",
-        "fact"
-    ).await?;
+    agent
+        .save_to_memory(
+            "Alice is interested in Rust programming and AI/ML technologies.",
+            "fact",
+        )
+        .await?;
 
-    agent.save_to_memory(
-        "Alice's current project involves building a distributed system using microservices.",
-        "note"
-    ).await?;
+    agent
+        .save_to_memory(
+            "Alice's current project involves building a distributed system using microservices.",
+            "note",
+        )
+        .await?;
 
     // Start a conversation
-    agent.start_conversation(Some("Memory Chat with Alice".to_string())).await?;
+    agent
+        .start_conversation(Some("Memory Chat with Alice".to_string()))
+        .await?;
 
     // Simulate a conversation where the agent uses memory
     let messages = vec![
@@ -54,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
         println!("User: {}", message);
         let response = agent.chat(*message).await?;
         println!("Agent: {}\n", response);
-        
+
         if i < messages.len() - 1 {
             println!("---\n");
         }
@@ -66,7 +74,10 @@ async fn main() -> anyhow::Result<()> {
     println!("Total chunks: {}", stats.total_chunks);
     println!("Total conversations: {}", stats.total_conversations);
     println!("Total memories: {}", stats.total_memories);
-    println!("Memory file size: {:.2} KB", stats.memory_file_size as f64 / 1024.0);
+    println!(
+        "Memory file size: {:.2} KB",
+        stats.memory_file_size as f64 / 1024.0
+    );
 
     // Finalize memory
     agent.finalize_memory().await?;

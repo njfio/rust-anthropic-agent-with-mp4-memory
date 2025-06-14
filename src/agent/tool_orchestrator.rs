@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use crate::anthropic::models::{ContentBlock, ToolDefinition};
 use crate::anthropic::tools::AnthropicTool;
@@ -11,10 +11,10 @@ use crate::tools::{
     code_analysis::CodeAnalysisTool,
     custom_tools::{HttpRequestTool, ShellCommandTool, UuidGeneratorTool},
     local_file_ops::LocalTextEditorTool,
-    memory_tools::{ConversationSearchTool, MemorySearchTool, MemorySaveTool, MemoryStatsTool},
+    memory_tools::{ConversationSearchTool, MemorySaveTool, MemorySearchTool, MemoryStatsTool},
     Tool, ToolRegistry, ToolResult,
 };
-use crate::utils::error::{AgentError, Result};
+use crate::utils::error::Result;
 
 /// Orchestrates tool execution and management
 #[derive(Debug)]
@@ -55,13 +55,20 @@ impl ToolOrchestrator {
 
         // Register memory tools if enabled
         if config.tools.enable_memory_tools {
-            self.tool_registry.register(MemorySearchTool::new(self.memory_manager.clone()));
-            self.tool_registry.register(MemorySaveTool::new(self.memory_manager.clone()));
-            self.tool_registry.register(MemoryStatsTool::new(self.memory_manager.clone()));
-            self.tool_registry.register(ConversationSearchTool::new(self.memory_manager.clone()));
+            self.tool_registry
+                .register(MemorySearchTool::new(self.memory_manager.clone()));
+            self.tool_registry
+                .register(MemorySaveTool::new(self.memory_manager.clone()));
+            self.tool_registry
+                .register(MemoryStatsTool::new(self.memory_manager.clone()));
+            self.tool_registry
+                .register(ConversationSearchTool::new(self.memory_manager.clone()));
 
             // Register Phase 2 Advanced Memory Analytics Tool
-            self.tool_registry.register(AdvancedMemoryAnalyticsTool::new(self.memory_manager.clone()));
+            self.tool_registry
+                .register(AdvancedMemoryAnalyticsTool::new(
+                    self.memory_manager.clone(),
+                ));
 
             debug!("Registered memory tools including advanced analytics");
         }
@@ -72,8 +79,6 @@ impl ToolOrchestrator {
             self.tool_registry.register(LocalTextEditorTool::new("."));
             debug!("Registered local text editor tool for actual file modifications");
         }
-
-
 
         // Code execution is handled locally, not as a server tool
         // if config.tools.enable_code_execution {
@@ -97,8 +102,8 @@ impl ToolOrchestrator {
         }
 
         // Register utility tools
-        self.tool_registry.register(UuidGeneratorTool::default());
-        
+        self.tool_registry.register(UuidGeneratorTool);
+
         // Register HTTP request tool (with safety restrictions)
         if let Ok(http_tool) = HttpRequestTool::new() {
             self.tool_registry.register(http_tool);
@@ -110,9 +115,11 @@ impl ToolOrchestrator {
         self.tool_registry.register(shell_tool);
         debug!("Registered shell command tool");
 
-        info!("Registered {} client tools and {} server tools", 
-              self.tool_registry.len(), 
-              self.anthropic_tools.len());
+        info!(
+            "Registered {} client tools and {} server tools",
+            self.tool_registry.len(),
+            self.anthropic_tools.len()
+        );
 
         Ok(())
     }
@@ -139,15 +146,28 @@ impl ToolOrchestrator {
 
         // Add client tool definitions
         let client_definitions = self.tool_registry.get_definitions();
-        debug!("Client tools: {:?}", client_definitions.iter().map(|d| &d.name).collect::<Vec<_>>());
+        debug!(
+            "Client tools: {:?}",
+            client_definitions
+                .iter()
+                .map(|d| &d.name)
+                .collect::<Vec<_>>()
+        );
         definitions.extend(client_definitions);
 
         // Add Anthropic tool definitions
-        let server_definitions: Vec<ToolDefinition> = self.anthropic_tools
+        let server_definitions: Vec<ToolDefinition> = self
+            .anthropic_tools
             .iter()
             .map(|tool| tool.to_definition())
             .collect();
-        debug!("Server tools: {:?}", server_definitions.iter().map(|d| &d.name).collect::<Vec<_>>());
+        debug!(
+            "Server tools: {:?}",
+            server_definitions
+                .iter()
+                .map(|d| &d.name)
+                .collect::<Vec<_>>()
+        );
         definitions.extend(server_definitions);
 
         // Check for duplicates
@@ -168,12 +188,19 @@ impl ToolOrchestrator {
     }
 
     /// Execute a single tool directly
-    pub async fn execute_tool_direct(&self, tool_name: &str, input: serde_json::Value) -> Result<ToolResult> {
+    pub async fn execute_tool_direct(
+        &self,
+        tool_name: &str,
+        input: serde_json::Value,
+    ) -> Result<ToolResult> {
         self.tool_registry.execute(tool_name, input).await
     }
 
     /// Execute tools from content blocks
-    pub async fn execute_tools(&mut self, content_blocks: &[ContentBlock]) -> Result<Vec<ContentBlock>> {
+    pub async fn execute_tools(
+        &mut self,
+        content_blocks: &[ContentBlock],
+    ) -> Result<Vec<ContentBlock>> {
         let mut results = Vec::new();
 
         for block in content_blocks {
@@ -182,9 +209,9 @@ impl ToolOrchestrator {
                     // Check if this is a server-side tool
                     if self.is_server_tool(name) {
                         debug!("Server tool requested: {} (id: {}) - waiting for Anthropic to provide result", name, id);
-                        // Do not create a placeholder result. The real result will be
-                        // returned by the server in a subsequent response and will be
-                        // stored when received.
+                        // Server tools are executed by Anthropic. When the
+                        // result is streamed back it will be captured in a
+                        // subsequent response and stored in `server_tool_results`.
                         continue;
                     }
 
@@ -197,7 +224,8 @@ impl ToolOrchestrator {
                         }
                         Err(e) => {
                             error!("Tool execution failed: {} - {}", name, e);
-                            let error_result = ToolResult::error(format!("Tool execution failed: {}", e));
+                            let error_result =
+                                ToolResult::error(format!("Tool execution failed: {}", e));
                             results.push(error_result.to_content_block(id.clone()));
                         }
                     }
@@ -207,19 +235,27 @@ impl ToolOrchestrator {
                     // Server tools are handled by Anthropic, we don't need to execute them
                     // They will appear as results in subsequent API responses
                 }
-                ContentBlock::CodeExecutionToolResult { tool_use_id, content } => {
+                ContentBlock::CodeExecutionToolResult {
+                    tool_use_id,
+                    content,
+                } => {
                     debug!("Received code execution result for {}", tool_use_id);
-                    self.server_tool_results.push(ContentBlock::CodeExecutionToolResult {
-                        tool_use_id: tool_use_id.clone(),
-                        content: content.clone(),
-                    });
+                    self.server_tool_results
+                        .push(ContentBlock::CodeExecutionToolResult {
+                            tool_use_id: tool_use_id.clone(),
+                            content: content.clone(),
+                        });
                 }
-                ContentBlock::WebSearchToolResult { tool_use_id, content } => {
+                ContentBlock::WebSearchToolResult {
+                    tool_use_id,
+                    content,
+                } => {
                     debug!("Received web search result for {}", tool_use_id);
-                    self.server_tool_results.push(ContentBlock::WebSearchToolResult {
-                        tool_use_id: tool_use_id.clone(),
-                        content: content.clone(),
-                    });
+                    self.server_tool_results
+                        .push(ContentBlock::WebSearchToolResult {
+                            tool_use_id: tool_use_id.clone(),
+                            content: content.clone(),
+                        });
                 }
                 _ => {
                     // Not a tool use block, skip
@@ -239,23 +275,25 @@ impl ToolOrchestrator {
 
         // Also check for known Anthropic server tool names
         // Only web_search and computer_use should be server tools
-        matches!(name,
-            "web_search" |
-            "computer_use"
-        )
+        matches!(name, "web_search" | "computer_use")
     }
 
     /// Get available tool names
     pub fn get_tool_names(&self) -> Vec<String> {
-        let mut names = self.tool_registry.tool_names().iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let mut names = self
+            .tool_registry
+            .tool_names()
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
         names.extend(self.anthropic_tools.iter().map(|tool| tool.name.clone()));
         names
     }
 
     /// Check if a tool is available
     pub fn has_tool(&self, name: &str) -> bool {
-        self.tool_registry.has_tool(name) || 
-        self.anthropic_tools.iter().any(|tool| tool.name == name)
+        self.tool_registry.has_tool(name)
+            || self.anthropic_tools.iter().any(|tool| tool.name == name)
     }
 
     /// Get tool count
@@ -279,7 +317,11 @@ impl ToolOrchestrator {
             self.tool_registry.remove(name);
             debug!("Removed client tool: {}", name);
             true
-        } else if let Some(pos) = self.anthropic_tools.iter().position(|tool| tool.name == name) {
+        } else if let Some(pos) = self
+            .anthropic_tools
+            .iter()
+            .position(|tool| tool.name == name)
+        {
             self.anthropic_tools.remove(pos);
             debug!("Removed server tool: {}", name);
             true
@@ -297,8 +339,17 @@ impl ToolOrchestrator {
 
     /// Get tool information
     pub fn get_tool_info(&self) -> ToolInfo {
-        let client_tools: Vec<String> = self.tool_registry.tool_names().iter().map(|s| s.to_string()).collect();
-        let server_tools: Vec<String> = self.anthropic_tools.iter().map(|tool| tool.name.clone()).collect();
+        let client_tools: Vec<String> = self
+            .tool_registry
+            .tool_names()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let server_tools: Vec<String> = self
+            .anthropic_tools
+            .iter()
+            .map(|tool| tool.name.clone())
+            .collect();
 
         ToolInfo {
             client_tools,
@@ -320,7 +371,7 @@ impl ToolInfo {
     /// Format tool information as a string
     pub fn format(&self) -> String {
         let mut output = format!("Available Tools ({} total):\n\n", self.total_count);
-        
+
         if !self.client_tools.is_empty() {
             output.push_str("Client Tools (executed locally):\n");
             for tool in &self.client_tools {
@@ -374,7 +425,10 @@ mod tests {
         let mut orchestrator = ToolOrchestrator::new(memory_manager);
 
         let agent_config = AgentConfig::default();
-        orchestrator.register_builtin_tools(&agent_config).await.unwrap();
+        orchestrator
+            .register_builtin_tools(&agent_config)
+            .await
+            .unwrap();
 
         assert!(orchestrator.tool_count() > 0);
         assert!(orchestrator.has_tool("memory_search"));

@@ -269,8 +269,7 @@ mod tests {
             SearchResult::new("Low score".to_string(), 0.3, 2),
         ];
 
-        let search_results = SearchResults::new("test".to_string(), results)
-            .filter_by_score(0.5);
+        let search_results = SearchResults::new("test".to_string(), results).filter_by_score(0.5);
 
         assert_eq!(search_results.len(), 1);
         assert_eq!(search_results.results[0].content, "High score");

@@ -2,6 +2,8 @@ pub mod conversation;
 pub mod memory_manager;
 pub mod tool_orchestrator;
 
+#[cfg(test)]
+mod tests;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -11,6 +13,7 @@ use uuid::Uuid;
 use crate::anthropic::{AnthropicClient, ChatMessage, ChatRequest, MessageRole};
 use crate::config::AgentConfig;
 use crate::memory::MemoryManager;
+use crate::security::SecurityManager;
 use crate::utils::error::{AgentError, Result};
 
 pub use conversation::ConversationManager;
@@ -29,6 +32,8 @@ pub struct Agent {
     tool_orchestrator: ToolOrchestrator,
     /// Conversation manager
     conversation_manager: ConversationManager,
+    /// Security manager
+    security_manager: Option<Arc<SecurityManager>>,
     /// Current conversation ID
     current_conversation_id: Option<String>,
 }
@@ -62,9 +67,7 @@ impl Agent {
         anthropic_client.test_connection().await?;
 
         // Create memory manager
-        let memory_manager = Arc::new(Mutex::new(
-            MemoryManager::new(config.memory.clone()).await?,
-        ));
+        let memory_manager = Arc::new(Mutex::new(MemoryManager::new(config.memory.clone()).await?));
 
         // Create tool orchestrator
         let mut tool_orchestrator = ToolOrchestrator::new(memory_manager.clone());
@@ -75,12 +78,29 @@ impl Agent {
         // Create conversation manager
         let conversation_manager = ConversationManager::new(memory_manager.clone());
 
+        // Initialize security manager if security config is provided
+        let security_manager = if let Some(security_config) = &config.security {
+            match SecurityManager::new(security_config.clone()).await {
+                Ok(sm) => {
+                    info!("Security manager initialized successfully");
+                    Some(Arc::new(sm))
+                }
+                Err(e) => {
+                    warn!("Failed to initialize security manager: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             config,
             anthropic_client,
             memory_manager,
             tool_orchestrator,
             conversation_manager,
+            security_manager,
             current_conversation_id: None,
         })
     }
@@ -106,12 +126,15 @@ impl Agent {
 
         // Add user message to conversation
         let user_message = ChatMessage::user(message);
-        self.conversation_manager.add_message(user_message.clone()).await?;
+        self.conversation_manager
+            .add_message(user_message.clone())
+            .await?;
 
         // Get conversation history for context
-        let history = self.conversation_manager.get_recent_history(
-            self.config.agent.max_history_length
-        ).await?;
+        let history = self
+            .conversation_manager
+            .get_recent_history(self.config.agent.max_history_length)
+            .await?;
 
         // Create chat request with validated conversation history
         let filtered_history = self.validate_and_clean_conversation_history(&history)?;
@@ -128,25 +151,53 @@ impl Agent {
         };
 
         // Log request size for debugging
-        info!("Initial API request: {} messages, {} tools",
+        info!(
+            "Initial API request: {} messages, {} tools",
             filtered_history.len(),
             request.tools.as_ref().map(|t| t.len()).unwrap_or(0)
         );
 
         // Send request to Anthropic with timeout (use HTTP client timeout + buffer)
         info!("Making initial API call to Anthropic...");
-        let timeout_duration = std::time::Duration::from_secs(self.config.anthropic.timeout_seconds + 30);
-        info!("Using timeout of {} seconds for API call", timeout_duration.as_secs());
+        let timeout_duration =
+            std::time::Duration::from_secs(self.config.anthropic.timeout_seconds + 30);
+        info!(
+            "Using timeout of {} seconds for API call",
+            timeout_duration.as_secs()
+        );
 
-        let initial_api_call = self.anthropic_client.chat(request.clone());
-        let mut response = match tokio::time::timeout(timeout_duration, initial_api_call).await {
-            Ok(result) => {
-                info!("Initial API call completed successfully");
-                result?
+        // Use streaming if enabled, otherwise use regular chat
+        let mut response = if self.config.agent.enable_streaming {
+            info!("Using streaming API call");
+            let api_call = self.anthropic_client.chat_stream(request.clone());
+            match tokio::time::timeout(timeout_duration, api_call).await {
+                Ok(result) => {
+                    info!("Initial streaming API call completed successfully");
+                    result?
+                }
+                Err(_) => {
+                    error!(
+                        "Initial streaming API call timed out after {} seconds!",
+                        timeout_duration.as_secs()
+                    );
+                    return Err(AgentError::anthropic_api(format!("Initial streaming API call timed out after {} seconds - this may indicate a network issue or API problem", timeout_duration.as_secs())));
+                }
             }
-            Err(_) => {
-                error!("Initial API call timed out after {} seconds!", timeout_duration.as_secs());
-                return Err(AgentError::anthropic_api(format!("Initial API call timed out after {} seconds - this may indicate a network issue or API problem", timeout_duration.as_secs())));
+        } else {
+            info!("Using non-streaming API call");
+            let api_call = self.anthropic_client.chat(request.clone());
+            match tokio::time::timeout(timeout_duration, api_call).await {
+                Ok(result) => {
+                    info!("Initial API call completed successfully");
+                    result?
+                }
+                Err(_) => {
+                    error!(
+                        "Initial API call timed out after {} seconds!",
+                        timeout_duration.as_secs()
+                    );
+                    return Err(AgentError::anthropic_api(format!("Initial API call timed out after {} seconds - this may indicate a network issue or API problem", timeout_duration.as_secs())));
+                }
             }
         };
 
@@ -161,26 +212,36 @@ impl Agent {
                 crate::anthropic::models::ContentBlock::ToolUse { .. }
                     | crate::anthropic::models::ContentBlock::ServerToolUse { .. }
             )
-        }) && tool_iterations < max_tool_iterations {
+        }) && tool_iterations < max_tool_iterations
+        {
             tool_iterations += 1;
             debug!("Processing tool calls (iteration {})", tool_iterations);
 
             // Check for infinite loops - detect if we're repeating the same tool calls
-            let current_tool_calls: Vec<String> = response.content.iter()
-                .filter_map(|block| {
-                    match block {
-                        crate::anthropic::models::ContentBlock::ToolUse { name, input, .. } |
-                        crate::anthropic::models::ContentBlock::ServerToolUse { name, input, .. } => {
-                            Some(format!("{}:{}", name, serde_json::to_string(input).unwrap_or_default()))
-                        }
-                        _ => None,
-                    }
+            let current_tool_calls: Vec<String> = response
+                .content
+                .iter()
+                .filter_map(|block| match block {
+                    crate::anthropic::models::ContentBlock::ToolUse { name, input, .. }
+                    | crate::anthropic::models::ContentBlock::ServerToolUse {
+                        name, input, ..
+                    } => Some(format!(
+                        "{}:{}",
+                        name,
+                        serde_json::to_string(&input).unwrap_or_default()
+                    )),
+                    _ => None,
                 })
                 .collect();
 
             // Check if we've seen these exact tool calls recently (within last 2 iterations)
             let tool_call_signature = current_tool_calls.join("|");
-            if recent_tool_calls.iter().rev().take(2).any(|prev| prev == &tool_call_signature) {
+            if recent_tool_calls
+                .iter()
+                .rev()
+                .take(2)
+                .any(|prev| prev == &tool_call_signature)
+            {
                 warn!("INFINITE LOOP DETECTED: Same tool calls repeated. Breaking loop to prevent infinite iterations.");
                 warn!("Repeated tool call signature: {}", tool_call_signature);
 
@@ -235,7 +296,9 @@ impl Agent {
                         id: Some(Uuid::new_v4().to_string()),
                         timestamp: Some(chrono::Utc::now()),
                     };
-                    self.conversation_manager.add_message(loop_error_message).await?;
+                    self.conversation_manager
+                        .add_message(loop_error_message)
+                        .await?;
                 }
                 break;
             }
@@ -254,12 +317,19 @@ impl Agent {
                 id: Some(response.id.clone()),
                 timestamp: Some(chrono::Utc::now()),
             };
-            self.conversation_manager.add_message(assistant_message).await?;
+            self.conversation_manager
+                .add_message(assistant_message)
+                .await?;
 
             // Execute tools and collect results
             info!("Executing tools for iteration {}...", tool_iterations);
             let tool_execution_future = self.tool_orchestrator.execute_tools(&response.content);
-            let tool_results = match tokio::time::timeout(std::time::Duration::from_secs(120), tool_execution_future).await {
+            let mut tool_results = match tokio::time::timeout(
+                std::time::Duration::from_secs(120),
+                tool_execution_future,
+            )
+            .await
+            {
                 Ok(result) => {
                     info!("Tool execution completed successfully");
                     result?
@@ -269,12 +339,24 @@ impl Agent {
                     return Err(AgentError::tool("memory_stats", "Tool execution timed out - this may indicate a performance issue or infinite loop"));
                 }
             };
-            info!("Tool execution completed: {} tool_use blocks, {} tool_result blocks",
-                response.content.iter().filter(|b| matches!(
-                    b,
-                    crate::anthropic::models::ContentBlock::ToolUse { .. }
-                        | crate::anthropic::models::ContentBlock::ServerToolUse { .. }
-                )).count(),
+            // Include any server tool results that may have been returned by the API
+            let server_results = self.tool_orchestrator.take_server_tool_results();
+            if !server_results.is_empty() {
+                debug!("Received {} server tool results", server_results.len());
+                tool_results.extend(server_results);
+            }
+
+            info!(
+                "Tool execution completed: {} tool_use blocks, {} tool_result blocks",
+                response
+                    .content
+                    .iter()
+                    .filter(|b| matches!(
+                        b,
+                        crate::anthropic::models::ContentBlock::ToolUse { .. }
+                            | crate::anthropic::models::ContentBlock::ServerToolUse { .. }
+                    ))
+                    .count(),
                 tool_results.len()
             );
 
@@ -293,10 +375,19 @@ impl Agent {
                 // If we have tool uses but no results (shouldn't happen), create error results
                 let final_tool_results = if tool_results.is_empty() {
                     // Create error results for any unmatched tool uses
-                    response.content.iter()
+                    response
+                        .content
+                        .iter()
                         .filter_map(|block| {
-                            if let crate::anthropic::models::ContentBlock::ToolUse { id, .. } = block {
-                                Some(crate::tools::ToolResult::error("Tool execution failed - no result generated".to_string()).to_content_block(id.clone()))
+                            if let crate::anthropic::models::ContentBlock::ToolUse { id, .. } =
+                                block
+                            {
+                                Some(
+                                    crate::tools::ToolResult::error(
+                                        "Tool execution failed - no result generated".to_string(),
+                                    )
+                                    .to_content_block(id.clone()),
+                                )
                             } else {
                                 None
                             }
@@ -322,8 +413,9 @@ impl Agent {
                     if self.config.agent.enable_human_in_loop
                         && self.config.agent.human_input_after_iterations.is_none()
                     {
-                        if let Ok(extra) =
-                            self.request_human_input(&self.config.agent.human_input_prompt).await
+                        if let Ok(extra) = self
+                            .request_human_input(&self.config.agent.human_input_prompt)
+                            .await
                         {
                             if !extra.trim().is_empty() {
                                 let msg = ChatMessage::user(extra);
@@ -338,15 +430,22 @@ impl Agent {
 
             // Check if we're about to hit the limit
             if tool_iterations >= max_tool_iterations {
-                warn!("Maximum tool iterations ({}) reached, stopping tool execution", max_tool_iterations);
+                warn!(
+                    "Maximum tool iterations ({}) reached, stopping tool execution",
+                    max_tool_iterations
+                );
                 break;
             }
 
             // Check for human-in-the-loop intervention
             if self.config.agent.enable_human_in_loop {
-                if let Some(human_input_threshold) = self.config.agent.human_input_after_iterations {
+                if let Some(human_input_threshold) = self.config.agent.human_input_after_iterations
+                {
                     if tool_iterations >= human_input_threshold {
-                        info!("Human-in-the-loop threshold ({}) reached after {} iterations", human_input_threshold, tool_iterations);
+                        info!(
+                            "Human-in-the-loop threshold ({}) reached after {} iterations",
+                            human_input_threshold, tool_iterations
+                        );
                         let prompt = &self.config.agent.human_input_prompt;
                         if let Ok(input) = self.request_human_input(prompt).await {
                             if !input.trim().is_empty() {
@@ -361,9 +460,19 @@ impl Agent {
             // Get updated history and make another request
             // Use smaller history for follow-up calls to reduce request size and improve performance
             let follow_up_history_length = std::cmp::min(self.config.agent.max_history_length, 20);
-            info!("Getting updated conversation history for next API call (last {} messages)...", follow_up_history_length);
-            let history_future = self.conversation_manager.get_recent_history(follow_up_history_length);
-            let updated_history = match tokio::time::timeout(std::time::Duration::from_secs(30), history_future).await {
+            info!(
+                "Getting updated conversation history for next API call (last {} messages)...",
+                follow_up_history_length
+            );
+            let history_future = self
+                .conversation_manager
+                .get_recent_history(follow_up_history_length);
+            let updated_history = match tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                history_future,
+            )
+            .await
+            {
                 Ok(result) => {
                     info!("Successfully retrieved conversation history");
                     result?
@@ -375,31 +484,59 @@ impl Agent {
             };
 
             // Filter out messages with empty content and validate tool_use/tool_result pairing
-            let filtered_messages = self.validate_and_clean_conversation_history(&updated_history)?;
+            let filtered_messages =
+                self.validate_and_clean_conversation_history(&updated_history)?;
 
-            info!("Follow-up API request: {} messages, {} tools",
+            info!(
+                "Follow-up API request: {} messages, {} tools",
                 filtered_messages.len(),
                 request.tools.as_ref().map(|t| t.len()).unwrap_or(0)
             );
             request.messages = filtered_messages;
 
             // Add timeout to prevent infinite hanging (use HTTP client timeout + buffer)
-            let timeout_duration = std::time::Duration::from_secs(self.config.anthropic.timeout_seconds + 30);
-            let api_call_future = self.anthropic_client.chat(request.clone());
-            match tokio::time::timeout(timeout_duration, api_call_future).await {
-                Ok(result) => {
-                    response = result?;
-                    info!("Follow-up API call completed successfully");
+            let timeout_duration =
+                std::time::Duration::from_secs(self.config.anthropic.timeout_seconds + 30);
+
+            // Use streaming if enabled, otherwise use regular chat
+            response = if self.config.agent.enable_streaming {
+                let api_call = self.anthropic_client.chat_stream(request.clone());
+                match tokio::time::timeout(timeout_duration, api_call).await {
+                    Ok(result) => {
+                        info!("Follow-up streaming API call completed successfully");
+                        result?
+                    }
+                    Err(_) => {
+                        error!(
+                            "Follow-up streaming API call timed out after {} seconds!",
+                            timeout_duration.as_secs()
+                        );
+                        return Err(AgentError::anthropic_api(format!("Follow-up streaming API call timed out after {} seconds - this may indicate a network issue or API problem", timeout_duration.as_secs())));
+                    }
                 }
-                Err(_) => {
-                    error!("Follow-up API call timed out after {} seconds!", timeout_duration.as_secs());
-                    return Err(AgentError::anthropic_api(format!("Follow-up API call timed out after {} seconds - this may indicate a network issue or API problem", timeout_duration.as_secs())));
+            } else {
+                let api_call = self.anthropic_client.chat(request.clone());
+                match tokio::time::timeout(timeout_duration, api_call).await {
+                    Ok(result) => {
+                        info!("Follow-up API call completed successfully");
+                        result?
+                    }
+                    Err(_) => {
+                        error!(
+                            "Follow-up API call timed out after {} seconds!",
+                            timeout_duration.as_secs()
+                        );
+                        return Err(AgentError::anthropic_api(format!("Follow-up API call timed out after {} seconds - this may indicate a network issue or API problem", timeout_duration.as_secs())));
+                    }
                 }
-            }
+            };
         }
 
         // Tool iterations completed (either no more tool uses or max iterations reached)
-        info!("Tool processing loop completed after {} iterations", tool_iterations);
+        info!(
+            "Tool processing loop completed after {} iterations",
+            tool_iterations
+        );
 
         // Check if the final response has tool uses that need results
         let final_has_tool_uses = response.content.iter().any(|block| {
@@ -417,12 +554,16 @@ impl Agent {
             error!("Final response contains tool uses but max iterations reached. This indicates a fundamental issue.");
 
             // Count the unprocessed tool calls
-            let tool_use_count = response.content.iter()
-                .filter(|block| matches!(
-                    block,
-                    crate::anthropic::models::ContentBlock::ToolUse { .. }
-                        | crate::anthropic::models::ContentBlock::ServerToolUse { .. }
-                ))
+            let tool_use_count = response
+                .content
+                .iter()
+                .filter(|block| {
+                    matches!(
+                        block,
+                        crate::anthropic::models::ContentBlock::ToolUse { .. }
+                            | crate::anthropic::models::ContentBlock::ServerToolUse { .. }
+                    )
+                })
                 .count();
 
             // Instead of creating placeholder results, return a detailed error
@@ -437,8 +578,7 @@ impl Agent {
                 Check the logs for repeated tool signatures to identify the root cause.\n\
                 \n\
                 Recommendation: Review the conversation history and tool call patterns.",
-                self.config.agent.max_tool_iterations,
-                tool_use_count
+                self.config.agent.max_tool_iterations, tool_use_count
             );
 
             // DO NOT add the problematic message to conversation history
@@ -454,32 +594,46 @@ impl Agent {
             id: Some(response.id),
             timestamp: Some(chrono::Utc::now()),
         };
-        self.conversation_manager.add_message(final_message.clone()).await?;
+        self.conversation_manager
+            .add_message(final_message.clone())
+            .await?;
         info!("Final assistant message added successfully");
 
         // Extract text response
         let response_text = final_message.get_text();
-        
+
         info!("Chat response generated: {} chars", response_text.len());
         Ok(response_text)
     }
 
     /// Get conversation history
     pub async fn get_conversation_history(&self) -> Result<Vec<ChatMessage>> {
-        self.conversation_manager.get_recent_history(usize::MAX).await
+        self.conversation_manager
+            .get_recent_history(usize::MAX)
+            .await
     }
 
     /// Search memory
-    pub async fn search_memory<S: Into<String>>(&self, query: S, limit: usize) -> Result<Vec<crate::memory::SearchResult>> {
+    pub async fn search_memory<S: Into<String>>(
+        &self,
+        query: S,
+        limit: usize,
+    ) -> Result<Vec<crate::memory::SearchResult>> {
         let memory_manager = self.memory_manager.lock().await;
         memory_manager.search_raw(&query.into(), limit).await
     }
 
     /// Save information to memory
-    pub async fn save_to_memory<S: Into<String>>(&mut self, content: S, entry_type: S) -> Result<()> {
+    pub async fn save_to_memory<S: Into<String>>(
+        &mut self,
+        content: S,
+        entry_type: S,
+    ) -> Result<()> {
         let mut memory_manager = self.memory_manager.lock().await;
         let metadata = std::collections::HashMap::new();
-        memory_manager.save_memory(content.into(), entry_type.into(), metadata).await?;
+        memory_manager
+            .save_memory(content.into(), entry_type.into(), metadata)
+            .await?;
         Ok(())
     }
 
@@ -500,17 +654,24 @@ impl Agent {
     }
 
     /// Execute a specific tool directly
-    pub async fn execute_tool(&self, tool_name: &str, input: serde_json::Value) -> Result<crate::tools::ToolResult> {
-        self.tool_orchestrator.execute_tool_direct(tool_name, input).await
+    pub async fn execute_tool(
+        &self,
+        tool_name: &str,
+        input: serde_json::Value,
+    ) -> Result<crate::tools::ToolResult> {
+        self.tool_orchestrator
+            .execute_tool_direct(tool_name, input)
+            .await
     }
 
     /// Update configuration
     pub async fn update_config(&mut self, config: AgentConfig) -> Result<()> {
         config.validate()?;
-        
+
         // Update Anthropic client if needed
         if config.anthropic != self.config.anthropic {
-            self.anthropic_client.update_config(config.anthropic.clone())?;
+            self.anthropic_client
+                .update_config(config.anthropic.clone())?;
         }
 
         self.config = config;
@@ -531,7 +692,11 @@ impl Agent {
     pub async fn switch_conversation(&mut self, conversation_id: String) -> Result<()> {
         // Verify the conversation exists
         let memory_manager = self.memory_manager.lock().await;
-        if memory_manager.get_conversation(&conversation_id).await?.is_some() {
+        if memory_manager
+            .get_conversation(&conversation_id)
+            .await?
+            .is_some()
+        {
             self.current_conversation_id = Some(conversation_id);
             Ok(())
         } else {
@@ -548,8 +713,8 @@ impl Agent {
     /// Request human input during agent execution
     /// This is a placeholder for human-in-the-loop functionality
     pub async fn request_human_input(&self, prompt: &str) -> Result<String> {
-        use std::io::{self, Write};
         use crossterm::terminal;
+        use std::io::{self, Write};
 
         // If raw mode is enabled (e.g., interactive chat), temporarily disable it
         let was_raw = terminal::is_raw_mode_enabled().unwrap_or(false);
@@ -601,10 +766,23 @@ impl Agent {
         self.config.agent.system_prompt = prompt.map(|p| p.into());
     }
 
+    /// Enable or disable streaming responses
+    pub fn set_streaming_enabled(&mut self, enabled: bool) {
+        self.config.agent.enable_streaming = enabled;
+    }
+
+    /// Check if streaming is enabled
+    pub fn is_streaming_enabled(&self) -> bool {
+        self.config.agent.enable_streaming
+    }
+
     /// Validate and clean conversation history to prevent tool_use/tool_result pairing issues
-    fn validate_and_clean_conversation_history(&self, history: &[ChatMessage]) -> Result<Vec<crate::anthropic::models::ApiMessage>> {
-        use std::collections::{HashSet, HashMap};
-        use crate::anthropic::models::{ContentBlock, ApiMessage, MessageRole};
+    fn validate_and_clean_conversation_history(
+        &self,
+        history: &[ChatMessage],
+    ) -> Result<Vec<crate::anthropic::models::ApiMessage>> {
+        use crate::anthropic::models::{ApiMessage, ContentBlock, MessageRole};
+        use std::collections::{HashMap, HashSet};
 
         let mut cleaned_messages = Vec::new();
         let mut pending_tool_uses = HashMap::new(); // Track tool_use IDs that need results
@@ -672,17 +850,26 @@ impl Agent {
 
         // Log validation results
         if !orphaned_tool_results.is_empty() {
-            warn!("Removed {} orphaned tool_result blocks: {:?}",
-                  orphaned_tool_results.len(), orphaned_tool_results);
+            warn!(
+                "Removed {} orphaned tool_result blocks: {:?}",
+                orphaned_tool_results.len(),
+                orphaned_tool_results
+            );
         }
 
         if !pending_tool_uses.is_empty() {
-            warn!("Found {} tool_use blocks without results: {:?}",
-                  pending_tool_uses.len(), pending_tool_uses.keys().collect::<Vec<_>>());
+            warn!(
+                "Found {} tool_use blocks without results: {:?}",
+                pending_tool_uses.len(),
+                pending_tool_uses.keys().collect::<Vec<_>>()
+            );
         }
 
-        info!("Conversation history validation: {} original messages, {} cleaned messages",
-              history.len(), cleaned_messages.len());
+        info!(
+            "Conversation history validation: {} original messages, {} cleaned messages",
+            history.len(),
+            cleaned_messages.len()
+        );
 
         Ok(cleaned_messages)
     }
@@ -732,7 +919,7 @@ impl AgentBuilder {
     /// Build the agent
     pub async fn build(self) -> Result<Agent> {
         let mut agent = Agent::new(self.config).await?;
-        
+
         // Register custom tools
         for tool in self.custom_tools {
             agent.tool_orchestrator.register_boxed_tool(tool);

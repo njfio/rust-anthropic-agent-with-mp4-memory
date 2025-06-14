@@ -1,17 +1,10 @@
+use crate::utils::error::{AgentError, Result};
 use std::env;
 use std::fs;
-use std::io::{self, Write, BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use tempfile::NamedTempFile;
-use crossterm::{
-    cursor,
-    event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
-    execute,
-    style::{Color, Print, ResetColor, SetForegroundColor},
-    terminal::{self, ClearType},
-};
-use crate::utils::error::{AgentError, Result};
 
 /// Enhanced prompt system with multiple input modes
 pub struct PromptSystem {
@@ -42,7 +35,12 @@ impl PromptSystem {
             .unwrap_or_else(|_| {
                 // Try to find a suitable editor
                 for editor in &["nano", "vim", "vi", "code", "subl", "atom"] {
-                    if Command::new("which").arg(editor).output().map(|o| o.status.success()).unwrap_or(false) {
+                    if Command::new("which")
+                        .arg(editor)
+                        .output()
+                        .map(|o| o.status.success())
+                        .unwrap_or(false)
+                    {
                         return editor.to_string();
                     }
                 }
@@ -71,45 +69,51 @@ impl PromptSystem {
     fn get_single_line_input(&mut self, prompt: &str) -> Result<String> {
         print!("{}", prompt);
         io::stdout().flush()?;
-        
+
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
-        
+
         let input = input.trim().to_string();
         if !input.is_empty() {
             self.add_to_history(input.clone());
         }
-        
+
         Ok(input)
     }
 
     /// Multi-line input using external editor
     fn get_editor_input(&mut self, prompt: &str) -> Result<String> {
         println!("{}", prompt);
-        println!("Opening editor ({})... Save and close to continue.", self.editor_command);
-        
+        println!(
+            "Opening editor ({})... Save and close to continue.",
+            self.editor_command
+        );
+
         // Create temporary file
         let mut temp_file = NamedTempFile::new()?;
-        
+
         // Write initial prompt as comment
-        writeln!(temp_file, "# Enter your prompt below (lines starting with # are ignored)")?;
+        writeln!(
+            temp_file,
+            "# Enter your prompt below (lines starting with # are ignored)"
+        )?;
         writeln!(temp_file, "# Save and close the editor to continue")?;
-        writeln!(temp_file, "")?;
-        
+        writeln!(temp_file)?;
+
         temp_file.flush()?;
-        
+
         // Open editor
         let status = Command::new(&self.editor_command)
             .arg(temp_file.path())
             .status()?;
-        
+
         if !status.success() {
             return Err(AgentError::invalid_input("Editor exited with error"));
         }
-        
+
         // Read content
         let content = fs::read_to_string(temp_file.path())?;
-        
+
         // Filter out comment lines and empty lines
         let input: String = content
             .lines()
@@ -118,11 +122,11 @@ impl PromptSystem {
             .join("\n")
             .trim()
             .to_string();
-        
+
         if !input.is_empty() {
             self.add_to_history(input.clone());
         }
-        
+
         Ok(input)
     }
 
@@ -131,20 +135,20 @@ impl PromptSystem {
         println!("{}", prompt);
         println!("Interactive mode - Enter your prompt (Ctrl+D to finish, Ctrl+C to cancel):");
         println!("Commands: :help, :history, :clear, :editor, :save <file>, :load <file>");
-        
+
         let mut lines = Vec::new();
         let mut line_number = 1;
-        
+
         loop {
             print!("{:3}> ", line_number);
             io::stdout().flush()?;
-            
+
             let mut line = String::new();
             match io::stdin().read_line(&mut line) {
                 Ok(0) => break, // EOF (Ctrl+D)
                 Ok(_) => {
                     let line = line.trim_end_matches('\n');
-                    
+
                     // Handle commands
                     if line.starts_with(':') {
                         match self.handle_interactive_command(line, &mut lines)? {
@@ -166,23 +170,26 @@ impl PromptSystem {
                 Err(e) => return Err(AgentError::Io(e)),
             }
         }
-        
+
         let input = lines.join("\n").trim().to_string();
         if !input.is_empty() {
             self.add_to_history(input.clone());
         }
-        
+
         Ok(input)
     }
 
     /// Load input from file
     fn get_file_input(&self, path: &str) -> Result<String> {
         if !Path::new(path).exists() {
-            return Err(AgentError::invalid_input(format!("File not found: {}", path)));
+            return Err(AgentError::invalid_input(format!(
+                "File not found: {}",
+                path
+            )));
         }
-        
+
         let content = fs::read_to_string(path)?;
-        
+
         Ok(content.trim().to_string())
     }
 
@@ -190,22 +197,26 @@ impl PromptSystem {
     fn get_pipe_input(&self) -> Result<String> {
         let stdin = io::stdin();
         let reader = BufReader::new(stdin.lock());
-        
+
         let mut content = String::new();
         for line in reader.lines() {
             let line = line?;
             content.push_str(&line);
             content.push('\n');
         }
-        
+
         Ok(content.trim().to_string())
     }
 
     /// Handle interactive commands
-    fn handle_interactive_command(&mut self, command: &str, lines: &mut Vec<String>) -> Result<CommandResult> {
+    fn handle_interactive_command(
+        &mut self,
+        command: &str,
+        lines: &mut Vec<String>,
+    ) -> Result<CommandResult> {
         let parts: Vec<&str> = command.split_whitespace().collect();
-        
-        match parts.get(0).copied() {
+
+        match parts.first().copied() {
             Some(":help") => {
                 println!("Available commands:");
                 println!("  :help          - Show this help");
@@ -221,11 +232,13 @@ impl PromptSystem {
             Some(":history") => {
                 println!("Input history:");
                 for (i, item) in self.history.iter().enumerate() {
-                    println!("  {}: {}", i + 1, 
-                        if item.len() > 50 { 
-                            format!("{}...", &item[..50]) 
-                        } else { 
-                            item.clone() 
+                    println!(
+                        "  {}: {}",
+                        i + 1,
+                        if item.len() > 50 {
+                            format!("{}...", &item[..50])
+                        } else {
+                            item.clone()
                         }
                     );
                 }
@@ -239,14 +252,14 @@ impl PromptSystem {
             Some(":editor") => {
                 let current_content = lines.join("\n");
                 let mut temp_file = NamedTempFile::new()?;
-                
+
                 write!(temp_file, "{}", current_content)?;
                 temp_file.flush()?;
-                
+
                 let status = Command::new(&self.editor_command)
                     .arg(temp_file.path())
                     .status()?;
-                
+
                 if status.success() {
                     let content = fs::read_to_string(temp_file.path())?;
                     *lines = content.lines().map(|s| s.to_string()).collect();
@@ -282,11 +295,12 @@ impl PromptSystem {
                 let content = lines.join("\n").trim().to_string();
                 Ok(CommandResult::Finish(content))
             }
-            Some(":cancel") => {
-                Ok(CommandResult::Cancel)
-            }
+            Some(":cancel") => Ok(CommandResult::Cancel),
             _ => {
-                println!("Unknown command: {}. Type :help for available commands.", command);
+                println!(
+                    "Unknown command: {}. Type :help for available commands.",
+                    command
+                );
                 Ok(CommandResult::Continue)
             }
         }
@@ -296,7 +310,7 @@ impl PromptSystem {
     fn add_to_history(&mut self, input: String) {
         self.history.push(input);
         self.history_index = self.history.len();
-        
+
         // Keep history size reasonable
         if self.history.len() > 100 {
             self.history.remove(0);

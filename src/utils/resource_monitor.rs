@@ -1,10 +1,10 @@
+use crate::utils::audit_logger::{audit_log, AuditEvent, AuditEventType, AuditSeverity};
 use crate::utils::error::{AgentError, Result};
-use crate::utils::audit_logger::{AuditEvent, AuditEventType, AuditSeverity, audit_log};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 use std::thread;
-use tracing::{debug, error, info, warn};
+use std::time::{Duration, Instant};
+use tracing::{debug, error, info};
 
 /// Resource usage statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,11 +46,11 @@ impl Default for ResourceLimits {
     fn default() -> Self {
         Self {
             max_memory_bytes: 2 * 1024 * 1024 * 1024, // 2GB
-            max_memory_percentage: 25.0, // 25% of system memory
-            max_cpu_percentage: 80.0, // 80% CPU usage
+            max_memory_percentage: 25.0,              // 25% of system memory
+            max_cpu_percentage: 80.0,                 // 80% CPU usage
             max_threads: 100,
             memory_warning_threshold: 0.8, // 80% of max memory
-            cpu_warning_threshold: 0.8, // 80% of max CPU
+            cpu_warning_threshold: 0.8,    // 80% of max CPU
         }
     }
 }
@@ -120,7 +120,9 @@ impl ResourceMonitor {
     /// Start monitoring in a background thread
     pub fn start_monitoring(&self) -> Result<()> {
         {
-            let mut active = self.monitoring_active.lock()
+            let mut active = self
+                .monitoring_active
+                .lock()
                 .map_err(|_| AgentError::config("Resource monitor mutex poisoned".to_string()))?;
             if *active {
                 return Ok(()); // Already monitoring
@@ -136,7 +138,7 @@ impl ResourceMonitor {
 
         thread::spawn(move || {
             info!("Resource monitoring started");
-            
+
             while {
                 let active = monitoring_active.lock().unwrap_or_else(|_| {
                     error!("Resource monitor mutex poisoned");
@@ -147,10 +149,10 @@ impl ResourceMonitor {
                 if let Err(e) = Self::collect_stats(&stats, &peak_memory, &config, start_time) {
                     error!("Failed to collect resource stats: {}", e);
                 }
-                
+
                 thread::sleep(config.monitoring_interval);
             }
-            
+
             info!("Resource monitoring stopped");
         });
 
@@ -159,7 +161,9 @@ impl ResourceMonitor {
 
     /// Stop monitoring
     pub fn stop_monitoring(&self) -> Result<()> {
-        let mut active = self.monitoring_active.lock()
+        let mut active = self
+            .monitoring_active
+            .lock()
             .map_err(|_| AgentError::config("Resource monitor mutex poisoned".to_string()))?;
         *active = false;
         Ok(())
@@ -167,7 +171,9 @@ impl ResourceMonitor {
 
     /// Get current resource statistics
     pub fn get_stats(&self) -> Result<ResourceStats> {
-        let stats = self.stats.lock()
+        let stats = self
+            .stats
+            .lock()
             .map_err(|_| AgentError::config("Resource monitor mutex poisoned".to_string()))?;
         Ok(stats.clone())
     }
@@ -189,8 +195,7 @@ impl ResourceMonitor {
         if stats.memory_percentage > self.config.limits.max_memory_percentage {
             violations.push(format!(
                 "Memory percentage ({:.1}%) exceeds limit ({:.1}%)",
-                stats.memory_percentage,
-                self.config.limits.max_memory_percentage
+                stats.memory_percentage, self.config.limits.max_memory_percentage
             ));
         }
 
@@ -198,8 +203,7 @@ impl ResourceMonitor {
         if stats.cpu_percentage > self.config.limits.max_cpu_percentage {
             violations.push(format!(
                 "CPU usage ({:.1}%) exceeds limit ({:.1}%)",
-                stats.cpu_percentage,
-                self.config.limits.max_cpu_percentage
+                stats.cpu_percentage, self.config.limits.max_cpu_percentage
             ));
         }
 
@@ -207,19 +211,21 @@ impl ResourceMonitor {
         if stats.thread_count > self.config.limits.max_threads {
             violations.push(format!(
                 "Thread count ({}) exceeds limit ({})",
-                stats.thread_count,
-                self.config.limits.max_threads
+                stats.thread_count, self.config.limits.max_threads
             ));
         }
 
         // Audit violations if configured
         if self.config.audit_violations && !violations.is_empty() {
             for violation in &violations {
-                audit_log(AuditEvent::new(
-                    AuditEventType::SecurityViolation,
-                    AuditSeverity::High,
-                    "resource_limit_exceeded".to_string(),
-                ).with_error(violation));
+                audit_log(
+                    AuditEvent::new(
+                        AuditEventType::SecurityViolation,
+                        AuditSeverity::High,
+                        "resource_limit_exceeded".to_string(),
+                    )
+                    .with_error(violation),
+                );
             }
         }
 
@@ -232,8 +238,8 @@ impl ResourceMonitor {
         let mut warnings = Vec::new();
 
         // Memory warnings
-        let memory_warning_limit = self.config.limits.max_memory_bytes as f64 * 
-            self.config.limits.memory_warning_threshold;
+        let memory_warning_limit = self.config.limits.max_memory_bytes as f64
+            * self.config.limits.memory_warning_threshold;
         if stats.memory_usage as f64 > memory_warning_limit {
             warnings.push(format!(
                 "Memory usage approaching limit: {:.1} MB / {:.1} MB",
@@ -243,13 +249,12 @@ impl ResourceMonitor {
         }
 
         // CPU warnings
-        let cpu_warning_limit = self.config.limits.max_cpu_percentage * 
-            self.config.limits.cpu_warning_threshold;
+        let cpu_warning_limit =
+            self.config.limits.max_cpu_percentage * self.config.limits.cpu_warning_threshold;
         if stats.cpu_percentage > cpu_warning_limit {
             warnings.push(format!(
                 "CPU usage approaching limit: {:.1}% / {:.1}%",
-                stats.cpu_percentage,
-                self.config.limits.max_cpu_percentage
+                stats.cpu_percentage, self.config.limits.max_cpu_percentage
             ));
         }
 
@@ -264,16 +269,17 @@ impl ResourceMonitor {
         start_time: Instant,
     ) -> Result<()> {
         // Get process information
-        let pid = std::process::id();
-        
+        let _pid = std::process::id();
+
         // Read memory usage from /proc/self/status (Linux) or use cross-platform method
         let memory_usage = Self::get_memory_usage()?;
         let cpu_percentage = Self::get_cpu_usage()?;
         let thread_count = Self::get_thread_count()?;
-        
+
         // Update peak memory
         {
-            let mut peak = peak_memory.lock()
+            let mut peak = peak_memory
+                .lock()
                 .map_err(|_| AgentError::config("Peak memory mutex poisoned".to_string()))?;
             if memory_usage > *peak {
                 *peak = memory_usage;
@@ -285,7 +291,8 @@ impl ResourceMonitor {
         let memory_percentage = (memory_usage as f64 / total_memory as f64) * 100.0;
 
         let uptime_seconds = start_time.elapsed().as_secs();
-        let peak_memory_usage = *peak_memory.lock()
+        let peak_memory_usage = *peak_memory
+            .lock()
             .map_err(|_| AgentError::config("Peak memory mutex poisoned".to_string()))?;
 
         let new_stats = ResourceStats {
@@ -303,7 +310,8 @@ impl ResourceMonitor {
 
         // Update stats
         {
-            let mut current_stats = stats.lock()
+            let mut current_stats = stats
+                .lock()
                 .map_err(|_| AgentError::config("Resource stats mutex poisoned".to_string()))?;
             *current_stats = new_stats.clone();
         }
@@ -327,22 +335,26 @@ impl ResourceMonitor {
         #[cfg(target_os = "linux")]
         {
             use std::fs;
-            let status = fs::read_to_string("/proc/self/status")
-                .map_err(|e| AgentError::config(format!("Failed to read /proc/self/status: {}", e)))?;
-            
+            let status = fs::read_to_string("/proc/self/status").map_err(|e| {
+                AgentError::config(format!("Failed to read /proc/self/status: {}", e))
+            })?;
+
             for line in status.lines() {
                 if line.starts_with("VmRSS:") {
                     let parts: Vec<&str> = line.split_whitespace().collect();
                     if parts.len() >= 2 {
-                        let kb: u64 = parts[1].parse()
-                            .map_err(|e| AgentError::config(format!("Failed to parse memory usage: {}", e)))?;
+                        let kb: u64 = parts[1].parse().map_err(|e| {
+                            AgentError::config(format!("Failed to parse memory usage: {}", e))
+                        })?;
                         return Ok(kb * 1024); // Convert KB to bytes
                     }
                 }
             }
-            Err(AgentError::config("Could not find VmRSS in /proc/self/status".to_string()))
+            Err(AgentError::config(
+                "Could not find VmRSS in /proc/self/status".to_string(),
+            ))
         }
-        
+
         #[cfg(not(target_os = "linux"))]
         {
             // Fallback for non-Linux systems - approximate using heap allocation
@@ -363,18 +375,22 @@ impl ResourceMonitor {
         #[cfg(target_os = "linux")]
         {
             use std::fs;
-            let stat = fs::read_to_string("/proc/self/stat")
-                .map_err(|e| AgentError::config(format!("Failed to read /proc/self/stat: {}", e)))?;
-            
+            let stat = fs::read_to_string("/proc/self/stat").map_err(|e| {
+                AgentError::config(format!("Failed to read /proc/self/stat: {}", e))
+            })?;
+
             let parts: Vec<&str> = stat.split_whitespace().collect();
             if parts.len() > 19 {
-                let threads: u32 = parts[19].parse()
-                    .map_err(|e| AgentError::config(format!("Failed to parse thread count: {}", e)))?;
+                let threads: u32 = parts[19].parse().map_err(|e| {
+                    AgentError::config(format!("Failed to parse thread count: {}", e))
+                })?;
                 return Ok(threads);
             }
-            Err(AgentError::config("Could not parse thread count from /proc/self/stat".to_string()))
+            Err(AgentError::config(
+                "Could not parse thread count from /proc/self/stat".to_string(),
+            ))
         }
-        
+
         #[cfg(not(target_os = "linux"))]
         {
             // Fallback for non-Linux systems
@@ -389,20 +405,23 @@ impl ResourceMonitor {
             use std::fs;
             let meminfo = fs::read_to_string("/proc/meminfo")
                 .map_err(|e| AgentError::config(format!("Failed to read /proc/meminfo: {}", e)))?;
-            
+
             for line in meminfo.lines() {
                 if line.starts_with("MemTotal:") {
                     let parts: Vec<&str> = line.split_whitespace().collect();
                     if parts.len() >= 2 {
-                        let kb: u64 = parts[1].parse()
-                            .map_err(|e| AgentError::config(format!("Failed to parse total memory: {}", e)))?;
+                        let kb: u64 = parts[1].parse().map_err(|e| {
+                            AgentError::config(format!("Failed to parse total memory: {}", e))
+                        })?;
                         return Ok(kb * 1024); // Convert KB to bytes
                     }
                 }
             }
-            Err(AgentError::config("Could not find MemTotal in /proc/meminfo".to_string()))
+            Err(AgentError::config(
+                "Could not find MemTotal in /proc/meminfo".to_string(),
+            ))
         }
-        
+
         #[cfg(not(target_os = "linux"))]
         {
             // Fallback for non-Linux systems
@@ -423,7 +442,7 @@ pub fn init_resource_monitor(config: ResourceMonitorConfig) -> Result<()> {
             error!("Failed to start resource monitoring: {}", e);
             return;
         }
-        
+
         unsafe {
             RESOURCE_MONITOR = Some(Arc::new(monitor));
         }
@@ -453,7 +472,7 @@ mod tests {
     fn test_resource_monitor_creation() {
         let config = ResourceMonitorConfig::default();
         let monitor = ResourceMonitor::new(config);
-        
+
         // Should be able to get initial stats
         let stats = monitor.get_stats().unwrap();
         assert_eq!(stats.uptime_seconds, 0);
@@ -465,16 +484,17 @@ mod tests {
             monitoring_interval: Duration::from_millis(100),
             ..Default::default()
         };
-        
+
         let monitor = ResourceMonitor::new(config);
         monitor.start_monitoring().unwrap();
-        
+
         // Wait a bit for monitoring to collect data
         tokio::time::sleep(Duration::from_millis(200)).await;
-        
+
         let stats = monitor.get_stats().unwrap();
-        assert!(stats.uptime_seconds >= 0);
-        
+        // uptime_seconds is u64, so it's always >= 0
+        assert!(stats.uptime_seconds < u64::MAX);
+
         monitor.stop_monitoring().unwrap();
     }
 }

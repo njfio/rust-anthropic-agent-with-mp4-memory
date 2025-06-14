@@ -1,5 +1,8 @@
 pub mod client;
 pub mod models;
+
+#[cfg(test)]
+mod tests;
 pub mod tools;
 
 pub use client::AnthropicClient;

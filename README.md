@@ -1,3 +1,4 @@
+
 # Rust Anthropic Agent with Synaptic Memory 🦀🤖
 
 An advanced Rust agent framework that stores conversation history and
@@ -145,6 +146,59 @@ replacing the older MP4-based storage system.
 - **Error recovery validation**: Comprehensive testing of timeout, connection, and parameter error scenarios
 
 ## 🚀 Quick Start
+=======
+# Rust Anthropic Agent
+
+A Rust agent system with Anthropic Claude integration and audio processing capabilities.
+
+## Features
+
+### Core Agent System
+- **Anthropic Claude Integration**: Claude Sonnet 4 with tool calling
+- **Async/Await Architecture**: Async operations using tokio
+- **Tool System**: Tool framework with built-in tools
+- **Memory Management**: JSON-based persistent memory with search
+- **Configuration**: TOML-based configuration
+- **Error Handling**: Error types and recovery mechanisms
+
+### Audio Processing System
+- **Multi-Format Support**: WAV, MP3, FLAC, OGG, AAC, M4A encoding/decoding
+- **Audio I/O**: Cross-platform audio I/O with CPAL
+- **Audio Effects**: Noise reduction, normalization, filtering, fade effects
+- **Metadata Extraction**: Audio metadata reading and validation
+- **Speech-to-Text**: OpenAI Whisper API integration
+- **Text-to-Speech**: OpenAI TTS API integration
+- **Audio Analysis**: RMS, peak detection, dynamic range analysis
+
+### Security Features
+- **Input Validation**: Path traversal protection, command injection prevention
+- **Rate Limiting**: Per-tool and global rate limits
+- **Audit Logging**: JSON logging with rotation
+- **Resource Monitoring**: Memory and CPU usage monitoring
+- **Security Headers**: HTTP security headers
+
+## Built-in Tools
+
+- **Memory Tools**: Save, search, and manage persistent memory entries
+- **File System Tools**: Read, write, and list files with security validation
+- **Text Editor**: View and edit files
+- **HTTP Client**: Web requests with security headers and domain filtering
+- **Audio Processing**: Audio encoding, decoding, and effects processing
+- **UUID Generator**: Generate unique identifiers
+- **Shell Commands**: Execute system commands with security filtering
+
+## Test Coverage
+
+Test coverage includes:
+
+- **Audio Module**: 34 tests covering audio processing functionality
+- **Security Tests**: Input validation, rate limiting, and audit logging
+- **Tool Tests**: Built-in tools with error handling scenarios
+- **Integration Tests**: Agent functionality
+- **Memory Tests**: JSON storage and search functionality
+
+## Quick Start
+
 
 ### Prerequisites
 
@@ -177,18 +231,18 @@ async fn main() -> anyhow::Result<()> {
 
     // Create and use the agent
     let mut agent = Agent::new(config).await?;
-    
+
     // Start a conversation
     agent.start_conversation(Some("My First Chat".to_string())).await?;
-    
+
     // Chat with the agent
     let response = agent.chat("Hello! Can you help me write some Rust code?").await?;
     println!("Agent: {}", response);
-    
-    // The agent can use tools, search memory, and maintain context
+
+    // Agent can use tools, search memory, and maintain context
     let response = agent.chat("Save a note that I'm learning Rust").await?;
     println!("Agent: {}", response);
-    
+
     Ok(())
 }
 ```
@@ -199,58 +253,20 @@ async fn main() -> anyhow::Result<()> {
 # Set your API key
 export ANTHROPIC_API_KEY="your-api-key"
 
-# 🎯 Enhanced Input Modes
-# Interactive multi-line mode with full editing capabilities
-cargo run -- interactive
+# Interactive chat
+cargo run -- chat
 
-# Load complex prompts from files
-cargo run -- file prompt.txt
-
-# Pipe input for command-line workflows
-echo "Your prompt" | cargo run -- pipe
-cat complex_prompt.txt | cargo run -- pipe
-
-# Traditional chat modes
-cargo run -- chat                    # Interactive chat
-cargo run -- chat "Single message"   # Direct message
+# Direct message
+cargo run -- chat "Hello, can you help me with Rust?"
 
 # Memory operations
 cargo run -- search "rust programming"
 cargo run -- save "Important fact about Rust" --entry-type fact
-cargo run -- stats
 
 # List available tools
 cargo run -- tools
-
-# AI-powered code analysis
-cargo run -- analyze src --action explain --detailed --learning
-cargo run -- analyze src --action security --compliance
-cargo run -- analyze src --action refactor --quick-wins
-
-# Phase 2 Advanced Intelligence Features
-cargo run -- analyze src --action advanced_ai --semantic --patterns
-cargo run -- analyze src --action owasp_scan --owasp_top10 --secrets
-cargo run -- analyze src --action smart_refactor --roadmap --benchmarks
-cargo run -- analyze src --action test_coverage --missing_tests
-cargo run -- analyze src --action dependency_scan --security_deps
 ```
 
-## 🧠 AI Code Analysis
-
-The agent includes powerful AI-driven code analysis capabilities powered by the integrated rust-treesitter-agent-code-utility.
-
-### Available Analysis Actions
-
-#### 🔍 **Code Explanations** (`explain`)
-Generate intelligent explanations of your codebase with AI insights:
-
-```bash
-# Basic explanation
-cargo run -- analyze src/main.rs --action explain
-
-# Detailed explanation with learning mode
-cargo run -- analyze src --action explain --detailed --learning
-```
 
 #### 🔒 **Security Scanning** (`security`)
 Automated security vulnerability detection and compliance checking:
@@ -408,7 +424,9 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
-## 🔧 Configuration
+
+## Configuration
+
 
 Create a `agent_config.toml` file:
 
@@ -429,10 +447,7 @@ max_chunks = 1000
 enable_text_editor = true
 enable_memory_tools = true
 enable_file_tools = true
-# Security: Dangerous tools disabled by default
-enable_code_execution = false
-enable_web_search = false
-enable_shell_commands = false
+enable_audio_tools = true
 
 # Rate limiting configuration
 [tools.rate_limiting]
@@ -445,7 +460,6 @@ window_duration_seconds = 60
 max_file_size = 10485760  # 10MB
 max_path_length = 4096
 max_command_length = 8192
-allowed_domains = []  # Empty = all allowed
 
 # Audit logging
 [audit]
@@ -468,107 +482,45 @@ persist_conversations = true
 max_history_length = 50
 ```
 
-## 🛠️ Available Tools
-
-### Built-in Tools
-
-- **Memory Tools**: Search, save, and manage persistent memory
-- **Advanced Memory Analytics**: Knowledge graphs, temporal analysis, content synthesis, and analytics dashboards
-- **Code Analysis**: AI-powered code explanations, security scanning, and refactoring suggestions with Phase 2 advanced intelligence
-- **Text Editor**: View and edit files with full Anthropic text editor support and security validation
-- **File System**: Read, write, and list files with path traversal protection and size limits
-- **HTTP Requests**: Make web requests with domain filtering, security headers, and SSRF protection
-- **Shell Commands**: Execute system commands with allowlist-based security filtering
-- **UUID Generator**: Generate unique identifiers
-- **Security Tools**: Audit logging, resource monitoring, input validation, and rate limiting
-
-### Anthropic Server Tools
-
-- **Code Execution**: Run Python code in secure sandboxes
-- **Web Search**: Search the web for current information
-- **Text Editor**: Advanced file editing capabilities
-
-## 🏗️ Architecture
-
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│     Agent       │    │  Tool            │    │   Memory        │
-│                 │    │  Orchestrator    │    │   Manager       │
-│ • Conversation  │◄──►│                  │◄──►│                 │
-│ • Tool Calls    │    │ • Client Tools   │    │ • JSON Storage  │
-│ • Memory Mgmt   │    │ • Server Tools   │    │ • Fast Search   │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Anthropic     │    │   Tool Registry  │    │   Simple        │
-│   Client        │    │                  │    │   Memory        │
-│                 │    │ • Registration   │    │                 │
-│ • Enhanced HTTP │    │ • Validation     │    │ • JSON Files    │
-│ • Retry Logic   │    │ • Error Recovery │    │ • Text Search   │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-```
-
-## 🧪 Testing
+## Testing
 
 ```bash
 # Run all tests
 cargo test
 
-# Run security tests specifically
+# Run audio tests specifically
+cargo test audio::
+
+# Run security tests
 cargo test security_tests --lib
 
-# Run with features
+# Run with all features
 cargo test --features all-tools
-
-# Run examples
-cargo run --example basic_agent
-cargo run --example memory_chat
-cargo run --example tool_development
-
-# Security testing
-cargo audit                    # Dependency vulnerability scan
-cargo test --test security    # Security-specific tests
 ```
 
-## 🔒 Security
+## Architecture
 
-This project implements comprehensive security measures including:
+System architecture:
 
-- **Audit Logging**: All sensitive operations are logged with structured JSON format
-- **Input Validation**: Comprehensive validation prevents path traversal, command injection, and SSRF attacks
-- **Rate Limiting**: Configurable rate limits prevent resource exhaustion
-- **Security Headers**: HTTP requests include security headers (CSP, HSTS, etc.)
-- **Resource Monitoring**: Real-time monitoring prevents resource exhaustion attacks
-- **Automated Scanning**: Daily CI/CD security pipeline with multiple security tools
+- **Agent Core**: Manages conversations and coordinates tool usage
+- **Tool System**: Framework for adding new capabilities
+- **Memory Manager**: JSON-based persistent storage with search
+- **Anthropic Client**: HTTP client with retry logic and error handling
+- **Audio Processing**: Audio codec and effects system
+- **Security Layer**: Input validation, rate limiting, and audit logging
 
-For security issues, please see [SECURITY.md](SECURITY.md) for our vulnerability reporting process.
+## Dependencies
 
-## 🤝 Contributing
+Key dependencies include:
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
+- **tokio**: Async runtime
+- **reqwest**: HTTP client for Anthropic API
+- **serde**: JSON serialization
+- **symphonia**: Audio codec support
+- **cpal**: Cross-platform audio I/O
+- **hound**: WAV codec
+- **rustfft**: FFT for audio effects
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [Anthropic](https://www.anthropic.com/) for the Claude API
-- [rust-synaptic](https://github.com/njfio/rust-synaptic) for the advanced AI memory system
-- [rust-treesitter-agent-code-utility](https://github.com/njfio/rust-treesitter-agent-code-utility) for AI code analysis
-- The Rust community for excellent crates and tools
-
-## 🔗 Related Projects
-
-- [rust-synaptic](https://github.com/njfio/rust-synaptic) - Advanced AI memory system with knowledge graphs
-- [rust-treesitter-agent-code-utility](https://github.com/njfio/rust-treesitter-agent-code-utility) - AI-powered code analysis
-- [Anthropic API](https://docs.anthropic.com/) - Claude AI API documentation
-
----
-
-**Ready to build intelligent agents with persistent memory? Get started with rust_memvid_agent!** 🚀

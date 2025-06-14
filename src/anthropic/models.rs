@@ -262,7 +262,12 @@ impl ChatMessage {
     }
 
     /// Add a tool result to the message
-    pub fn with_tool_result(mut self, tool_use_id: String, content: String, is_error: bool) -> Self {
+    pub fn with_tool_result(
+        mut self,
+        tool_use_id: String,
+        content: String,
+        is_error: bool,
+    ) -> Self {
         self.content.push(ContentBlock::ToolResult {
             tool_use_id,
             content,
