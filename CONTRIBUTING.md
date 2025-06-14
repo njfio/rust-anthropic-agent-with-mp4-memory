@@ -14,8 +14,8 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ```bash
 # Clone the repository
-git clone https://github.com/njfio/rust-anthropic-agent-with-mp4-memory.git
-cd rust-anthropic-agent-with-mp4-memory
+git clone https://github.com/njfio/rust-anthropic-agent.git
+cd rust-anthropic-agent
 
 # Build the project
 cargo build
@@ -35,7 +35,7 @@ export ANTHROPIC_API_KEY="your-api-key"
 2. Clone your fork locally
 3. Add the upstream remote:
    ```bash
-   git remote add upstream https://github.com/njfio/rust-anthropic-agent-with-mp4-memory.git
+   git remote add upstream https://github.com/njfio/rust-anthropic-agent.git
    ```
 
 ### 2. Create a Branch
@@ -307,4 +307,4 @@ Contributors will be recognized in:
 - README.md contributors section
 - Release notes for significant contributions
 
-Thank you for contributing to rust-anthropic-agent-with-mp4-memory! 🚀
+Thank you for contributing to rust-anthropic-agent! 🚀

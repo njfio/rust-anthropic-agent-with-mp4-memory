@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2025-06-06
 
 ### Added
-- Initial release of rust-anthropic-agent-with-mp4-memory
+- Initial release of rust-anthropic-agent with JSON/synaptic memory
 - Complete Anthropic Claude API integration with all latest tools
  - JSON-based persistent memory system using rust-synaptic
  - Hybrid memory approach (RAM cache + JSON persistence)
@@ -58,5 +58,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tool development guide
 - Architecture overview
 
-[Unreleased]: https://github.com/njfio/rust-anthropic-agent-with-mp4-memory/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/njfio/rust-anthropic-agent-with-mp4-memory/releases/tag/v0.1.0
+[Unreleased]: https://github.com/njfio/rust-anthropic-agent/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/njfio/rust-anthropic-agent/releases/tag/v0.1.0

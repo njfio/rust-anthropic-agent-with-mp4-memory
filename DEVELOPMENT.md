@@ -1,6 +1,8 @@
 # Development Guide
 
-This document provides information for developers working on the rust_memvid_agent project.
+This document provides information for developers working on the `rust_memvid_agent` project. The
+agent stores all memory in simple JSON files using the `rust-synaptic` crate, replacing the
+older MP4-based approach.
 
 ## Project Structure
 
@@ -150,7 +152,9 @@ agent.register_tool(MyCustomTool);
 
 ## Memory Integration
 
-The memory system stores conversation history and arbitrary data in JSON files using the rust-synaptic library:
+The memory system stores conversation history and arbitrary data in JSON files using the
+`rust-synaptic` library. This JSON/Synaptic approach supersedes the previous MP4-based
+memory system and offers quick lookup and easy persistence:
 
 - **Persistent Storage**: Conversations and data stored in JSON format
 - **Semantic Search**: Intelligent search powered by rust-synaptic
