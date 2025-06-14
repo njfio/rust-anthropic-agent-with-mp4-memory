@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// Speech synthesis result
 #[derive(Debug, Clone)]
@@ -298,14 +298,124 @@ impl SynthesisService {
         ])
     }
 
-    /// Synthesize using Azure Cognitive Services (placeholder)
-    async fn synthesize_with_azure(&self, _text: &str) -> Result<SynthesisResult> {
-        Err(AgentError::tool("synthesis".to_string(), "Azure Cognitive Services not implemented yet".to_string()))
+    /// Synthesize using Azure Cognitive Services
+    async fn synthesize_with_azure(&self, text: &str) -> Result<SynthesisResult> {
+        debug!("Starting Azure Cognitive Services synthesis");
+
+        let subscription_key = std::env::var("AZURE_SPEECH_KEY")
+            .map_err(|_| AgentError::tool("synthesis".to_string(), "AZURE_SPEECH_KEY environment variable not set".to_string()))?;
+
+        let region = std::env::var("AZURE_SPEECH_REGION")
+            .unwrap_or_else(|_| "eastus".to_string());
+
+        // Get access token
+        let token = self.get_azure_access_token(&subscription_key, &region).await?;
+
+        // Create SSML for Azure TTS
+        let ssml = self.create_azure_ssml(text, &self.config.voice).await?;
+
+        // Create synthesis request
+        let endpoint = format!("https://{}.tts.speech.microsoft.com/cognitiveservices/v1", region);
+
+        let response = self.client
+            .post(&endpoint)
+            .header("Authorization", format!("Bearer {}", token))
+            .header("Content-Type", "application/ssml+xml")
+            .header("X-Microsoft-OutputFormat", "audio-16khz-32kbitrate-mono-mp3")
+            .header("User-Agent", "rust-agent/1.0")
+            .body(ssml)
+            .send()
+            .await
+            .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Azure API request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AgentError::tool("synthesis".to_string(), format!("Azure API error: {}", error_text)));
+        }
+
+        let audio_bytes = response.bytes().await
+            .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Failed to read Azure response: {}", e)))?;
+
+        info!("Azure synthesis completed: {} bytes generated", audio_bytes.len());
+
+        // Decode the audio bytes to AudioData
+        let audio = super::codecs::AudioCodec::decode_bytes(&audio_bytes, super::AudioFormat::Mp3)?;
+
+        Ok(SynthesisResult {
+            audio,
+            processing_duration_ms: 0, // Will be set by caller
+            voice: self.config.voice.clone(),
+            text: text.to_string(),
+            format: super::AudioFormat::Mp3,
+        })
     }
 
-    /// Get Azure voices (placeholder)
+    /// Get Azure voices
     async fn get_azure_voices(&self) -> Result<Vec<VoiceInfo>> {
-        Err(AgentError::tool("synthesis".to_string(), "Azure Cognitive Services not implemented yet".to_string()))
+        debug!("Getting Azure voices list");
+
+        let subscription_key = std::env::var("AZURE_SPEECH_KEY")
+            .map_err(|_| AgentError::tool("synthesis".to_string(), "AZURE_SPEECH_KEY environment variable not set".to_string()))?;
+
+        let region = std::env::var("AZURE_SPEECH_REGION")
+            .unwrap_or_else(|_| "eastus".to_string());
+
+        // Get access token
+        let token = self.get_azure_access_token(&subscription_key, &region).await?;
+
+        // Get voices list
+        let endpoint = format!("https://{}.tts.speech.microsoft.com/cognitiveservices/voices/list", region);
+
+        let response = self.client
+            .get(&endpoint)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await
+            .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Azure API request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AgentError::tool("synthesis".to_string(), format!("Azure API error: {}", error_text)));
+        }
+
+        let voices_json: serde_json::Value = response.json().await
+            .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Failed to parse Azure response: {}", e)))?;
+
+        let mut voices = Vec::new();
+
+        if let Some(voices_array) = voices_json.as_array() {
+            for voice in voices_array {
+                if let (Some(name), Some(display_name), Some(locale)) = (
+                    voice.get("ShortName").and_then(|v| v.as_str()),
+                    voice.get("DisplayName").and_then(|v| v.as_str()),
+                    voice.get("Locale").and_then(|v| v.as_str())
+                ) {
+                    let gender_str = voice.get("Gender")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown");
+
+                    let gender = match gender_str.to_lowercase().as_str() {
+                        "male" => VoiceGender::Male,
+                        "female" => VoiceGender::Female,
+                        "neutral" => VoiceGender::Neutral,
+                        _ => VoiceGender::Unknown,
+                    };
+
+                    voices.push(VoiceInfo {
+                        id: name.to_string(),
+                        name: display_name.to_string(),
+                        language: locale.to_string(),
+                        gender,
+                        quality: VoiceQuality::Neural, // Azure voices are typically neural
+                        supports_ssml: true, // Azure supports SSML
+                        sample_rate: 16000, // Default sample rate for Azure
+                    });
+                }
+            }
+        }
+
+        info!("Retrieved {} Azure voices", voices.len());
+        Ok(voices)
     }
 
     /// Synthesize using Google Cloud Text-to-Speech (placeholder)
@@ -360,6 +470,71 @@ impl SynthesisService {
     pub async fn get_voices_by_gender(&self, gender: VoiceGender) -> Result<Vec<VoiceInfo>> {
         let voices = self.get_voices().await?;
         Ok(voices.into_iter().filter(|v| std::mem::discriminant(&v.gender) == std::mem::discriminant(&gender)).collect())
+    }
+
+    // ========================================
+    // Azure Speech Services Helper Methods
+    // ========================================
+
+    /// Get Azure access token for Speech Services
+    async fn get_azure_access_token(&self, subscription_key: &str, region: &str) -> Result<String> {
+        let token_endpoint = format!("https://{}.api.cognitive.microsoft.com/sts/v1.0/issuetoken", region);
+
+        let response = self.client
+            .post(&token_endpoint)
+            .header("Ocp-Apim-Subscription-Key", subscription_key)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .send()
+            .await
+            .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Failed to get Azure token: {}", e)))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AgentError::tool("synthesis".to_string(), format!("Azure token request failed: {}", error_text)));
+        }
+
+        let token = response.text().await
+            .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Failed to read Azure token: {}", e)))?;
+
+        Ok(token)
+    }
+
+    /// Create SSML for Azure TTS
+    async fn create_azure_ssml(&self, text: &str, voice: &str) -> Result<String> {
+        // Create SSML with proper voice and language settings
+        let ssml = format!(
+            r#"<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+                <voice name="{}">
+                    <prosody rate="{:.1}">
+                        {}
+                    </prosody>
+                </voice>
+            </speak>"#,
+            voice,
+            self.config.speed,
+            self.escape_ssml_text(text)
+        );
+
+        Ok(ssml)
+    }
+
+    /// Escape text for SSML
+    fn escape_ssml_text(&self, text: &str) -> String {
+        text.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&apos;")
+    }
+
+    /// Estimate audio duration based on text and speech rate
+    fn estimate_audio_duration(&self, text: &str, speed: f32) -> f64 {
+        // Average speaking rate is about 150 words per minute
+        let base_wpm = 150.0f64;
+        let adjusted_wpm = base_wpm * speed as f64;
+        let word_count = text.split_whitespace().count() as f64;
+        let duration_minutes = word_count / adjusted_wpm;
+        duration_minutes * 60.0 // Convert to seconds
     }
 }
 
