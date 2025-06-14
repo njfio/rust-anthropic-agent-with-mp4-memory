@@ -154,6 +154,8 @@ pub enum EvictionPolicy {
     LRU,
     /// Least Frequently Used
     LFU,
+    /// First In, First Out
+    FIFO,
     /// Time-based expiration only
     TTL,
     /// Random eviction
@@ -549,12 +551,14 @@ impl CacheManager {
             }
         }
 
+        let healthy_tiers = tier_health.values().filter(|h| h.is_healthy).count() as u8;
+
         Ok(CacheHealth {
             overall_healthy,
             tier_health,
             uptime: self.start_time.elapsed(),
             total_tiers: self.tiers.len() as u8,
-            healthy_tiers: tier_health.values().filter(|h| h.is_healthy).count() as u8,
+            healthy_tiers,
         })
     }
 

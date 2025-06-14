@@ -12,21 +12,10 @@ use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
 /// Cache strategy trait
-#[async_trait::async_trait]
 pub trait CacheStrategy: Send + Sync {
     /// Strategy name
     fn name(&self) -> &str;
-    
-    /// Get value using this strategy
-    async fn get<T>(&self, key: &str, cache_manager: &CacheManager) -> Result<CacheResult<T>>
-    where
-        T: for<'de> Deserialize<'de> + Send;
-    
-    /// Set value using this strategy
-    async fn set<T>(&self, key: &str, value: &T, ttl: Option<u64>, cache_manager: &CacheManager) -> Result<()>
-    where
-        T: Serialize + Send + Sync;
-    
+
     /// Strategy configuration
     fn config(&self) -> StrategyConfig;
 }
@@ -114,19 +103,15 @@ pub struct CircuitBreakerStrategy {
 /// Data source trait for strategies
 #[async_trait::async_trait]
 pub trait DataSource: Send + Sync {
-    /// Load data from source
-    async fn load<T>(&self, key: &str) -> Result<Option<T>>
-    where
-        T: for<'de> Deserialize<'de> + Send;
-    
-    /// Save data to source
-    async fn save<T>(&self, key: &str, value: &T) -> Result<()>
-    where
-        T: Serialize + Send + Sync;
-    
+    /// Load data from source (returns JSON bytes)
+    async fn load_bytes(&self, key: &str) -> Result<Option<Vec<u8>>>;
+
+    /// Save data to source (accepts JSON bytes)
+    async fn save_bytes(&self, key: &str, data: &[u8]) -> Result<()>;
+
     /// Delete data from source
     async fn delete(&self, key: &str) -> Result<bool>;
-    
+
     /// Check if source is healthy
     async fn health_check(&self) -> Result<bool>;
 }
@@ -184,57 +169,9 @@ impl WriteThroughStrategy {
     }
 }
 
-#[async_trait::async_trait]
 impl CacheStrategy for WriteThroughStrategy {
     fn name(&self) -> &str {
         &self.name
-    }
-
-    async fn get<T>(&self, key: &str, cache_manager: &CacheManager) -> Result<CacheResult<T>>
-    where
-        T: for<'de> Deserialize<'de> + Send,
-    {
-        // Try cache first
-        let cache_result = cache_manager.get::<T>(key).await?;
-        
-        if cache_result.hit {
-            return Ok(cache_result);
-        }
-        
-        // Load from data source
-        match self.data_source.load::<T>(key).await? {
-            Some(value) => {
-                // Store in cache for future requests
-                cache_manager.set(key, &value, None).await?;
-                
-                Ok(CacheResult {
-                    value: Some(value),
-                    source_tier: Some("data_source".to_string()),
-                    duration: cache_result.duration,
-                    hit: false,
-                })
-            }
-            None => Ok(CacheResult {
-                value: None,
-                source_tier: None,
-                duration: cache_result.duration,
-                hit: false,
-            }),
-        }
-    }
-
-    async fn set<T>(&self, key: &str, value: &T, ttl: Option<u64>, cache_manager: &CacheManager) -> Result<()>
-    where
-        T: Serialize + Send + Sync,
-    {
-        // Write to data source first
-        self.data_source.save(key, value).await?;
-        
-        // Then write to cache
-        cache_manager.set(key, value, ttl).await?;
-        
-        debug!("Write-through completed for key: {}", key);
-        Ok(())
     }
 
     fn config(&self) -> StrategyConfig {
@@ -283,10 +220,12 @@ impl WriteBehindStrategy {
                     queue.drain(0..drain_count).collect::<Vec<_>>()
                 };
 
+                let operation_count = operations.len();
+
                 for operation in operations {
                     match operation.operation_type {
                         WriteOperationType::Insert | WriteOperationType::Update => {
-                            if let Err(e) = data_source.save::<Vec<u8>>(&operation.key, &operation.data).await {
+                            if let Err(e) = data_source.save_bytes(&operation.key, &operation.data).await {
                                 warn!("Failed to flush write operation for key {}: {}", operation.key, e);
                                 // Could implement retry logic here
                             }
@@ -299,78 +238,17 @@ impl WriteBehindStrategy {
                     }
                 }
 
-                if !operations.is_empty() {
-                    debug!("Flushed {} write operations", operations.len());
+                if operation_count > 0 {
+                    debug!("Flushed {} write operations", operation_count);
                 }
             }
         })
     }
 }
 
-#[async_trait::async_trait]
 impl CacheStrategy for WriteBehindStrategy {
     fn name(&self) -> &str {
         &self.name
-    }
-
-    async fn get<T>(&self, key: &str, cache_manager: &CacheManager) -> Result<CacheResult<T>>
-    where
-        T: for<'de> Deserialize<'de> + Send,
-    {
-        // Try cache first
-        let cache_result = cache_manager.get::<T>(key).await?;
-        
-        if cache_result.hit {
-            return Ok(cache_result);
-        }
-        
-        // Load from data source
-        match self.data_source.load::<T>(key).await? {
-            Some(value) => {
-                // Store in cache for future requests
-                cache_manager.set(key, &value, None).await?;
-                
-                Ok(CacheResult {
-                    value: Some(value),
-                    source_tier: Some("data_source".to_string()),
-                    duration: cache_result.duration,
-                    hit: false,
-                })
-            }
-            None => Ok(CacheResult {
-                value: None,
-                source_tier: None,
-                duration: cache_result.duration,
-                hit: false,
-            }),
-        }
-    }
-
-    async fn set<T>(&self, key: &str, value: &T, ttl: Option<u64>, cache_manager: &CacheManager) -> Result<()>
-    where
-        T: Serialize + Send + Sync,
-    {
-        // Write to cache immediately
-        cache_manager.set(key, value, ttl).await?;
-        
-        // Queue write operation for background processing
-        let data = serde_json::to_vec(value)
-            .map_err(|e| AgentError::validation(format!("Serialization failed: {}", e)))?;
-        
-        let operation = WriteOperation {
-            key: key.to_string(),
-            data,
-            operation_type: WriteOperationType::Update,
-            timestamp: Utc::now(),
-        };
-        
-        {
-            let mut queue = self.write_queue.write().await;
-            queue.push(operation);
-        }
-        
-        debug!("Write-behind queued for key: {}", key);
-        Ok(())
     }
 
     fn config(&self) -> StrategyConfig {
@@ -425,12 +303,20 @@ impl RefreshAheadStrategy {
         let background_refresh = Arc::clone(&self.background_refresh);
 
         tokio::spawn(async move {
-            match data_source.load::<T>(&key).await {
-                Ok(Some(value)) => {
-                    if let Err(e) = cache_manager.set(&key, &value, None).await {
-                        warn!("Failed to refresh cache for key {}: {}", key, e);
-                    } else {
-                        debug!("Background refresh completed for key: {}", key);
+            match data_source.load_bytes(&key).await {
+                Ok(Some(data)) => {
+                    // Deserialize the data
+                    match serde_json::from_slice::<T>(&data) {
+                        Ok(value) => {
+                            if let Err(e) = cache_manager.set(&key, &value, None).await {
+                                warn!("Failed to refresh cache for key {}: {}", key, e);
+                            } else {
+                                debug!("Background refresh completed for key: {}", key);
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to deserialize data during background refresh for key {}: {}", key, e);
+                        }
                     }
                 }
                 Ok(None) => {
@@ -448,61 +334,9 @@ impl RefreshAheadStrategy {
     }
 }
 
-#[async_trait::async_trait]
 impl CacheStrategy for RefreshAheadStrategy {
     fn name(&self) -> &str {
         &self.name
-    }
-
-    async fn get<T>(&self, key: &str, cache_manager: &CacheManager) -> Result<CacheResult<T>>
-    where
-        T: for<'de> Deserialize<'de> + Send,
-    {
-        // Try cache first
-        let cache_result = cache_manager.get::<T>(key).await?;
-        
-        if let Some(ref value) = cache_result.value {
-            // Check if we should start background refresh
-            // Note: This is simplified - in practice you'd need the cache entry
-            // to check TTL, which requires modifying the CacheManager interface
-            
-            return Ok(cache_result);
-        }
-        
-        // Load from data source if not in cache
-        match self.data_source.load::<T>(key).await? {
-            Some(value) => {
-                // Store in cache for future requests
-                cache_manager.set(key, &value, None).await?;
-                
-                Ok(CacheResult {
-                    value: Some(value),
-                    source_tier: Some("data_source".to_string()),
-                    duration: cache_result.duration,
-                    hit: false,
-                })
-            }
-            None => Ok(CacheResult {
-                value: None,
-                source_tier: None,
-                duration: cache_result.duration,
-                hit: false,
-            }),
-        }
-    }
-
-    async fn set<T>(&self, key: &str, value: &T, ttl: Option<u64>, cache_manager: &CacheManager) -> Result<()>
-    where
-        T: Serialize + Send + Sync,
-    {
-        // Write to cache
-        cache_manager.set(key, value, ttl).await?;
-        
-        // Also write to data source (write-through behavior)
-        self.data_source.save(key, value).await?;
-        
-        debug!("Refresh-ahead set completed for key: {}", key);
-        Ok(())
     }
 
     fn config(&self) -> StrategyConfig {
@@ -584,80 +418,9 @@ impl CircuitBreakerStrategy {
     }
 }
 
-#[async_trait::async_trait]
 impl CacheStrategy for CircuitBreakerStrategy {
     fn name(&self) -> &str {
         &self.name
-    }
-
-    async fn get<T>(&self, key: &str, cache_manager: &CacheManager) -> Result<CacheResult<T>>
-    where
-        T: for<'de> Deserialize<'de> + Send,
-    {
-        // Check circuit state
-        let current_state = {
-            let breaker = self.circuit_breaker.read().await;
-            breaker.state.clone()
-        };
-
-        match current_state {
-            CircuitState::Open => {
-                if self.should_attempt_reset().await {
-                    // Transition to half-open
-                    {
-                        let mut breaker = self.circuit_breaker.write().await;
-                        breaker.state = CircuitState::HalfOpen;
-                    }
-                    info!("Circuit breaker transitioning to half-open for strategy: {}", self.name);
-                } else {
-                    // Circuit is open, return cache-only result
-                    return cache_manager.get::<T>(key).await;
-                }
-            }
-            CircuitState::Closed | CircuitState::HalfOpen => {
-                // Proceed with normal operation
-            }
-        }
-
-        // Execute inner strategy
-        match self.inner_strategy.get(key, cache_manager).await {
-            Ok(result) => {
-                self.record_result(true).await;
-                Ok(result)
-            }
-            Err(e) => {
-                self.record_result(false).await;
-                Err(e)
-            }
-        }
-    }
-
-    async fn set<T>(&self, key: &str, value: &T, ttl: Option<u64>, cache_manager: &CacheManager) -> Result<()>
-    where
-        T: Serialize + Send + Sync,
-    {
-        // Check circuit state
-        let current_state = {
-            let breaker = self.circuit_breaker.read().await;
-            breaker.state.clone()
-        };
-
-        if current_state == CircuitState::Open && !self.should_attempt_reset().await {
-            // Circuit is open, only write to cache
-            return cache_manager.set(key, value, ttl).await;
-        }
-
-        // Execute inner strategy
-        match self.inner_strategy.set(key, value, ttl, cache_manager).await {
-            Ok(()) => {
-                self.record_result(true).await;
-                Ok(())
-            }
-            Err(e) => {
-                self.record_result(false).await;
-                Err(e)
-            }
-        }
     }
 
     fn config(&self) -> StrategyConfig {

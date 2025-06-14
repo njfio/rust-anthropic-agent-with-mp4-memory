@@ -64,18 +64,8 @@ pub struct MemoryCacheConfig {
     pub track_access: bool,
 }
 
-/// Eviction policies for memory cache
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum EvictionPolicy {
-    /// Least Recently Used
-    LRU,
-    /// Least Frequently Used
-    LFU,
-    /// First In, First Out
-    FIFO,
-    /// Random eviction
-    Random,
-}
+// Use the main EvictionPolicy from the parent module
+pub use super::EvictionPolicy;
 
 /// Memory cache statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -265,6 +255,24 @@ impl MemoryCache {
                 let mut keys: Vec<_> = storage.entries.keys().cloned().collect();
                 keys.shuffle(&mut rand::thread_rng());
                 keys.into_iter().take(evict_count).collect()
+            }
+            EvictionPolicy::TTL => {
+                // TTL-based eviction: remove expired entries first
+                let mut entries: Vec<_> = storage.entries.iter().collect();
+                entries.sort_by_key(|(_, stored)| stored.entry.created_at);
+                entries.into_iter()
+                    .take(evict_count)
+                    .map(|(key, _)| key.clone())
+                    .collect()
+            }
+            EvictionPolicy::Priority => {
+                // Priority-based eviction: remove lowest priority entries first
+                let mut entries: Vec<_> = storage.entries.iter().collect();
+                entries.sort_by_key(|(_, stored)| stored.entry.metadata.priority);
+                entries.into_iter()
+                    .take(evict_count)
+                    .map(|(key, _)| key.clone())
+                    .collect()
             }
         };
 

@@ -111,41 +111,25 @@ impl InMemoryDataSource {
 
 #[async_trait::async_trait]
 impl DataSource for InMemoryDataSource {
-    async fn load<T>(&self, key: &str) -> Result<Option<T>>
-    where
-        T: for<'de> Deserialize<'de> + Send,
-    {
+    async fn load_bytes(&self, key: &str) -> Result<Option<Vec<u8>>> {
         // Simulate latency if enabled
         if self.simulate_latency {
             tokio::time::sleep(std::time::Duration::from_millis(self.latency_ms)).await;
         }
 
         let storage = self.data.read().await;
-        
-        if let Some(data) = storage.get(key) {
-            let value: T = serde_json::from_slice(data)
-                .map_err(|e| AgentError::validation(format!("Deserialization failed: {}", e)))?;
-            Ok(Some(value))
-        } else {
-            Ok(None)
-        }
+        Ok(storage.get(key).cloned())
     }
 
-    async fn save<T>(&self, key: &str, value: &T) -> Result<()>
-    where
-        T: Serialize + Send + Sync,
-    {
+    async fn save_bytes(&self, key: &str, data: &[u8]) -> Result<()> {
         // Simulate latency if enabled
         if self.simulate_latency {
             tokio::time::sleep(std::time::Duration::from_millis(self.latency_ms)).await;
         }
 
-        let data = serde_json::to_vec(value)
-            .map_err(|e| AgentError::validation(format!("Serialization failed: {}", e)))?;
-        
         let mut storage = self.data.write().await;
-        storage.insert(key.to_string(), data);
-        
+        storage.insert(key.to_string(), data.to_vec());
+
         debug!("Saved data to in-memory source: {}", key);
         Ok(())
     }
@@ -203,19 +187,16 @@ impl FileSystemDataSource {
 
 #[async_trait::async_trait]
 impl DataSource for FileSystemDataSource {
-    async fn load<T>(&self, key: &str) -> Result<Option<T>>
-    where
-        T: for<'de> Deserialize<'de> + Send,
-    {
+    async fn load_bytes(&self, key: &str) -> Result<Option<Vec<u8>>> {
         let file_path = self.get_file_path(key);
-        
+
         match tokio::fs::read(&file_path).await {
             Ok(data) => {
                 let decompressed_data = if self.enable_compression {
                     // Decompress data
                     use flate2::read::GzDecoder;
                     use std::io::Read;
-                    
+
                     let mut decoder = GzDecoder::new(&data[..]);
                     let mut decompressed = Vec::new();
                     decoder.read_to_end(&mut decompressed)
@@ -224,45 +205,36 @@ impl DataSource for FileSystemDataSource {
                 } else {
                     data
                 };
-                
-                let value: T = serde_json::from_slice(&decompressed_data)
-                    .map_err(|e| AgentError::validation(format!("Deserialization failed: {}", e)))?;
-                
-                Ok(Some(value))
+
+                Ok(Some(decompressed_data))
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(AgentError::tool("filesystem_cache", &format!("Failed to read file: {}", e))),
         }
     }
 
-    async fn save<T>(&self, key: &str, value: &T) -> Result<()>
-    where
-        T: Serialize + Send + Sync,
-    {
+    async fn save_bytes(&self, key: &str, data: &[u8]) -> Result<()> {
         self.ensure_directory().await?;
-        
-        let data = serde_json::to_vec(value)
-            .map_err(|e| AgentError::validation(format!("Serialization failed: {}", e)))?;
-        
+
         let final_data = if self.enable_compression {
             // Compress data
             use flate2::write::GzEncoder;
             use flate2::Compression;
             use std::io::Write;
-            
+
             let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-            encoder.write_all(&data)
+            encoder.write_all(data)
                 .map_err(|e| AgentError::tool("filesystem_cache", &format!("Compression failed: {}", e)))?;
             encoder.finish()
                 .map_err(|e| AgentError::tool("filesystem_cache", &format!("Compression finalization failed: {}", e)))?
         } else {
-            data
+            data.to_vec()
         };
-        
+
         let file_path = self.get_file_path(key);
         tokio::fs::write(&file_path, final_data).await
             .map_err(|e| AgentError::tool("filesystem_cache", &format!("Failed to write file: {}", e)))?;
-        
+
         debug!("Saved data to file system: {}", key);
         Ok(())
     }
@@ -328,28 +300,22 @@ impl HttpDataSource {
 
 #[async_trait::async_trait]
 impl DataSource for HttpDataSource {
-    async fn load<T>(&self, key: &str) -> Result<Option<T>>
-    where
-        T: for<'de> Deserialize<'de> + Send,
-    {
+    async fn load_bytes(&self, key: &str) -> Result<Option<Vec<u8>>> {
         let url = self.get_url(key);
         let mut request = self.client.get(&url);
-        
+
         // Add authentication headers
         for (header_key, header_value) in &self.auth_headers {
             request = request.header(header_key, header_value);
         }
-        
+
         match request.send().await {
             Ok(response) => {
                 if response.status().is_success() {
                     let data = response.bytes().await
                         .map_err(|e| AgentError::tool("http_cache", &format!("Failed to read response: {}", e)))?;
-                    
-                    let value: T = serde_json::from_slice(&data)
-                        .map_err(|e| AgentError::validation(format!("Deserialization failed: {}", e)))?;
-                    
-                    Ok(Some(value))
+
+                    Ok(Some(data.to_vec()))
                 } else if response.status() == 404 {
                     Ok(None)
                 } else {
@@ -360,26 +326,21 @@ impl DataSource for HttpDataSource {
         }
     }
 
-    async fn save<T>(&self, key: &str, value: &T) -> Result<()>
-    where
-        T: Serialize + Send + Sync,
-    {
+    async fn save_bytes(&self, key: &str, data: &[u8]) -> Result<()> {
         let url = self.get_url(key);
-        let data = serde_json::to_vec(value)
-            .map_err(|e| AgentError::validation(format!("Serialization failed: {}", e)))?;
-        
+
         let mut request = self.client.put(&url)
             .header("Content-Type", "application/json")
-            .body(data);
-        
+            .body(data.to_vec());
+
         // Add authentication headers
         for (header_key, header_value) in &self.auth_headers {
             request = request.header(header_key, header_value);
         }
-        
+
         let response = request.send().await
             .map_err(|e| AgentError::tool("http_cache", &format!("Request failed: {}", e)))?;
-        
+
         if response.status().is_success() {
             debug!("Saved data via HTTP: {}", key);
             Ok(())
@@ -480,39 +441,23 @@ impl MockDataSource {
 
 #[async_trait::async_trait]
 impl DataSource for MockDataSource {
-    async fn load<T>(&self, key: &str) -> Result<Option<T>>
-    where
-        T: for<'de> Deserialize<'de> + Send,
-    {
+    async fn load_bytes(&self, key: &str) -> Result<Option<Vec<u8>>> {
         if self.should_fail() {
             return Err(AgentError::tool("mock_cache", "Simulated failure"));
         }
 
         let storage = self.mock_data.read().await;
-        
-        if let Some(data) = storage.get(key) {
-            let value: T = serde_json::from_slice(data)
-                .map_err(|e| AgentError::validation(format!("Deserialization failed: {}", e)))?;
-            Ok(Some(value))
-        } else {
-            Ok(None)
-        }
+        Ok(storage.get(key).cloned())
     }
 
-    async fn save<T>(&self, key: &str, value: &T) -> Result<()>
-    where
-        T: Serialize + Send + Sync,
-    {
+    async fn save_bytes(&self, key: &str, data: &[u8]) -> Result<()> {
         if self.should_fail() {
             return Err(AgentError::tool("mock_cache", "Simulated failure"));
         }
 
-        let data = serde_json::to_vec(value)
-            .map_err(|e| AgentError::validation(format!("Serialization failed: {}", e)))?;
-        
         let mut storage = self.mock_data.write().await;
-        storage.insert(key.to_string(), data);
-        
+        storage.insert(key.to_string(), data.to_vec());
+
         debug!("Saved data to mock source: {}", key);
         Ok(())
     }
