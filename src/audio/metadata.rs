@@ -327,10 +327,9 @@ impl MetadataExtractor {
             }
         } else {
             // Store non-standard tags as custom tags
-            if let key = &tag.key {
-                if let Some(value) = Self::extract_string_value(&tag.value) {
-                    metadata.custom_tags.insert(key.clone(), value);
-                }
+            let key = &tag.key;
+            if let Some(value) = Self::extract_string_value(&tag.value) {
+                metadata.custom_tags.insert(key.clone(), value);
             }
         }
 
