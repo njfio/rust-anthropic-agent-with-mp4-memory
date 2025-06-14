@@ -425,3 +425,257 @@ async fn test_policy_types() {
     assert_eq!(PolicyType::Custom, PolicyType::Custom);
     assert_ne!(PolicyType::HighFrequency, PolicyType::LowFrequency);
 }
+
+// Metrics Tests
+#[tokio::test]
+async fn test_cache_metrics_collector_creation() {
+    use crate::caching::metrics::{CacheMetricsCollector, MetricsConfig};
+
+    let config = MetricsConfig::default();
+    let collector = CacheMetricsCollector::new(config);
+
+    let metrics = collector.get_metrics().await;
+    assert_eq!(metrics.overall_stats.total_hits, 0);
+    assert_eq!(metrics.overall_stats.total_misses, 0);
+    assert_eq!(metrics.overall_stats.hit_ratio, 0.0);
+}
+
+#[tokio::test]
+async fn test_cache_metrics_collector_with_defaults() {
+    use crate::caching::metrics::CacheMetricsCollector;
+
+    let collector = CacheMetricsCollector::with_defaults();
+
+    let metrics = collector.get_metrics().await;
+    assert_eq!(metrics.overall_stats.total_operations, 0);
+    assert_eq!(metrics.overall_stats.total_entries, 0);
+}
+
+#[tokio::test]
+async fn test_metrics_config_default() {
+    use crate::caching::metrics::MetricsConfig;
+
+    let config = MetricsConfig::default();
+
+    assert!(config.enable_detailed_metrics);
+    assert_eq!(config.collection_interval, 60);
+    assert_eq!(config.history_retention_hours, 24);
+    assert!(config.enable_performance_analysis);
+    assert!(config.enable_cost_analysis);
+    assert_eq!(config.latency_sample_rate, 0.1);
+}
+
+#[tokio::test]
+async fn test_cache_metrics_record_operations() {
+    use crate::caching::metrics::CacheMetricsCollector;
+    use std::time::Duration;
+
+    let collector = CacheMetricsCollector::with_defaults();
+
+    // Record some operations
+    collector.record_operation("get", Duration::from_millis(10), true).await;
+    collector.record_operation("set", Duration::from_millis(5), true).await;
+    collector.record_operation("get", Duration::from_millis(15), false).await;
+
+    let metrics = collector.get_metrics().await;
+    assert_eq!(metrics.operation_stats.get_operations, 2);
+    assert_eq!(metrics.operation_stats.set_operations, 1);
+    assert_eq!(metrics.operation_stats.failed_operations, 1);
+    assert_eq!(metrics.overall_stats.total_operations, 3);
+}
+
+#[tokio::test]
+async fn test_cache_metrics_hit_miss_tracking() {
+    use crate::caching::metrics::CacheMetricsCollector;
+
+    let collector = CacheMetricsCollector::with_defaults();
+
+    // Record hits and misses
+    collector.record_hit_miss("tier1", true).await;
+    collector.record_hit_miss("tier1", true).await;
+    collector.record_hit_miss("tier1", false).await;
+    collector.record_hit_miss("tier2", true).await;
+
+    let metrics = collector.get_metrics().await;
+    assert_eq!(metrics.overall_stats.total_hits, 3);
+    assert_eq!(metrics.overall_stats.total_misses, 1);
+    assert_eq!(metrics.overall_stats.hit_ratio, 75.0);
+
+    // Check tier-specific metrics
+    assert!(metrics.tier_stats.contains_key("tier1"));
+    assert!(metrics.tier_stats.contains_key("tier2"));
+
+    let tier1_stats = &metrics.tier_stats["tier1"];
+    assert_eq!(tier1_stats.hits, 2);
+    assert_eq!(tier1_stats.misses, 1);
+    assert_eq!(tier1_stats.hit_ratio, 66.66666666666667);
+}
+
+// Strategy Tests
+#[tokio::test]
+async fn test_strategy_types() {
+    use crate::caching::strategies::StrategyType;
+
+    assert_eq!(StrategyType::WriteThrough, StrategyType::WriteThrough);
+    assert_eq!(StrategyType::WriteBehind, StrategyType::WriteBehind);
+    assert_eq!(StrategyType::CacheAside, StrategyType::CacheAside);
+    assert_eq!(StrategyType::ReadThrough, StrategyType::ReadThrough);
+    assert_eq!(StrategyType::RefreshAhead, StrategyType::RefreshAhead);
+    assert_eq!(StrategyType::CircuitBreaker, StrategyType::CircuitBreaker);
+    assert_eq!(StrategyType::Bulkhead, StrategyType::Bulkhead);
+    assert_ne!(StrategyType::WriteThrough, StrategyType::WriteBehind);
+}
+
+#[tokio::test]
+async fn test_write_operation_types() {
+    use crate::caching::strategies::WriteOperationType;
+
+    assert_eq!(WriteOperationType::Insert, WriteOperationType::Insert);
+    assert_eq!(WriteOperationType::Update, WriteOperationType::Update);
+    assert_eq!(WriteOperationType::Delete, WriteOperationType::Delete);
+    assert_ne!(WriteOperationType::Insert, WriteOperationType::Update);
+}
+
+#[tokio::test]
+async fn test_circuit_breaker_states() {
+    use crate::caching::strategies::CircuitState;
+
+    assert_eq!(CircuitState::Closed, CircuitState::Closed);
+    assert_eq!(CircuitState::Open, CircuitState::Open);
+    assert_eq!(CircuitState::HalfOpen, CircuitState::HalfOpen);
+    assert_ne!(CircuitState::Closed, CircuitState::Open);
+}
+
+#[tokio::test]
+async fn test_write_through_strategy_creation() {
+    use crate::caching::strategies::{WriteThroughStrategy, StrategyType};
+    use crate::caching::backends::InMemoryDataSource;
+    use std::sync::Arc;
+
+    let data_source = Arc::new(InMemoryDataSource::new());
+    let strategy = WriteThroughStrategy::new("test_strategy".to_string(), data_source);
+
+    assert_eq!(strategy.name(), "test_strategy");
+    let config = strategy.config();
+    assert_eq!(config.strategy_type, StrategyType::WriteThrough);
+    assert!(config.enabled);
+}
+
+#[tokio::test]
+async fn test_write_behind_strategy_creation() {
+    use crate::caching::strategies::WriteBehindStrategy;
+    use crate::caching::backends::InMemoryDataSource;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    let data_source = Arc::new(InMemoryDataSource::new());
+    let strategy = WriteBehindStrategy::new(
+        "test_strategy".to_string(),
+        data_source,
+        100,
+        Duration::from_secs(60)
+    );
+
+    assert_eq!(strategy.name(), "test_strategy");
+}
+
+#[tokio::test]
+async fn test_refresh_ahead_strategy_creation() {
+    use crate::caching::strategies::RefreshAheadStrategy;
+    use crate::caching::backends::InMemoryDataSource;
+    use std::sync::Arc;
+
+    let data_source = Arc::new(InMemoryDataSource::new());
+    let strategy = RefreshAheadStrategy::new(
+        "test_strategy".to_string(),
+        data_source,
+        0.2
+    );
+
+    assert_eq!(strategy.name(), "test_strategy");
+}
+
+// Integration Tests
+#[tokio::test]
+async fn test_cache_manager_with_memory_tier() {
+    let mut manager = CacheManager::with_defaults();
+    let memory_cache = Arc::new(MemoryCache::with_defaults("memory_l1".to_string()));
+
+    manager.add_tier(memory_cache).await.unwrap();
+
+    let test_data = TestData::new(1, "integration_test", 99.9);
+
+    // Test set operation
+    manager.set("integration_key", &test_data, Some(3600)).await.unwrap();
+
+    // Test get operation
+    let result: crate::caching::CacheResult<TestData> = manager.get("integration_key").await.unwrap();
+    assert!(result.hit);
+    assert!(result.value.is_some());
+    assert_eq!(result.value.unwrap(), test_data);
+    assert_eq!(result.source_tier, Some("memory_l1".to_string()));
+
+    // Test exists
+    assert!(manager.exists("integration_key").await.unwrap());
+    assert!(!manager.exists("nonexistent_key").await.unwrap());
+
+    // Test delete
+    assert!(manager.delete("integration_key").await.unwrap());
+    assert!(!manager.exists("integration_key").await.unwrap());
+}
+
+#[tokio::test]
+async fn test_cache_manager_metrics_integration() {
+    let mut manager = CacheManager::with_defaults();
+    let memory_cache = Arc::new(MemoryCache::with_defaults("memory_l1".to_string()));
+
+    manager.add_tier(memory_cache).await.unwrap();
+
+    let test_data = TestData::new(1, "metrics_test", 42.0);
+
+    // Perform operations to generate metrics
+    manager.set("metrics_key", &test_data, Some(3600)).await.unwrap();
+    let _result: crate::caching::CacheResult<TestData> = manager.get("metrics_key").await.unwrap();
+    let _miss_result: crate::caching::CacheResult<TestData> = manager.get("missing_key").await.unwrap();
+
+    let metrics = manager.get_metrics().await;
+    assert!(metrics.hits > 0);
+    assert!(metrics.misses > 0);
+    assert!(metrics.hit_ratio > 0.0);
+    assert!(metrics.tier_metrics.contains_key("memory_l1"));
+}
+
+#[tokio::test]
+async fn test_cache_manager_health_check() {
+    let mut manager = CacheManager::with_defaults();
+    let memory_cache = Arc::new(MemoryCache::with_defaults("memory_l1".to_string()));
+
+    manager.add_tier(memory_cache).await.unwrap();
+
+    let health = manager.get_health().await.unwrap();
+    assert!(health.overall_healthy);
+    assert_eq!(health.total_tiers, 1);
+    assert_eq!(health.healthy_tiers, 1);
+    assert!(health.tier_health.contains_key("memory_l1"));
+}
+
+#[tokio::test]
+async fn test_cache_manager_clear_all() {
+    let mut manager = CacheManager::with_defaults();
+    let memory_cache = Arc::new(MemoryCache::with_defaults("memory_l1".to_string()));
+
+    manager.add_tier(memory_cache).await.unwrap();
+
+    let test_data = TestData::new(1, "clear_test", 123.0);
+    manager.set("clear_key", &test_data, Some(3600)).await.unwrap();
+
+    assert!(manager.exists("clear_key").await.unwrap());
+
+    manager.clear_all().await.unwrap();
+
+    assert!(!manager.exists("clear_key").await.unwrap());
+
+    let metrics = manager.get_metrics().await;
+    assert_eq!(metrics.hits, 0);
+    assert_eq!(metrics.misses, 0);
+}
