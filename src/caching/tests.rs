@@ -225,3 +225,203 @@ async fn test_memory_cache_clear() {
     cache.clear().await.unwrap();
     assert!(!cache.exists("test_key").await.unwrap());
 }
+
+// Backend Tests
+#[tokio::test]
+async fn test_in_memory_data_source_creation() {
+    use crate::caching::backends::InMemoryDataSource;
+
+    let source = InMemoryDataSource::new();
+    assert_eq!(source.count().await, 0);
+    assert!(source.health_check().await.unwrap());
+}
+
+#[tokio::test]
+async fn test_in_memory_data_source_with_latency() {
+    use crate::caching::backends::InMemoryDataSource;
+
+    let source = InMemoryDataSource::with_latency(10);
+    assert_eq!(source.count().await, 0);
+}
+
+#[tokio::test]
+async fn test_in_memory_data_source_operations() {
+    use crate::caching::backends::InMemoryDataSource;
+    use crate::caching::strategies::DataSource;
+
+    let source = InMemoryDataSource::new();
+    let test_data = TestData::new(1, "test", 42.0);
+
+    // Test save
+    source.save("test_key", &test_data).await.unwrap();
+    assert_eq!(source.count().await, 1);
+
+    // Test load
+    let loaded: Option<TestData> = source.load("test_key").await.unwrap();
+    assert!(loaded.is_some());
+    assert_eq!(loaded.unwrap(), test_data);
+
+    // Test load non-existent
+    let missing: Option<TestData> = source.load("missing_key").await.unwrap();
+    assert!(missing.is_none());
+
+    // Test delete
+    assert!(source.delete("test_key").await.unwrap());
+    assert!(!source.delete("missing_key").await.unwrap());
+    assert_eq!(source.count().await, 0);
+}
+
+#[tokio::test]
+async fn test_mock_data_source_creation() {
+    use crate::caching::backends::MockDataSource;
+
+    let source = MockDataSource::new();
+    assert!(source.health_check().await.unwrap());
+}
+
+#[tokio::test]
+async fn test_mock_data_source_with_failure_rate() {
+    use crate::caching::backends::MockDataSource;
+
+    let source = MockDataSource::with_failure_rate(0.5);
+    assert!(source.health_check().await.unwrap());
+}
+
+#[tokio::test]
+async fn test_mock_data_source_health_control() {
+    use crate::caching::backends::MockDataSource;
+
+    let source = MockDataSource::new();
+    assert!(source.health_check().await.unwrap());
+
+    source.set_healthy(false).await;
+    assert!(!source.health_check().await.unwrap());
+
+    source.set_healthy(true).await;
+    assert!(source.health_check().await.unwrap());
+}
+
+// Invalidation Tests
+#[tokio::test]
+async fn test_invalidation_manager_creation() {
+    use crate::caching::invalidation::InvalidationManager;
+
+    let manager = InvalidationManager::new();
+    let stats = manager.get_stats().await;
+
+    assert_eq!(stats.total_invalidations, 0);
+    assert_eq!(stats.total_keys_invalidated, 0);
+    assert_eq!(stats.failed_invalidations, 0);
+}
+
+#[tokio::test]
+async fn test_invalidation_rule_creation() {
+    use crate::caching::invalidation::{InvalidationRule, InvalidationType};
+    use std::collections::HashMap;
+
+    let rule = InvalidationRule {
+        name: "test_rule".to_string(),
+        rule_type: InvalidationType::Pattern,
+        pattern: "test_*".to_string(),
+        priority: 5,
+        enabled: true,
+        created_at: chrono::Utc::now(),
+        metadata: HashMap::new(),
+    };
+
+    assert_eq!(rule.name, "test_rule");
+    assert_eq!(rule.rule_type, InvalidationType::Pattern);
+    assert_eq!(rule.pattern, "test_*");
+    assert!(rule.enabled);
+}
+
+#[tokio::test]
+async fn test_invalidation_types() {
+    use crate::caching::invalidation::InvalidationType;
+
+    assert_eq!(InvalidationType::Pattern, InvalidationType::Pattern);
+    assert_eq!(InvalidationType::Tag, InvalidationType::Tag);
+    assert_eq!(InvalidationType::Time, InvalidationType::Time);
+    assert_eq!(InvalidationType::Dependency, InvalidationType::Dependency);
+    assert_eq!(InvalidationType::Manual, InvalidationType::Manual);
+    assert_eq!(InvalidationType::Event, InvalidationType::Event);
+    assert_ne!(InvalidationType::Pattern, InvalidationType::Tag);
+}
+
+#[tokio::test]
+async fn test_dependency_types() {
+    use crate::caching::invalidation::DependencyType;
+
+    assert_eq!(DependencyType::Strong, DependencyType::Strong);
+    assert_eq!(DependencyType::Weak, DependencyType::Weak);
+    assert_eq!(DependencyType::Conditional, DependencyType::Conditional);
+    assert_ne!(DependencyType::Strong, DependencyType::Weak);
+}
+
+// Policy Tests
+#[tokio::test]
+async fn test_cache_policy_default() {
+    use crate::caching::policies::{CachePolicy, PolicyType};
+
+    let policy = CachePolicy::default();
+
+    assert_eq!(policy.name, "default");
+    assert_eq!(policy.policy_type, PolicyType::MediumFrequency);
+    assert_eq!(policy.priority, 5);
+    assert!(policy.enabled);
+    assert_eq!(policy.ttl_config.default_ttl, 3600);
+}
+
+#[tokio::test]
+async fn test_cache_policy_high_frequency() {
+    use crate::caching::policies::{CachePolicy, PolicyType};
+
+    let policy = CachePolicy::high_frequency();
+
+    assert_eq!(policy.name, "high_frequency");
+    assert_eq!(policy.policy_type, PolicyType::HighFrequency);
+    assert_eq!(policy.priority, 9);
+    assert!(policy.enabled);
+    assert_eq!(policy.ttl_config.default_ttl, 7200);
+}
+
+#[tokio::test]
+async fn test_cache_policy_temporary() {
+    use crate::caching::policies::{CachePolicy, PolicyType};
+
+    let policy = CachePolicy::temporary();
+
+    assert_eq!(policy.name, "temporary");
+    assert_eq!(policy.policy_type, PolicyType::Temporary);
+    assert_eq!(policy.priority, 2);
+    assert!(policy.enabled);
+    assert_eq!(policy.ttl_config.default_ttl, 300);
+}
+
+#[tokio::test]
+async fn test_cache_policy_critical() {
+    use crate::caching::policies::{CachePolicy, PolicyType};
+
+    let policy = CachePolicy::critical();
+
+    assert_eq!(policy.name, "critical");
+    assert_eq!(policy.policy_type, PolicyType::Critical);
+    assert_eq!(policy.priority, 10);
+    assert!(policy.enabled);
+    assert_eq!(policy.ttl_config.default_ttl, 1800);
+}
+
+#[tokio::test]
+async fn test_policy_types() {
+    use crate::caching::policies::PolicyType;
+
+    assert_eq!(PolicyType::HighFrequency, PolicyType::HighFrequency);
+    assert_eq!(PolicyType::MediumFrequency, PolicyType::MediumFrequency);
+    assert_eq!(PolicyType::LowFrequency, PolicyType::LowFrequency);
+    assert_eq!(PolicyType::Temporary, PolicyType::Temporary);
+    assert_eq!(PolicyType::Critical, PolicyType::Critical);
+    assert_eq!(PolicyType::LargeObject, PolicyType::LargeObject);
+    assert_eq!(PolicyType::RealTime, PolicyType::RealTime);
+    assert_eq!(PolicyType::Custom, PolicyType::Custom);
+    assert_ne!(PolicyType::HighFrequency, PolicyType::LowFrequency);
+}
