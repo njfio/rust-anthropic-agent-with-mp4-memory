@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tokio::fs;
 use tracing::{debug, info};
@@ -49,7 +49,7 @@ impl PluginFactory for RustPluginFactory {
 }
 
 impl RustPluginFactory {
-    fn load_metadata(&self, plugin_path: &PathBuf) -> Result<PluginMetadata> {
+    fn load_metadata(&self, plugin_path: &Path) -> Result<PluginMetadata> {
         let manifest_path = plugin_path.join("plugin.toml");
         if !manifest_path.exists() {
             return Err(AgentError::plugin(format!(
@@ -91,7 +91,7 @@ impl PluginFactory for ScriptPluginFactory {
 }
 
 impl ScriptPluginFactory {
-    fn load_metadata(&self, plugin_path: &PathBuf) -> Result<PluginMetadata> {
+    fn load_metadata(&self, plugin_path: &Path) -> Result<PluginMetadata> {
         let manifest_path = plugin_path.join("plugin.toml");
         if !manifest_path.exists() {
             return Err(AgentError::plugin(format!(
@@ -344,7 +344,7 @@ impl PluginLoader {
     }
 
     /// Detect plugin type from directory structure
-    async fn detect_plugin_type(&self, plugin_path: &PathBuf) -> Result<String> {
+    async fn detect_plugin_type(&self, plugin_path: &Path) -> Result<String> {
         let manifest_path = plugin_path.join("plugin.toml");
 
         if manifest_path.exists() {

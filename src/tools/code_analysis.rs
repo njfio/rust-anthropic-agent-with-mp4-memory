@@ -2369,9 +2369,7 @@ impl CodeAnalysisTool {
         let smell_penalty = code_smells.len() as f64 * 5.0;
         let opportunity_bonus = opportunities.len() as f64 * 2.0;
 
-        (100.0 - smell_penalty + opportunity_bonus)
-            .max(0.0)
-            .min(100.0)
+        (100.0 - smell_penalty + opportunity_bonus).clamp(0.0, 100.0)
     }
 
     fn analyze_refactoring_impact(&self, opportunities: &[Value]) -> Value {
@@ -3709,8 +3707,8 @@ impl CodeAnalysisTool {
         let line = line.trim();
 
         // Remove "require " prefix if present
-        let line = if line.starts_with("require ") {
-            &line[8..]
+        let line = if let Some(stripped) = line.strip_prefix("require ") {
+            stripped
         } else {
             line
         };

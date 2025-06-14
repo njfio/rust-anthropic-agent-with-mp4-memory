@@ -69,7 +69,7 @@ impl CircuitBreaker {
     }
 
     /// Create a circuit breaker with default configuration
-    pub fn default() -> Self {
+    pub fn with_default_config() -> Self {
         Self::new(CircuitBreakerConfig::default())
     }
 
@@ -294,7 +294,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_circuit_breaker_closed_state() {
-        let circuit_breaker = CircuitBreaker::default();
+        let circuit_breaker = CircuitBreaker::with_default_config();
 
         assert_eq!(circuit_breaker.get_state().await, CircuitState::Closed);
         assert!(circuit_breaker.can_execute().await);
@@ -366,7 +366,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_with_circuit_breaker() {
-        let circuit_breaker = CircuitBreaker::default();
+        let circuit_breaker = CircuitBreaker::with_default_config();
 
         // Test successful execution
         let result =

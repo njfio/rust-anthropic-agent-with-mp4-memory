@@ -123,8 +123,8 @@ impl SecurityMiddleware {
     fn extract_auth_token(&self, headers: &HashMap<String, String>) -> Option<String> {
         // Check Authorization header
         if let Some(auth_header) = headers.get("Authorization") {
-            if auth_header.starts_with("Bearer ") {
-                return Some(auth_header[7..].to_string());
+            if let Some(stripped) = auth_header.strip_prefix("Bearer ") {
+                return Some(stripped.to_string());
             }
         }
 

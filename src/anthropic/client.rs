@@ -159,11 +159,10 @@ impl AnthropicClient {
             Err(e) => {
                 error!("❌ Response contains invalid UTF-8: {}", e);
                 // Try to recover by replacing invalid UTF-8 sequences
-                match String::from_utf8_lossy(&response_bytes).into_owned() {
-                    recovered => {
-                        warn!("🔄 Recovered response text with lossy UTF-8 conversion");
-                        recovered
-                    }
+                let recovered = String::from_utf8_lossy(&response_bytes).into_owned();
+                {
+                    warn!("🔄 Recovered response text with lossy UTF-8 conversion");
+                    recovered
                 }
             }
         };

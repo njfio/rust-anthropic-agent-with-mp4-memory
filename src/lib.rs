@@ -297,7 +297,8 @@ mod security_tests {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let stats = monitor.get_stats().unwrap();
-        assert!(stats.uptime_seconds >= 0);
+        // uptime_seconds is u64, so it's always >= 0
+        assert!(stats.uptime_seconds < u64::MAX);
         assert!(stats.memory_usage > 0);
 
         monitor.stop_monitoring().unwrap();
