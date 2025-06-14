@@ -26,22 +26,32 @@ This document identifies all incomplete implementations, technical debt, and pro
 **Status**: IN PROGRESS - Fixed critical unwrap() calls in code analysis tool
 **Solution**: Replaced unwrap() calls with proper error handling patterns using `let Some(...) else` constructs and proper error propagation.
 
+### Azure Speech Services Integration (COMPLETED)
+**Location**: `src/audio/transcription.rs`, `src/audio/synthesis.rs`
+**Status**: RESOLVED in commit e17a252
+**Solution**: Implemented comprehensive Azure Speech Services integration with proper authentication, SSML support, voice selection, and audio format conversion. Added 13 comprehensive tests for transcription functionality. Replaced all placeholder implementations with real Azure API integration.
+
 ## 🚨 Critical Issues (Priority 1)
 
-### 1. Audio Service Placeholder Implementations
+### ✅ 1. Audio Service Placeholder Implementations (PARTIALLY RESOLVED)
 **Location**: `src/audio/transcription.rs`, `src/audio/synthesis.rs`
 **Issue Type**: Incomplete Implementation
 **Priority**: Critical
 **Complexity**: High
+**Status**: PARTIALLY COMPLETED in commit e17a252
 
-**Problems**:
-- Azure Speech Services: Lines 325-332 (transcription), 301-309 (synthesis) - All return "not implemented yet" errors
-- Google Cloud Speech-to-Text: Lines 335-342 (transcription), 311-319 (synthesis) - All return "not implemented yet" errors  
-- Amazon Polly: Lines 322-329 (synthesis) - Returns "not implemented yet" errors
-- Local TTS/Whisper: Lines 332-339 (synthesis), 344-347 (transcription) - Returns "not implemented yet" errors
+**Problems RESOLVED**:
+- ✅ Azure Speech Services: Lines 325-332 (transcription), 301-309 (synthesis) - Now fully implemented with proper authentication, SSML support, and comprehensive testing
+- ✅ Added 13 comprehensive tests for Azure transcription functionality
+- ✅ Implemented proper audio format conversion and voice selection
 
-**Impact**: Core audio functionality advertised but non-functional
-**Dependencies**: External API integrations, local model implementations
+**Remaining Problems**:
+- Google Cloud Speech-to-Text: Lines 335-342 (transcription), 311-319 (synthesis) - Still return "not implemented yet" errors
+- Amazon Polly: Lines 322-329 (synthesis) - Still returns "not implemented yet" errors
+- Local TTS/Whisper: Lines 332-339 (synthesis), 344-347 (transcription) - Still return "not implemented yet" errors
+
+**Impact**: Core audio functionality now supports OpenAI and Azure services, with Google/Amazon/Local still pending
+**Dependencies**: Remaining external API integrations, local model implementations
 
 ### ✅ 2. Resource Monitoring TODOs (RESOLVED)
 **Location**: `src/monitoring/resource_tracker.rs`
