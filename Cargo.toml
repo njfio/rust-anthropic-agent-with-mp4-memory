@@ -39,6 +39,15 @@ tokio-tungstenite = { version = "0.20", features = ["native-tls"] }
 # System information for monitoring
 sysinfo = "0.29"
 
+# Redis caching support
+redis = { version = "0.23", features = ["tokio-comp", "cluster"] }
+deadpool-redis = "0.12"
+
+# Compression support (see version pinned below)
+
+# Random number generation
+rand = "0.8"
+
 # CLI
 clap = { version = "4.0", features = ["derive", "env"] }
 colored = "2.1"
@@ -86,9 +95,6 @@ async-trait = "0.1"
 
 # URL parsing
 url = "2.4"
-
-# Random number generation
-rand = "0.8"
 
 # Security and validation
 validator = { version = "0.18", features = ["derive"] }

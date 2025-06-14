@@ -37,6 +37,7 @@
 
 pub mod agent;
 pub mod anthropic;
+pub mod caching;
 pub mod cli;
 pub mod compliance;
 pub mod config;
