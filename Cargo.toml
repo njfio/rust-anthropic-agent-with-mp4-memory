@@ -35,7 +35,7 @@ anyhow = "1.0"
 thiserror = "1.0"
 
 # HTTP client for Anthropic API
-reqwest = { version = "0.11.27", features = ["json", "stream"] }
+reqwest = { version = "0.11.27", features = ["json", "stream", "multipart"] }
 
 # WebSocket support
 tokio-tungstenite = { version = "0.20", features = ["native-tls"] }
@@ -88,6 +88,16 @@ rust_tree_sitter = { git = "https://github.com/njfio/rust-treesitter-agent-code-
 # Text processing
 regex = "1.0"
 
+# Audio processing dependencies
+symphonia = { version = "0.5", features = ["all"] }
+hound = "3.5"
+cpal = "0.15"
+rodio = { version = "0.17", features = ["symphonia"] }
+rustfft = "6.2"
+rubato = "0.15"
+dasp = { version = "0.11", features = ["all"] }
+minimp3 = "0.5"
+
 # Progress indicators
 indicatif = "0.16"
 
@@ -126,11 +136,12 @@ tokio-test = "0.4"
 [features]
 default = ["memory", "all-tools"]
 memory = []
-all-tools = ["text-editor", "memory-tools", "file-tools", "code-analysis"]
+all-tools = ["text-editor", "memory-tools", "file-tools", "code-analysis", "audio-processing"]
 text-editor = []
 memory-tools = []
 file-tools = []
 code-analysis = []
+audio-processing = []
 # Full power features for synaptic memory system
 external-integrations = ["synaptic/external-integrations"]
 distributed = ["synaptic/distributed"]
