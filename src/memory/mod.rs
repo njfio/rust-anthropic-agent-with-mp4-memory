@@ -315,34 +315,27 @@ impl MemoryManager {
         let memory = self.memory.lock().await;
         let synaptic_stats = memory.stats();
 
+        // Count conversations and memories while holding the lock to avoid deadlock
+        let conversation_results = memory
+            .search("conversation_id:", 1000)
+            .await
+            .map_err(|e| AgentError::memory(format!("Failed to count conversations: {}", e)))?;
+
+        let memory_results = memory
+            .search("memory_id:", 1000)
+            .await
+            .map_err(|e| AgentError::memory(format!("Failed to count memories: {}", e)))?;
+
         Ok(MemoryStats {
             total_chunks: synaptic_stats.short_term_count + synaptic_stats.long_term_count,
-            total_conversations: self.count_conversations().await?,
-            total_memories: self.count_memories().await?,
+            total_conversations: conversation_results.len(),
+            total_memories: memory_results.len(),
             memory_file_size: synaptic_stats.total_size as u64,
             index_file_size: 0, // Synaptic handles indexing internally
         })
     }
 
-    /// Count conversations in memory
-    async fn count_conversations(&self) -> Result<usize> {
-        let memory = self.memory.lock().await;
-        let results = memory
-            .search("conversation_id:", 1000)
-            .await
-            .map_err(|e| AgentError::memory(format!("Failed to count conversations: {}", e)))?;
-        Ok(results.len())
-    }
 
-    /// Count memory entries
-    async fn count_memories(&self) -> Result<usize> {
-        let memory = self.memory.lock().await;
-        let results = memory
-            .search("memory_id:", 1000)
-            .await
-            .map_err(|e| AgentError::memory(format!("Failed to count memories: {}", e)))?;
-        Ok(results.len())
-    }
 }
 
 impl std::fmt::Debug for MemoryManager {
