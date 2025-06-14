@@ -1,6 +1,9 @@
-# Rust MemVid Agent 🦀🤖
+# Rust Anthropic Agent with Synaptic Memory 🦀🤖
 
-
+An advanced Rust agent framework that stores conversation history and
+knowledge in lightweight JSON files using the [`rust-synaptic`](https://github.com/njfio/rust-synaptic) crate. This
+synaptic memory approach is fast and easy to work with, completely
+replacing the older MP4-based storage system.
 
 ## Recent Updates
 
@@ -25,7 +28,7 @@
 - **Context Size Optimization**: Simplified tool descriptions to reduce token pressure while maintaining functionality
 - **File Operation Excellence**: Flawless create and str_replace operations with proper parameter handling
 
-### ⚡ **Fast JSON Memory System**
+### ⚡ **Synaptic JSON Memory System**
 
 - **Simple JSON Storage**: Lightning-fast memory operations using simple JSON file persistence
 - **Instant Memory Access**: No video encoding/decoding overhead - immediate read/write operations
@@ -151,8 +154,8 @@
 ### Installation
 
 ```bash
-git clone https://github.com/njfio/rust-anthropic-agent-with-mp4-memory.git
-cd rust-anthropic-agent-with-mp4-memory
+git clone https://github.com/njfio/rust-anthropic-agent.git
+cd rust-anthropic-agent
 cargo build --release
 ```
 
@@ -327,7 +330,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = AgentConfig::default()
         .with_anthropic_key(std::env::var("ANTHROPIC_API_KEY")?)
-        .with_memory_path("memory_chat.json")
+        .with_memory_path("agent_memory.json")
         .with_system_prompt(
             "You are a helpful AI assistant with persistent memory. \
              Use your memory tools to remember important information."
