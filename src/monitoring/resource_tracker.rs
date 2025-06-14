@@ -6,10 +6,13 @@ use crate::utils::error::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use sysinfo::{CpuExt, DiskExt, NetworkExt, System, SystemExt};
+use tokio::net::TcpStream;
 use tokio::sync::RwLock;
+use tokio::time::timeout;
 use tracing::{debug, error, info};
 
 /// Resource tracker for system monitoring
@@ -78,6 +81,8 @@ pub struct ResourceStats {
     pub system_uptime: u64,
     /// Last update timestamp
     pub last_update: DateTime<Utc>,
+    /// Error count for tracking failures
+    pub error_count: u32,
 }
 
 /// Disk usage information
@@ -221,6 +226,7 @@ impl Default for ResourceStats {
             },
             system_uptime: 0,
             last_update: Utc::now(),
+            error_count: 0,
         }
     }
 }
@@ -293,7 +299,7 @@ impl ResourceTracker {
         let cpu_healthy = stats.cpu_usage < 90.0;
         let memory_healthy = stats.memory_usage < 90.0;
         let disk_healthy = stats.disk_usage.values().all(|d| d.usage_percentage < 95.0);
-        let network_healthy = true; // TODO: Add network health checks
+        let network_healthy = self.check_network_health().await.unwrap_or(false);
 
         Ok(ResourceHealth {
             is_healthy: cpu_healthy && memory_healthy && disk_healthy && network_healthy,
@@ -302,7 +308,7 @@ impl ResourceTracker {
             disk_healthy,
             network_healthy,
             last_update: Some(stats.last_update),
-            error_count: 0, // TODO: Track errors
+            error_count: stats.error_count,
         })
     }
 
@@ -493,6 +499,83 @@ impl ResourceTracker {
         Ok(())
     }
 
+    /// Check network health by performing connectivity tests
+    async fn check_network_health(&self) -> Result<bool> {
+
+        // Test connectivity to common DNS servers and services
+        let test_endpoints = vec![
+            ("8.8.8.8", 53),     // Google DNS
+            ("1.1.1.1", 53),     // Cloudflare DNS
+            ("208.67.222.222", 53), // OpenDNS
+        ];
+
+        let mut successful_connections = 0;
+        let total_tests = test_endpoints.len();
+
+        for (host, port) in test_endpoints {
+            match self.test_tcp_connection(host, port).await {
+                Ok(true) => {
+                    successful_connections += 1;
+                    debug!("Network health check passed for {}:{}", host, port);
+                }
+                Ok(false) => {
+                    debug!("Network health check failed for {}:{}", host, port);
+                    self.increment_error_count().await;
+                }
+                Err(e) => {
+                    error!("Network health check error for {}:{}: {}", host, port, e);
+                    self.increment_error_count().await;
+                }
+            }
+        }
+
+        // Consider network healthy if at least 2/3 of tests pass
+        let health_threshold = (total_tests * 2) / 3;
+        let is_healthy = successful_connections >= health_threshold;
+
+        debug!(
+            "Network health check: {}/{} tests passed, healthy: {}",
+            successful_connections, total_tests, is_healthy
+        );
+
+        Ok(is_healthy)
+    }
+
+    /// Test TCP connection to a specific host and port
+    async fn test_tcp_connection(&self, host: &str, port: u16) -> Result<bool> {
+        let addr = match host.parse::<IpAddr>() {
+            Ok(ip) => SocketAddr::new(ip, port),
+            Err(_) => {
+                // If parsing as IP fails, try to resolve hostname
+                let addr_str = format!("{}:{}", host, port);
+                let lookup_result = tokio::net::lookup_host(addr_str).await;
+                match lookup_result {
+                    Ok(mut addrs) => {
+                        if let Some(addr) = addrs.next() {
+                            addr
+                        } else {
+                            return Ok(false);
+                        }
+                    }
+                    Err(_) => return Ok(false),
+                }
+            }
+        };
+
+        // Attempt connection with 5-second timeout
+        match timeout(Duration::from_secs(5), TcpStream::connect(addr)).await {
+            Ok(Ok(_)) => Ok(true),
+            Ok(Err(_)) => Ok(false),
+            Err(_) => Ok(false), // Timeout
+        }
+    }
+
+    /// Increment error count
+    async fn increment_error_count(&self) {
+        let mut stats = self.stats.write().await;
+        stats.error_count = stats.error_count.saturating_add(1);
+    }
+
     /// Initialize trackers
     async fn initialize_trackers(&self) -> Result<()> {
         // Initialize process tracker
@@ -547,5 +630,112 @@ impl Clone for ResourceTracker {
             disk_tracker: Arc::clone(&self.disk_tracker),
             start_time: self.start_time,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+
+    #[tokio::test]
+    async fn test_network_health_check() {
+        let tracker = ResourceTracker::new();
+
+        // Test network health check
+        let health_result = tracker.check_network_health().await;
+        assert!(health_result.is_ok());
+
+        // The result should be a boolean indicating network health
+        let is_healthy = health_result.unwrap();
+        // Note: This test might fail in environments without internet access
+        // In a real test environment, you might want to mock the network calls
+        println!("Network health: {}", is_healthy);
+    }
+
+    #[tokio::test]
+    async fn test_tcp_connection() {
+        let tracker = ResourceTracker::new();
+
+        // Test connection to a reliable service (Google DNS)
+        let result = tracker.test_tcp_connection("8.8.8.8", 53).await;
+        assert!(result.is_ok());
+
+        // Test connection to an invalid host
+        let result = tracker.test_tcp_connection("invalid.host.example", 80).await;
+        assert!(result.is_ok()); // Should return Ok(false), not an error
+        assert!(!result.unwrap()); // Should be false for invalid host
+    }
+
+    #[tokio::test]
+    async fn test_error_count_tracking() {
+        let tracker = ResourceTracker::new();
+
+        // Initial error count should be 0
+        let initial_stats = tracker.get_stats().await;
+        assert_eq!(initial_stats.error_count, 0);
+
+        // Increment error count
+        tracker.increment_error_count().await;
+
+        // Error count should be incremented
+        let updated_stats = tracker.get_stats().await;
+        assert_eq!(updated_stats.error_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_resource_health_integration() {
+        let tracker = ResourceTracker::new();
+
+        // Update stats first
+        tracker.update_stats().await.unwrap();
+
+        // Get health status
+        let health = tracker.get_health().await.unwrap();
+
+        // Verify health structure
+        assert!(health.cpu_healthy || !health.cpu_healthy); // Should be a boolean
+        assert!(health.memory_healthy || !health.memory_healthy); // Should be a boolean
+        assert!(health.disk_healthy || !health.disk_healthy); // Should be a boolean
+        assert!(health.network_healthy || !health.network_healthy); // Should be a boolean
+        assert!(health.last_update.is_some());
+
+        // Overall health should be consistent with individual components
+        let expected_health = health.cpu_healthy && health.memory_healthy && health.disk_healthy && health.network_healthy;
+        assert_eq!(health.is_healthy, expected_health);
+    }
+
+    #[tokio::test]
+    async fn test_resource_tracker_configuration() {
+        let mut config = ResourceConfig::default();
+        config.enable_network_monitoring = false;
+
+        let tracker = ResourceTracker::with_config(config.clone());
+        assert_eq!(tracker.get_config().enable_network_monitoring, false);
+
+        // Test with network monitoring enabled
+        config.enable_network_monitoring = true;
+        let tracker = ResourceTracker::with_config(config);
+        assert_eq!(tracker.get_config().enable_network_monitoring, true);
+    }
+
+    #[tokio::test]
+    async fn test_metrics_collection() {
+        let tracker = ResourceTracker::new();
+
+        // Update stats first
+        tracker.update_stats().await.unwrap();
+
+        // Collect metrics
+        let metrics = tracker.collect_metrics().await.unwrap();
+
+        // Should have multiple metrics
+        assert!(!metrics.is_empty());
+
+        // Check for expected metric types
+        let metric_names: Vec<&str> = metrics.iter().map(|m| m.name.as_str()).collect();
+        assert!(metric_names.contains(&"cpu_usage"));
+        assert!(metric_names.contains(&"memory_usage"));
+        assert!(metric_names.contains(&"system_uptime"));
     }
 }

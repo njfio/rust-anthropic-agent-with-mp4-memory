@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use rust_tree_sitter::{AnalysisConfig, CodebaseAnalyzer};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Code analysis tool for intelligent codebase understanding
 #[derive(Debug, Clone)]
@@ -1581,7 +1581,10 @@ impl CodeAnalysisTool {
         let mut anti_patterns = Vec::new();
 
         for file in files {
-            let symbols = file["symbols"].as_array().unwrap();
+            let Some(symbols) = file["symbols"].as_array() else {
+                warn!("Invalid file symbols data for file: {:?}", file["path"]);
+                continue;
+            };
             let lines = file["lines"].as_u64().unwrap_or(0);
 
             // God Object Anti-pattern
@@ -1596,7 +1599,7 @@ impl CodeAnalysisTool {
 
             // Long Parameter List
             for symbol in symbols {
-                let name = symbol["name"].as_str().unwrap();
+                let name = symbol["name"].as_str().unwrap_or("unknown");
                 if name.len() > 50 {
                     anti_patterns.push(json!({
                         "anti_pattern": "Long Method Name",
@@ -3258,8 +3261,12 @@ impl CodeAnalysisTool {
         let mut missing_tests = Vec::new();
 
         for file in files {
-            if !file["path"].as_str().unwrap().contains("test") {
-                let symbols = file["symbols"].as_array().unwrap();
+            let file_path = file["path"].as_str().unwrap_or("unknown");
+            if !file_path.contains("test") {
+                let Some(symbols) = file["symbols"].as_array() else {
+                    warn!("Invalid file symbols data for file: {}", file_path);
+                    continue;
+                };
                 let functions = symbols.iter().filter(|s| s["kind"] == "function").count();
 
                 if functions > 0 {
@@ -3366,8 +3373,12 @@ impl CodeAnalysisTool {
         let mut gaps = Vec::new();
 
         for file in files {
-            if !file["path"].as_str().unwrap().contains("test") {
-                let symbols = file["symbols"].as_array().unwrap();
+            let file_path = file["path"].as_str().unwrap_or("unknown");
+            if !file_path.contains("test") {
+                let Some(symbols) = file["symbols"].as_array() else {
+                    warn!("Invalid file symbols data for file: {}", file_path);
+                    continue;
+                };
                 let untested_functions = symbols.iter().filter(|s| s["kind"] == "function").count();
 
                 if untested_functions > 0 {
