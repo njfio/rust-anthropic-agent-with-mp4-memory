@@ -319,6 +319,10 @@ impl MetricsCollector for ApplicationMetricsCollector {
     fn config(&self) -> CollectorConfig {
         self.config.clone()
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl HttpMetricsCollector {
@@ -462,6 +466,10 @@ impl MetricsCollector for HttpMetricsCollector {
     fn config(&self) -> CollectorConfig {
         self.config.clone()
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl CustomMetricsCollector {
@@ -545,5 +553,9 @@ impl MetricsCollector for CustomMetricsCollector {
 
     fn config(&self) -> CollectorConfig {
         self.config.clone()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

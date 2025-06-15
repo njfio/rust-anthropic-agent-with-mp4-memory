@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// Resource usage statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -431,29 +431,29 @@ impl ResourceMonitor {
 }
 
 /// Global resource monitor instance
-static mut RESOURCE_MONITOR: Option<Arc<ResourceMonitor>> = None;
-static RESOURCE_MONITOR_INIT: std::sync::Once = std::sync::Once::new();
+static RESOURCE_MONITOR: std::sync::OnceLock<Arc<ResourceMonitor>> = std::sync::OnceLock::new();
 
 /// Initialize global resource monitor
 pub fn init_resource_monitor(config: ResourceMonitorConfig) -> Result<()> {
-    RESOURCE_MONITOR_INIT.call_once(|| {
-        let monitor = ResourceMonitor::new(config);
-        if let Err(e) = monitor.start_monitoring() {
-            error!("Failed to start resource monitoring: {}", e);
-            return;
-        }
+    let monitor = ResourceMonitor::new(config);
+    monitor.start_monitoring()?;
 
-        unsafe {
-            RESOURCE_MONITOR = Some(Arc::new(monitor));
+    let monitor_arc = Arc::new(monitor);
+    match RESOURCE_MONITOR.set(monitor_arc) {
+        Ok(()) => {
+            info!("Resource monitor initialized");
+            Ok(())
         }
-        info!("Resource monitor initialized");
-    });
-    Ok(())
+        Err(_) => {
+            warn!("Resource monitor already initialized");
+            Ok(())
+        }
+    }
 }
 
 /// Get global resource monitor
 pub fn get_resource_monitor() -> Option<Arc<ResourceMonitor>> {
-    unsafe { RESOURCE_MONITOR.as_ref().cloned() }
+    RESOURCE_MONITOR.get().cloned()
 }
 
 #[cfg(test)]

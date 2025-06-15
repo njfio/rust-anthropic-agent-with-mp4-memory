@@ -125,6 +125,37 @@ pub struct ArtworkInfo {
 pub struct MetadataExtractor;
 
 impl MetadataExtractor {
+    /// Extract metadata from audio file using instance method
+    pub async fn extract_metadata(&self, file_path: &str) -> Result<AudioMetadata> {
+        Self::extract_from_file(file_path)
+    }
+
+    /// Extract metadata from audio data buffer using instance method
+    pub async fn extract_from_buffer(&self, audio_data: &super::codecs::AudioData) -> Result<AudioMetadata> {
+        // Create metadata from audio data buffer
+        let mut metadata = AudioMetadata::default();
+
+        // Extract technical information from audio data
+        metadata.duration_seconds = audio_data.duration;
+        metadata.sample_rate = audio_data.sample_rate as u32;
+        metadata.channels = audio_data.channels as u16;
+        metadata.format = audio_data.format.clone();
+
+        // Calculate additional technical metadata
+        let total_samples = audio_data.samples.len();
+        let bits_per_sample = 16; // Default assumption
+        let byte_rate = audio_data.sample_rate as u32 * audio_data.channels as u32 * (bits_per_sample / 8);
+        metadata.bitrate = Some(byte_rate);
+
+        // Set extraction timestamp (using comment as a proxy for extraction info)
+        metadata.comment = Some(format!("Extracted from buffer at {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")));
+
+        debug!("Extracted metadata from audio buffer: {}s, {}Hz, {} channels",
+               audio_data.duration, audio_data.sample_rate, audio_data.channels);
+
+        Ok(metadata)
+    }
+
     /// Extract metadata from audio file
     pub fn extract_from_file<P: AsRef<Path>>(path: P) -> Result<AudioMetadata> {
         let path = path.as_ref();
@@ -327,10 +358,9 @@ impl MetadataExtractor {
             }
         } else {
             // Store non-standard tags as custom tags
-            if let key = &tag.key {
-                if let Some(value) = Self::extract_string_value(&tag.value) {
-                    metadata.custom_tags.insert(key.clone(), value);
-                }
+            let key = &tag.key;
+            if let Some(value) = Self::extract_string_value(&tag.value) {
+                metadata.custom_tags.insert(key.clone(), value);
             }
         }
 

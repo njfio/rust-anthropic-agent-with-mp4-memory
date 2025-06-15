@@ -19,6 +19,9 @@ pub mod resource_tracker;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod integration_tests;
+
 /// Performance monitoring manager
 pub struct PerformanceMonitor {
     /// Metrics collectors
@@ -137,20 +140,40 @@ pub struct PerformanceTrends {
     pub throughput_trend: Vec<f64>,
 }
 
+/// Comprehensive monitoring status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MonitoringStatus {
+    /// Performance statistics
+    pub performance_stats: PerformanceStats,
+    /// Collector health status
+    pub collector_health: Vec<(String, CollectorHealth)>,
+    /// Exporter health status
+    pub exporter_health: Vec<(String, ExporterHealth)>,
+    /// Resource tracker status
+    pub resource_status: crate::monitoring::resource_tracker::ResourceStats,
+    /// System uptime
+    pub system_uptime: Duration,
+    /// Monitoring configuration
+    pub monitoring_config: MonitoringConfig,
+}
+
 /// Trait for metrics collectors
 #[async_trait::async_trait]
 pub trait MetricsCollector: Send + Sync {
     /// Get collector name
     fn name(&self) -> &str;
-    
+
     /// Collect metrics
     async fn collect(&self) -> Result<Vec<Metric>>;
-    
+
     /// Get collector health status
     async fn health_check(&self) -> Result<CollectorHealth>;
-    
+
     /// Get collector configuration
     fn config(&self) -> CollectorConfig;
+
+    /// Get as Any for downcasting
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 /// Trait for metrics exporters
@@ -425,6 +448,86 @@ impl PerformanceMonitor {
         Ok(())
     }
 
+    /// Add application metrics collector with default configuration
+    pub async fn add_application_collector(&self) -> Result<()> {
+        use crate::monitoring::collectors::ApplicationMetricsCollector;
+
+        let config = CollectorConfig {
+            name: "application".to_string(),
+            enabled: true,
+            collection_interval: Duration::from_secs(30),
+            timeout: Duration::from_secs(10),
+            retry_count: 3,
+        };
+
+        let collector = ApplicationMetricsCollector::new(config);
+        self.add_collector(Box::new(collector)).await?;
+
+        info!("Added application metrics collector");
+        Ok(())
+    }
+
+    /// Add HTTP metrics collector with default configuration
+    pub async fn add_http_collector(&self) -> Result<()> {
+        use crate::monitoring::collectors::HttpMetricsCollector;
+
+        let config = CollectorConfig {
+            name: "http".to_string(),
+            enabled: true,
+            collection_interval: Duration::from_secs(15),
+            timeout: Duration::from_secs(5),
+            retry_count: 2,
+        };
+
+        let collector = HttpMetricsCollector::new(config);
+        self.add_collector(Box::new(collector)).await?;
+
+        info!("Added HTTP metrics collector");
+        Ok(())
+    }
+
+    /// Add custom metrics collector with default configuration
+    pub async fn add_custom_collector(&self) -> Result<()> {
+        use crate::monitoring::collectors::CustomMetricsCollector;
+
+        let config = CollectorConfig {
+            name: "custom".to_string(),
+            enabled: true,
+            collection_interval: Duration::from_secs(60),
+            timeout: Duration::from_secs(15),
+            retry_count: 1,
+        };
+
+        let collector = CustomMetricsCollector::new(config);
+        self.add_collector(Box::new(collector)).await?;
+
+        info!("Added custom metrics collector");
+        Ok(())
+    }
+
+    /// Initialize all default collectors
+    pub async fn initialize_default_collectors(&self) -> Result<()> {
+        info!("Initializing default metrics collectors");
+
+        // Add application metrics collector
+        if let Err(e) = self.add_application_collector().await {
+            warn!("Failed to add application collector: {}", e);
+        }
+
+        // Add HTTP metrics collector
+        if let Err(e) = self.add_http_collector().await {
+            warn!("Failed to add HTTP collector: {}", e);
+        }
+
+        // Add custom metrics collector
+        if let Err(e) = self.add_custom_collector().await {
+            warn!("Failed to add custom collector: {}", e);
+        }
+
+        info!("Default metrics collectors initialized");
+        Ok(())
+    }
+
     /// Remove a metrics collector
     pub async fn remove_collector(&self, name: &str) -> Result<()> {
         let mut collectors = self.collectors.write().await;
@@ -454,6 +557,187 @@ impl PerformanceMonitor {
         }
 
         info!("Added metrics exporter: {}", name);
+        Ok(())
+    }
+
+    /// Add Prometheus exporter with default configuration
+    pub async fn add_prometheus_exporter(&self) -> Result<()> {
+        use crate::monitoring::exporters::PrometheusExporter;
+
+        let config = ExporterConfig {
+            name: "prometheus".to_string(),
+            enabled: true,
+            export_interval: Duration::from_secs(self.config.export_config.export_interval),
+            timeout: Duration::from_secs(10),
+            retry_count: 3,
+            endpoint: Some(self.config.export_config.prometheus_endpoint.clone()),
+        };
+
+        let exporter = PrometheusExporter::new(config, self.config.export_config.prometheus_endpoint.clone());
+        self.add_exporter(Box::new(exporter)).await?;
+
+        info!("Added Prometheus metrics exporter");
+        Ok(())
+    }
+
+    /// Add console exporter with default configuration
+    pub async fn add_console_exporter(&self) -> Result<()> {
+        use crate::monitoring::exporters::ConsoleExporter;
+
+        let config = ExporterConfig {
+            name: "console".to_string(),
+            enabled: true,
+            export_interval: Duration::from_secs(60),
+            timeout: Duration::from_secs(5),
+            retry_count: 1,
+            endpoint: None,
+        };
+
+        let exporter = ConsoleExporter::new(config, crate::monitoring::exporters::ConsoleFormat::Table);
+        self.add_exporter(Box::new(exporter)).await?;
+
+        info!("Added console metrics exporter");
+        Ok(())
+    }
+
+    /// Add file exporter with default configuration
+    pub async fn add_file_exporter(&self, file_path: &str) -> Result<()> {
+        use crate::monitoring::exporters::CsvFileExporter;
+
+        let config = ExporterConfig {
+            name: "file".to_string(),
+            enabled: true,
+            export_interval: Duration::from_secs(120),
+            timeout: Duration::from_secs(15),
+            retry_count: 2,
+            endpoint: Some(file_path.to_string()),
+        };
+
+        let exporter = CsvFileExporter::new(config);
+        self.add_exporter(Box::new(exporter)).await?;
+
+        info!("Added file metrics exporter: {}", file_path);
+        Ok(())
+    }
+
+    /// Initialize all default exporters
+    pub async fn initialize_default_exporters(&self) -> Result<()> {
+        info!("Initializing default metrics exporters");
+
+        // Add console exporter for development
+        if let Err(e) = self.add_console_exporter().await {
+            warn!("Failed to add console exporter: {}", e);
+        }
+
+        // Add Prometheus exporter if enabled
+        if self.config.export_config.enable_prometheus {
+            if let Err(e) = self.add_prometheus_exporter().await {
+                warn!("Failed to add Prometheus exporter: {}", e);
+            }
+        }
+
+        // Add file exporter if JSON export is enabled
+        if self.config.export_config.enable_json {
+            if let Err(e) = self.add_file_exporter(&self.config.export_config.json_export_path).await {
+                warn!("Failed to add file exporter: {}", e);
+            }
+        }
+
+        info!("Default metrics exporters initialized");
+        Ok(())
+    }
+
+    /// Initialize complete monitoring system with all components
+    pub async fn initialize_complete_monitoring(&self) -> Result<()> {
+        info!("Initializing complete monitoring system");
+
+        // Initialize all default collectors
+        self.initialize_default_collectors().await?;
+
+        // Initialize all default exporters
+        self.initialize_default_exporters().await?;
+
+        // Start the monitoring system
+        self.start().await?;
+
+        info!("Complete monitoring system initialized and started");
+        Ok(())
+    }
+
+    /// Get comprehensive monitoring status
+    pub async fn get_monitoring_status(&self) -> Result<MonitoringStatus> {
+        let stats = self.stats.read().await;
+        let collectors = self.collectors.read().await;
+        let exporters = self.exporters.read().await;
+
+        // Get collector health status
+        let mut collector_health = Vec::new();
+        for (name, collector) in collectors.iter() {
+            match collector.health_check().await {
+                Ok(health) => collector_health.push((name.clone(), health)),
+                Err(e) => {
+                    warn!("Failed to get health for collector {}: {}", name, e);
+                }
+            }
+        }
+
+        // Get exporter health status
+        let mut exporter_health = Vec::new();
+        for exporter in exporters.iter() {
+            match exporter.health_check().await {
+                Ok(health) => exporter_health.push((exporter.name().to_string(), health)),
+                Err(e) => {
+                    warn!("Failed to get health for exporter {}: {}", exporter.name(), e);
+                }
+            }
+        }
+
+        // Get resource tracker status
+        let resource_status = self.resource_tracker.get_stats().await;
+
+        Ok(MonitoringStatus {
+            performance_stats: stats.clone(),
+            collector_health,
+            exporter_health,
+            resource_status,
+            system_uptime: self.start_time.elapsed(),
+            monitoring_config: self.config.clone(),
+        })
+    }
+
+    /// Record application metric through the monitoring system
+    pub async fn record_application_metric(&self, name: &str, value: f64, labels: HashMap<String, String>) -> Result<()> {
+        let collectors = self.collectors.read().await;
+        if let Some(collector) = collectors.get("application") {
+            if let Some(app_collector) = collector.as_any().downcast_ref::<crate::monitoring::collectors::ApplicationMetricsCollector>() {
+                app_collector.record_metric(name, value, labels).await?;
+                info!("Recorded application metric: {} = {}", name, value);
+            }
+        }
+        Ok(())
+    }
+
+    /// Record HTTP request through the monitoring system
+    pub async fn record_http_request(&self, endpoint: &str, status_code: u16, response_time: f64) -> Result<()> {
+        let collectors = self.collectors.read().await;
+        if let Some(collector) = collectors.get("http") {
+            if let Some(http_collector) = collector.as_any().downcast_ref::<crate::monitoring::collectors::HttpMetricsCollector>() {
+                http_collector.record_request(endpoint, status_code, response_time).await?;
+                info!("Recorded HTTP request: {} {} {}ms", endpoint, status_code, response_time);
+            }
+        }
+        Ok(())
+    }
+
+    /// Add custom metric through the monitoring system
+    pub async fn add_custom_metric(&self, metric: crate::monitoring::collectors::CustomMetric) -> Result<()> {
+        let collectors = self.collectors.read().await;
+        if let Some(collector) = collectors.get("custom") {
+            if let Some(custom_collector) = collector.as_any().downcast_ref::<crate::monitoring::collectors::CustomMetricsCollector>() {
+                custom_collector.add_metric(metric.clone()).await?;
+                info!("Added custom metric: {}", metric.name);
+            }
+        }
         Ok(())
     }
 

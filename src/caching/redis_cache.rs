@@ -231,8 +231,8 @@ impl RedisCache {
         F: Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<T>> + Send>> + Send,
         T: Send,
     {
-        let mut last_error = None;
-        
+        let mut last_error: Option<AgentError> = None;
+
         for attempt in 0..=self.config.retry_attempts {
             match operation().await {
                 Ok(result) => {
@@ -245,7 +245,7 @@ impl RedisCache {
                 }
                 Err(e) => {
                     last_error = Some(e);
-                    
+
                     // Update error count
                     {
                         let mut health = self.health.write().await;
@@ -253,7 +253,7 @@ impl RedisCache {
                         let mut stats = self.stats.write().await;
                         stats.errors += 1;
                     }
-                    
+
                     if attempt < self.config.retry_attempts {
                         tokio::time::sleep(Duration::from_millis(self.config.retry_delay)).await;
                         warn!("Redis operation failed, retrying (attempt {}/{})", attempt + 1, self.config.retry_attempts);
@@ -261,7 +261,7 @@ impl RedisCache {
                 }
             }
         }
-        
+
         Err(last_error.unwrap_or_else(|| AgentError::tool("redis_cache", "All retry attempts failed")))
     }
 
@@ -405,13 +405,13 @@ impl CacheTier for RedisCache {
                 let full_key = full_key.clone();
                 let data = data.clone();
                 let ttl = entry.ttl;
-                
+
                 Box::pin(async move {
                     let mut conn = pool.get().await
                         .map_err(|e| AgentError::tool("redis_cache", &format!("Failed to get connection: {}", e)))?;
-                    
+
                     if let Some(ttl_seconds) = ttl {
-                        redis::cmd("SETEX")
+                        let _: () = redis::cmd("SETEX")
                             .arg(&full_key)
                             .arg(ttl_seconds)
                             .arg(&data)
@@ -419,15 +419,15 @@ impl CacheTier for RedisCache {
                             .await
                             .map_err(|e| AgentError::tool("redis_cache", &format!("SETEX command failed: {}", e)))?;
                     } else {
-                        redis::cmd("SET")
+                        let _: () = redis::cmd("SET")
                             .arg(&full_key)
                             .arg(&data)
                             .query_async(&mut conn)
                             .await
                             .map_err(|e| AgentError::tool("redis_cache", &format!("SET command failed: {}", e)))?;
                     }
-                    
-                    Ok(())
+
+                    Ok::<(), AgentError>(())
                 })
             }).await?;
             
@@ -514,17 +514,17 @@ impl CacheTier for RedisCache {
         if let Some(pool) = &self.pool {
             self.execute_with_retry(|| {
                 let pool = pool.clone();
-                
+
                 Box::pin(async move {
                     let mut conn = pool.get().await
                         .map_err(|e| AgentError::tool("redis_cache", &format!("Failed to get connection: {}", e)))?;
-                    
+
                     let _: String = redis::cmd("FLUSHDB")
                         .query_async(&mut conn)
                         .await
                         .map_err(|e| AgentError::tool("redis_cache", &format!("FLUSHDB command failed: {}", e)))?;
-                    
-                    Ok(())
+
+                    Ok::<(), AgentError>(())
                 })
             }).await?;
             

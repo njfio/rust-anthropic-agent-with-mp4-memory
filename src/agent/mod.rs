@@ -13,7 +13,8 @@ use uuid::Uuid;
 use crate::anthropic::{AnthropicClient, ChatMessage, ChatRequest, MessageRole};
 use crate::config::AgentConfig;
 use crate::memory::MemoryManager;
-use crate::security::SecurityManager;
+use crate::security::{SecurityManager, SecurityContext, SecurityEvent};
+use crate::security::policy::{SecurityPolicy, PolicyEffect, PolicyCondition, PolicyOperator, PolicyValue};
 use crate::utils::error::{AgentError, Result};
 
 pub use conversation::ConversationManager;
@@ -34,6 +35,8 @@ pub struct Agent {
     conversation_manager: ConversationManager,
     /// Security manager
     security_manager: Option<Arc<SecurityManager>>,
+    /// Current security context
+    security_context: Option<SecurityContext>,
     /// Current conversation ID
     current_conversation_id: Option<String>,
 }
@@ -101,8 +104,282 @@ impl Agent {
             tool_orchestrator,
             conversation_manager,
             security_manager,
+            security_context: None,
             current_conversation_id: None,
         })
+    }
+
+    /// Initialize security context for the agent
+    pub async fn initialize_security_context(
+        &mut self,
+        user_id: String,
+        ip_address: Option<String>,
+    ) -> Result<()> {
+        if let Some(security_manager) = &self.security_manager {
+            let context = security_manager
+                .create_context(user_id, ip_address)
+                .await?;
+
+            // Initialize default roles for agent operations
+            let mut enhanced_context = context;
+            enhanced_context.add_role("agent_user".to_string());
+            enhanced_context.add_permission("chat".to_string());
+            enhanced_context.add_permission("tool_execution".to_string());
+            enhanced_context.add_permission("memory_access".to_string());
+
+            self.security_context = Some(enhanced_context);
+
+            // Initialize encryption keys for agent operations
+            self.initialize_encryption_keys().await?;
+
+            // Add agent-specific security policies
+            self.add_agent_security_policies().await?;
+
+            info!("Security context initialized for agent operations");
+        } else {
+            debug!("No security manager configured, skipping security context initialization");
+        }
+        Ok(())
+    }
+
+    /// Initialize encryption keys for secure data handling
+    async fn initialize_encryption_keys(&self) -> Result<()> {
+        if let Some(security_manager) = &self.security_manager {
+            // Generate encryption keys for different data types
+            let keys_to_generate = [
+                ("agent_memory", crate::security::EncryptionAlgorithm::Aes256Gcm),
+                ("agent_chat", crate::security::EncryptionAlgorithm::Aes256Gcm),
+                ("agent_config", crate::security::EncryptionAlgorithm::ChaCha20Poly1305),
+            ];
+
+            for (key_id, algorithm) in &keys_to_generate {
+                if !security_manager.encryption_key_exists(key_id).await? {
+                    security_manager
+                        .generate_encryption_key(key_id, algorithm.clone())
+                        .await?;
+                    debug!("Generated encryption key: {}", key_id);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Validate security context and check permissions
+    async fn validate_security_context(&self, action: &str, resource: &str) -> Result<bool> {
+        if let (Some(security_manager), Some(context)) = (&self.security_manager, &self.security_context) {
+            // Validate the security context
+            if !security_manager.validate_context(context).await? {
+                return Err(AgentError::security("Invalid security context".to_string()));
+            }
+
+            // Evaluate security policies for this operation
+            let policy_decision = security_manager
+                .evaluate_all_policies(context, resource, action)
+                .await?;
+
+            if !policy_decision.granted {
+                let deciding_policy = policy_decision.deciding_policy.clone().unwrap_or("unknown".to_string());
+
+                // Log policy-based denial
+                security_manager
+                    .log_security_event(SecurityEvent::PolicyViolation {
+                        user_id: Some(context.user_id.clone()),
+                        policy: deciding_policy.clone(),
+                        violation: policy_decision.reason.clone(),
+                    })
+                    .await?;
+
+                return Err(AgentError::security(format!(
+                    "Policy denied: {} - {}",
+                    policy_decision.reason,
+                    deciding_policy
+                )));
+            }
+
+            // Check specific permission for the action
+            let has_permission = security_manager
+                .check_permission(context, resource, action)
+                .await?;
+
+            if !has_permission {
+                // Log authorization failure
+                security_manager
+                    .log_security_event(SecurityEvent::AuthorizationCheck {
+                        user_id: context.user_id.clone(),
+                        resource: resource.to_string(),
+                        action: action.to_string(),
+                        granted: false,
+                    })
+                    .await?;
+
+                return Err(AgentError::security(format!(
+                    "Permission denied: {} on {}",
+                    action, resource
+                )));
+            }
+
+            // Log successful authorization
+            security_manager
+                .log_security_event(SecurityEvent::AuthorizationCheck {
+                    user_id: context.user_id.clone(),
+                    resource: resource.to_string(),
+                    action: action.to_string(),
+                    granted: true,
+                })
+                .await?;
+
+            Ok(true)
+        } else {
+            // If no security manager is configured, allow the operation but log it
+            debug!("No security context available, allowing operation: {} on {}", action, resource);
+            Ok(true)
+        }
+    }
+
+    /// Validate and sanitize input message for security
+    async fn validate_input_message(&self, message: &str) -> Result<String> {
+        if let Some(security_manager) = &self.security_manager {
+            // Check for potential security threats in the input
+            if message.len() > 50000 {
+                return Err(AgentError::security(
+                    "Input message exceeds maximum allowed length".to_string(),
+                ));
+            }
+
+            // Check for potential injection patterns
+            let suspicious_patterns = [
+                "javascript:",
+                "<script",
+                "eval(",
+                "exec(",
+                "system(",
+                "shell_exec(",
+                "passthru(",
+                "file_get_contents(",
+                "file_put_contents(",
+                "fopen(",
+                "fwrite(",
+                "include(",
+                "require(",
+            ];
+
+            let lower_message = message.to_lowercase();
+            for pattern in &suspicious_patterns {
+                if lower_message.contains(pattern) {
+                    // Log security incident
+                    if let Some(_context) = &self.security_context {
+                        security_manager
+                            .log_security_event(SecurityEvent::SecurityIncident {
+                                incident_type: "potential_injection".to_string(),
+                                severity: "medium".to_string(),
+                                description: format!("Suspicious pattern detected: {}", pattern),
+                            })
+                            .await?;
+                    }
+
+                    warn!("Suspicious pattern detected in input: {}", pattern);
+                }
+            }
+
+            // Basic sanitization - remove null bytes and control characters
+            let sanitized = message
+                .chars()
+                .filter(|c| !c.is_control() || *c == '\n' || *c == '\r' || *c == '\t')
+                .collect::<String>();
+
+            Ok(sanitized)
+        } else {
+            Ok(message.to_string())
+        }
+    }
+
+    /// Log security event for tool execution
+    async fn log_tool_execution_event(&self, tool_name: &str, _success: bool) -> Result<()> {
+        if let (Some(security_manager), Some(context)) = (&self.security_manager, &self.security_context) {
+            security_manager
+                .log_security_event(SecurityEvent::DataAccess {
+                    user_id: context.user_id.clone(),
+                    resource: format!("tool:{}", tool_name),
+                    action: "execute".to_string(),
+                    sensitive: tool_name.contains("file") || tool_name.contains("system"),
+                })
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Add agent-specific security policies
+    pub async fn add_agent_security_policies(&self) -> Result<()> {
+        if let Some(security_manager) = &self.security_manager {
+            let agent_policies = vec![
+                SecurityPolicy {
+                    name: "agent_memory_encryption".to_string(),
+                    description: "Require encryption for sensitive memory content".to_string(),
+                    version: "1.0".to_string(),
+                    effect: PolicyEffect::Allow,
+                    resources: vec!["memory:credentials".to_string(), "memory:personal".to_string(), "memory:confidential".to_string()],
+                    actions: vec!["encrypt".to_string()],
+                    conditions: vec![],
+                    priority: 100,
+                    enabled: true,
+                    metadata: std::collections::HashMap::new(),
+                },
+                SecurityPolicy {
+                    name: "agent_rate_limit".to_string(),
+                    description: "Rate limit agent operations to prevent abuse".to_string(),
+                    version: "1.0".to_string(),
+                    effect: PolicyEffect::Deny,
+                    resources: vec!["*".to_string()],
+                    actions: vec!["*".to_string()],
+                    conditions: vec![PolicyCondition {
+                        field: "request.count_per_minute".to_string(),
+                        operator: PolicyOperator::GreaterThan,
+                        value: PolicyValue::Number(100.0),
+                        negate: false,
+                    }],
+                    priority: 200,
+                    enabled: true,
+                    metadata: std::collections::HashMap::new(),
+                },
+                SecurityPolicy {
+                    name: "agent_tool_security".to_string(),
+                    description: "Enhanced security for sensitive tool operations".to_string(),
+                    version: "1.0".to_string(),
+                    effect: PolicyEffect::Deny,
+                    resources: vec!["tool:file_system".to_string(), "tool:network".to_string(), "tool:system".to_string()],
+                    actions: vec!["execute".to_string()],
+                    conditions: vec![PolicyCondition {
+                        field: "user.roles".to_string(),
+                        operator: PolicyOperator::Contains,
+                        value: PolicyValue::String("admin".to_string()),
+                        negate: true,
+                    }],
+                    priority: 150,
+                    enabled: true,
+                    metadata: std::collections::HashMap::new(),
+                },
+            ];
+
+            for policy in agent_policies {
+                if !security_manager.security_policy_exists(&policy.name).await? {
+                    security_manager.add_security_policy(policy).await?;
+                    debug!("Added agent security policy");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Terminate security context
+    pub async fn terminate_security_context(&mut self, reason: String) -> Result<()> {
+        if let (Some(security_manager), Some(context)) = (&self.security_manager, &self.security_context) {
+            security_manager
+                .terminate_context(context, reason)
+                .await?;
+            self.security_context = None;
+            info!("Security context terminated");
+        }
+        Ok(())
     }
 
     /// Start a new conversation
@@ -119,13 +396,22 @@ impl Agent {
         let message = message.into();
         debug!("Processing chat message: {} chars", message.len());
 
+        // Security validation: Check permissions for chat operation
+        self.validate_security_context("chat", "conversation").await?;
+
+        // Security validation: Sanitize input message
+        let sanitized_message = self.validate_input_message(&message).await?;
+
         // Ensure we have an active conversation
         if self.current_conversation_id.is_none() {
             self.start_conversation(None).await?;
         }
 
-        // Add user message to conversation
-        let user_message = ChatMessage::user(message);
+        // Encrypt sensitive chat content if needed
+        let processed_message = self.encrypt_chat_message_if_needed(&sanitized_message).await?;
+
+        // Add user message to conversation (using processed message)
+        let user_message = ChatMessage::user(processed_message);
         self.conversation_manager
             .add_message(user_message.clone())
             .await?;
@@ -320,6 +606,18 @@ impl Agent {
             self.conversation_manager
                 .add_message(assistant_message)
                 .await?;
+
+            // Security validation: Check permissions for tool execution
+            self.validate_security_context("execute", "tools").await?;
+
+            // Log tool execution attempt for security audit
+            for block in &response.content {
+                if let crate::anthropic::models::ContentBlock::ToolUse { name, .. }
+                | crate::anthropic::models::ContentBlock::ServerToolUse { name, .. } = block
+                {
+                    self.log_tool_execution_event(name, true).await?;
+                }
+            }
 
             // Execute tools and collect results
             info!("Executing tools for iteration {}...", tool_iterations);
@@ -619,8 +917,52 @@ impl Agent {
         query: S,
         limit: usize,
     ) -> Result<Vec<crate::memory::SearchResult>> {
+        // Security validation: Check permissions for memory search
+        self.validate_security_context("read", "memory").await?;
+
         let memory_manager = self.memory_manager.lock().await;
-        memory_manager.search_raw(&query.into(), limit).await
+        let results = memory_manager.search_raw(&query.into(), limit).await?;
+
+        // Decrypt any encrypted content in the results
+        let mut decrypted_results = Vec::new();
+        for mut result in results {
+            result.content = self.decrypt_content_if_needed(&result.content).await?;
+            decrypted_results.push(result);
+        }
+
+        Ok(decrypted_results)
+    }
+
+    /// Decrypt content if it was encrypted
+    async fn decrypt_content_if_needed(&self, content: &str) -> Result<String> {
+        if let Some(security_manager) = &self.security_manager {
+            if content.starts_with("ENCRYPTED:") {
+                let encrypted_content = &content[10..]; // Remove "ENCRYPTED:" prefix
+
+                // Decrypt the content
+                let decrypted = security_manager
+                    .decrypt_string(encrypted_content, "agent_memory")
+                    .await?;
+
+                // Log data decryption event
+                if let Some(context) = &self.security_context {
+                    security_manager
+                        .log_security_event(SecurityEvent::DataAccess {
+                            user_id: context.user_id.clone(),
+                            resource: "encrypted_memory".to_string(),
+                            action: "decrypt".to_string(),
+                            sensitive: true,
+                        })
+                        .await?;
+                }
+
+                Ok(decrypted)
+            } else {
+                Ok(content.to_string())
+            }
+        } else {
+            Ok(content.to_string())
+        }
     }
 
     /// Save information to memory
@@ -629,18 +971,156 @@ impl Agent {
         content: S,
         entry_type: S,
     ) -> Result<()> {
+        // Security validation: Check permissions for memory write
+        self.validate_security_context("write", "memory").await?;
+
+        let content_str = content.into();
+        let entry_type_str = entry_type.into();
+
+        // Encrypt sensitive content before storing
+        let processed_content = self.encrypt_sensitive_content(&content_str, &entry_type_str).await?;
+
         let mut memory_manager = self.memory_manager.lock().await;
         let metadata = std::collections::HashMap::new();
         memory_manager
-            .save_memory(content.into(), entry_type.into(), metadata)
+            .save_memory(processed_content, entry_type_str, metadata)
             .await?;
         Ok(())
     }
 
+    /// Encrypt sensitive content based on content type and security policies
+    async fn encrypt_sensitive_content(&self, content: &str, entry_type: &str) -> Result<String> {
+        if let Some(security_manager) = &self.security_manager {
+            // Determine if content should be encrypted based on type and content analysis
+            let should_encrypt = self.should_encrypt_content(content, entry_type).await?;
+
+            if should_encrypt {
+                // Encrypt the content using the memory encryption key
+                let encrypted = security_manager
+                    .encrypt_string(content, "agent_memory")
+                    .await?;
+
+                // Log data encryption event
+                if let Some(context) = &self.security_context {
+                    security_manager
+                        .log_security_event(SecurityEvent::DataAccess {
+                            user_id: context.user_id.clone(),
+                            resource: "encrypted_memory".to_string(),
+                            action: "encrypt".to_string(),
+                            sensitive: true,
+                        })
+                        .await?;
+                }
+
+                // Prefix with encryption marker for later identification
+                Ok(format!("ENCRYPTED:{}", encrypted))
+            } else {
+                Ok(content.to_string())
+            }
+        } else {
+            Ok(content.to_string())
+        }
+    }
+
+    /// Determine if content should be encrypted based on sensitivity analysis
+    async fn should_encrypt_content(&self, content: &str, entry_type: &str) -> Result<bool> {
+        // Always encrypt certain types
+        let always_encrypt_types = [
+            "credentials", "password", "token", "key", "secret",
+            "personal", "private", "confidential", "sensitive"
+        ];
+
+        if always_encrypt_types.iter().any(|&t| entry_type.to_lowercase().contains(t)) {
+            return Ok(true);
+        }
+
+        // Content-based sensitivity detection
+        let sensitive_patterns = [
+            r"(?i)password\s*[:=]\s*\S+",
+            r"(?i)api[_\s]*key\s*[:=]\s*\S+",
+            r"(?i)token\s*[:=]\s*\S+",
+            r"(?i)secret\s*[:=]\s*\S+",
+            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", // Email addresses
+            r"\b\d{3}-\d{2}-\d{4}\b", // SSN pattern
+            r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b", // Credit card pattern
+        ];
+
+        for pattern in &sensitive_patterns {
+            if regex::Regex::new(pattern)
+                .map_err(|e| AgentError::validation(format!("Invalid regex pattern: {}", e)))?
+                .is_match(content)
+            {
+                return Ok(true);
+            }
+        }
+
+        // Policy-based encryption decision
+        if let (Some(security_manager), Some(context)) = (&self.security_manager, &self.security_context) {
+            // Check if there's a policy requiring encryption for this content type
+            let policy_decision = security_manager
+                .evaluate_all_policies(context, &format!("memory:{}", entry_type), "encrypt")
+                .await?;
+
+            return Ok(policy_decision.granted);
+        }
+
+        Ok(false)
+    }
+
+    /// Encrypt chat message if it contains sensitive information
+    async fn encrypt_chat_message_if_needed(&self, message: &str) -> Result<String> {
+        if let Some(security_manager) = &self.security_manager {
+            // Check if message contains sensitive information
+            let should_encrypt = self.should_encrypt_content(message, "chat").await?;
+
+            if should_encrypt {
+                // Encrypt the message using the chat encryption key
+                let encrypted = security_manager
+                    .encrypt_string(message, "agent_chat")
+                    .await?;
+
+                // Log chat encryption event
+                if let Some(context) = &self.security_context {
+                    security_manager
+                        .log_security_event(SecurityEvent::DataAccess {
+                            user_id: context.user_id.clone(),
+                            resource: "encrypted_chat".to_string(),
+                            action: "encrypt".to_string(),
+                            sensitive: true,
+                        })
+                        .await?;
+                }
+
+                // Prefix with encryption marker for later identification
+                Ok(format!("ENCRYPTED_CHAT:{}", encrypted))
+            } else {
+                Ok(message.to_string())
+            }
+        } else {
+            Ok(message.to_string())
+        }
+    }
+
     /// Get memory statistics
     pub async fn get_memory_stats(&self) -> Result<crate::memory::MemoryStats> {
+        // Security validation: Check permissions for memory stats
+        self.validate_security_context("read", "memory_stats").await?;
+
         let memory_manager = self.memory_manager.lock().await;
         memory_manager.get_stats().await
+    }
+
+    /// Get security statistics and policy evaluation metrics
+    pub async fn get_security_stats(&self) -> Result<Option<crate::security::policy::PolicyStatistics>> {
+        // Security validation: Check permissions for security stats
+        self.validate_security_context("read", "security_stats").await?;
+
+        if let Some(security_manager) = &self.security_manager {
+            let stats = security_manager.get_policy_statistics().await?;
+            Ok(Some(stats))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Register a custom tool
@@ -659,6 +1139,12 @@ impl Agent {
         tool_name: &str,
         input: serde_json::Value,
     ) -> Result<crate::tools::ToolResult> {
+        // Security validation: Check permissions for direct tool execution
+        self.validate_security_context("execute", "tools").await?;
+
+        // Log tool execution for security audit
+        self.log_tool_execution_event(tool_name, true).await?;
+
         self.tool_orchestrator
             .execute_tool_direct(tool_name, input)
             .await

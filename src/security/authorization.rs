@@ -58,6 +58,22 @@ pub trait AuthorizationService: Send + Sync {
 
     /// Evaluate a policy
     async fn evaluate_policy(&self, context: &SecurityContext, policy: &Policy) -> Result<bool>;
+
+    /// Get detailed authorization decision with policy evaluation results
+    async fn get_authorization_decision(&self, context: &SecurityContext, resource: &str, action: &str) -> Result<AuthorizationDecision> {
+        // Default implementation for backward compatibility
+        let granted = self.check_permission(context, resource, action).await?;
+        Ok(AuthorizationDecision {
+            granted,
+            reason: if granted { "Access granted".to_string() } else { "Access denied".to_string() },
+            evaluated_policies: Vec::new(),
+            checked_permissions: Vec::new(),
+            metadata: HashMap::new(),
+        })
+    }
+
+    /// Downcast to concrete type for accessing implementation-specific methods
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 /// Permission definition
@@ -427,41 +443,9 @@ impl AuthorizationService for RbacAuthorizationService {
         resource: &str,
         action: &str,
     ) -> Result<bool> {
-        // Get user roles
-        let user_roles = self.user_roles.read().await;
-        let roles = user_roles
-            .get(&context.user_id)
-            .cloned()
-            .unwrap_or_default();
-        drop(user_roles);
-
-        // Get all permissions for user roles
-        let mut all_permissions = HashSet::new();
-        for role_name in &roles {
-            let role_permissions = self.get_role_permissions(role_name).await?;
-            all_permissions.extend(role_permissions);
-        }
-
-        // Check if any permission allows the action
-        for permission_name in &all_permissions {
-            if self
-                .permission_allows_action(permission_name, resource, action)
-                .await?
-            {
-                // Check permission conditions
-                let permissions = self.permissions.read().await;
-                if let Some(permission) = permissions.get(permission_name) {
-                    if self
-                        .evaluate_conditions(&permission.conditions, context)
-                        .await?
-                    {
-                        return Ok(true);
-                    }
-                }
-            }
-        }
-
-        Ok(false)
+        // Use policy-based evaluation first, with RBAC fallback
+        let decision = self.evaluate_policies(context, resource, action).await?;
+        Ok(decision.granted)
     }
 
     async fn get_user_permissions(&self, user_id: &str) -> Result<Vec<Permission>> {
@@ -603,11 +587,273 @@ impl AuthorizationService for RbacAuthorizationService {
         // Evaluate conditions
         self.evaluate_conditions(&policy.conditions, context).await
     }
+
+    async fn get_authorization_decision(&self, context: &SecurityContext, resource: &str, action: &str) -> Result<AuthorizationDecision> {
+        // Use the comprehensive policy evaluation
+        self.evaluate_policies(context, resource, action).await
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl RbacAuthorizationService {
+    /// Create a new policy
+    pub async fn create_policy(&self, policy: Policy) -> Result<()> {
+        let mut policies = self.policies.write().await;
+        if policies.contains_key(&policy.name) {
+            return Err(AgentError::validation(format!(
+                "Policy '{}' already exists",
+                policy.name
+            )));
+        }
+        policies.insert(policy.name.clone(), policy);
+        Ok(())
+    }
+
+    /// Update an existing policy
+    pub async fn update_policy(&self, policy: Policy) -> Result<()> {
+        let mut policies = self.policies.write().await;
+        policies.insert(policy.name.clone(), policy);
+        Ok(())
+    }
+
+    /// Delete a policy
+    pub async fn delete_policy(&self, policy_name: &str) -> Result<()> {
+        let mut policies = self.policies.write().await;
+        policies.remove(policy_name);
+        Ok(())
+    }
+
+    /// Check if a policy exists
+    pub async fn policy_exists(&self, policy_name: &str) -> Result<bool> {
+        let policies = self.policies.read().await;
+        Ok(policies.contains_key(policy_name))
+    }
+
+    /// Get all policies
+    pub async fn get_all_policies(&self) -> Result<Vec<Policy>> {
+        let policies = self.policies.read().await;
+        Ok(policies.values().cloned().collect())
+    }
+
+    /// Get policies that apply to a specific resource and action
+    pub async fn get_applicable_policies(&self, resource: &str, action: &str) -> Result<Vec<Policy>> {
+        let policies = self.policies.read().await;
+        let mut applicable = Vec::new();
+
+        for policy in policies.values() {
+            // Check if policy applies to this resource
+            let resource_matches = policy.resources.iter().any(|r| {
+                r == "*" || r == resource || resource.starts_with(&format!("{}:", r))
+            });
+
+            // Check if policy applies to this action
+            let action_matches = policy.actions.iter().any(|a| {
+                a == "*" || a == action
+            });
+
+            if resource_matches && action_matches {
+                applicable.push(policy.clone());
+            }
+        }
+
+        // Sort by priority (higher priority first)
+        applicable.sort_by(|a, b| b.priority.cmp(&a.priority));
+        Ok(applicable)
+    }
+
+    /// Evaluate all applicable policies for a request
+    pub async fn evaluate_policies(&self, context: &SecurityContext, resource: &str, action: &str) -> Result<AuthorizationDecision> {
+        let applicable_policies = self.get_applicable_policies(resource, action).await?;
+        let mut evaluated_policies = Vec::new();
+        let mut final_decision = false;
+        let mut decision_reason = "No applicable policies found".to_string();
+        let mut metadata = HashMap::new();
+
+        // Track policy evaluation statistics
+        metadata.insert("total_policies".to_string(), applicable_policies.len().to_string());
+        metadata.insert("resource".to_string(), resource.to_string());
+        metadata.insert("action".to_string(), action.to_string());
+        metadata.insert("user_id".to_string(), context.user_id.clone());
+
+        for policy in &applicable_policies {
+            evaluated_policies.push(policy.name.clone());
+
+            // Evaluate policy conditions
+            let policy_result = self.evaluate_policy(context, policy).await?;
+
+            if policy_result {
+                match policy.effect {
+                    PolicyEffect::Allow => {
+                        final_decision = true;
+                        decision_reason = format!("Allowed by policy: {}", policy.name);
+                        metadata.insert("deciding_policy".to_string(), policy.name.clone());
+                        metadata.insert("policy_effect".to_string(), "Allow".to_string());
+                        break; // First allow policy wins
+                    }
+                    PolicyEffect::Deny => {
+                        final_decision = false;
+                        decision_reason = format!("Denied by policy: {}", policy.name);
+                        metadata.insert("deciding_policy".to_string(), policy.name.clone());
+                        metadata.insert("policy_effect".to_string(), "Deny".to_string());
+                        break; // First deny policy wins (higher priority)
+                    }
+                }
+            }
+        }
+
+        // If no policies matched, fall back to RBAC
+        if evaluated_policies.is_empty() || (!final_decision && decision_reason.contains("No applicable policies")) {
+            let rbac_result = self.check_permission_rbac_only(context, resource, action).await?;
+            if rbac_result {
+                final_decision = true;
+                decision_reason = "Allowed by RBAC permissions".to_string();
+                metadata.insert("fallback_to_rbac".to_string(), "true".to_string());
+            } else {
+                decision_reason = "Denied by RBAC permissions".to_string();
+                metadata.insert("fallback_to_rbac".to_string(), "true".to_string());
+            }
+        }
+
+        Ok(AuthorizationDecision {
+            granted: final_decision,
+            reason: decision_reason,
+            evaluated_policies,
+            checked_permissions: Vec::new(), // Will be populated by RBAC fallback if needed
+            metadata,
+        })
+    }
+
+    /// Check permission using only RBAC (without policy evaluation)
+    async fn check_permission_rbac_only(&self, context: &SecurityContext, resource: &str, action: &str) -> Result<bool> {
+        // Get user roles
+        let user_roles = self.user_roles.read().await;
+        let roles = user_roles
+            .get(&context.user_id)
+            .cloned()
+            .unwrap_or_default();
+        drop(user_roles);
+
+        // Get all permissions for user roles
+        let mut all_permissions = HashSet::new();
+        for role_name in &roles {
+            let role_permissions = self.get_role_permissions(role_name).await?;
+            all_permissions.extend(role_permissions);
+        }
+
+        // Check if any permission allows the action
+        for permission_name in &all_permissions {
+            if self
+                .permission_allows_action(permission_name, resource, action)
+                .await?
+            {
+                // Check permission conditions
+                let permissions = self.permissions.read().await;
+                if let Some(permission) = permissions.get(permission_name) {
+                    if self
+                        .evaluate_conditions(&permission.conditions, context)
+                        .await?
+                    {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// Initialize default security policies
+    pub async fn initialize_default_policies(&self) -> Result<()> {
+        let default_policies = vec![
+            Policy {
+                name: "admin_full_access".to_string(),
+                description: "Administrators have full access to all resources".to_string(),
+                effect: PolicyEffect::Allow,
+                resources: vec!["*".to_string()],
+                actions: vec!["*".to_string()],
+                conditions: vec![Condition {
+                    field: "user.roles".to_string(),
+                    condition_type: ConditionType::UserAttribute,
+                    operator: ConditionOperator::Contains,
+                    value: "admin".to_string(),
+                }],
+                priority: 1000,
+            },
+            Policy {
+                name: "business_hours_access".to_string(),
+                description: "Allow access only during business hours (9 AM - 5 PM)".to_string(),
+                effect: PolicyEffect::Deny,
+                resources: vec!["sensitive".to_string(), "financial".to_string(), "admin".to_string()],
+                actions: vec!["*".to_string()],
+                conditions: vec![Condition {
+                    field: "time.hour".to_string(),
+                    condition_type: ConditionType::ContextAttribute,
+                    operator: ConditionOperator::NotIn,
+                    value: "9,10,11,12,13,14,15,16,17".to_string(),
+                }],
+                priority: 800,
+            },
+            Policy {
+                name: "ip_whitelist".to_string(),
+                description: "Deny access from non-whitelisted IP addresses".to_string(),
+                effect: PolicyEffect::Deny,
+                resources: vec!["*".to_string()],
+                actions: vec!["*".to_string()],
+                conditions: vec![Condition {
+                    field: "ip_address".to_string(),
+                    condition_type: ConditionType::IpAddress,
+                    operator: ConditionOperator::NotIn,
+                    value: "192.168.1.0/24,10.0.0.0/8,172.16.0.0/12".to_string(),
+                }],
+                priority: 900,
+            },
+            Policy {
+                name: "read_only_guest".to_string(),
+                description: "Guest users can only read public resources".to_string(),
+                effect: PolicyEffect::Allow,
+                resources: vec!["public".to_string()],
+                actions: vec!["read".to_string(), "view".to_string()],
+                conditions: vec![Condition {
+                    field: "user.roles".to_string(),
+                    condition_type: ConditionType::UserAttribute,
+                    operator: ConditionOperator::Contains,
+                    value: "guest".to_string(),
+                }],
+                priority: 100,
+            },
+            Policy {
+                name: "sensitive_data_protection".to_string(),
+                description: "Require special permission for sensitive data access".to_string(),
+                effect: PolicyEffect::Deny,
+                resources: vec!["sensitive".to_string(), "pii".to_string(), "financial".to_string()],
+                actions: vec!["read".to_string(), "write".to_string(), "delete".to_string()],
+                conditions: vec![Condition {
+                    field: "user.clearance_level".to_string(),
+                    condition_type: ConditionType::UserAttribute,
+                    operator: ConditionOperator::NotEquals,
+                    value: "high".to_string(),
+                }],
+                priority: 950,
+            },
+        ];
+
+        for policy in default_policies {
+            if !self.policy_exists(&policy.name).await? {
+                self.create_policy(policy).await?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// Create an authorization service
 pub async fn create_authorization_service() -> Result<Box<dyn AuthorizationService>> {
     let service = RbacAuthorizationService::new();
     service.initialize_defaults().await?;
+    service.initialize_default_policies().await?;
     Ok(Box::new(service))
 }

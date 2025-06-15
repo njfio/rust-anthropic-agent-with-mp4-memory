@@ -528,7 +528,7 @@ impl SynthesisService {
     }
 
     /// Estimate audio duration based on text and speech rate
-    fn estimate_audio_duration(&self, text: &str, speed: f32) -> f64 {
+    pub fn estimate_audio_duration(&self, text: &str, speed: f32) -> f64 {
         // Average speaking rate is about 150 words per minute
         let base_wpm = 150.0f64;
         let adjusted_wpm = base_wpm * speed as f64;
@@ -589,11 +589,9 @@ pub fn split_text_for_synthesis(text: &str, max_chunk_size: usize) -> Vec<String
                 let mut word_chunk = String::new();
                 
                 for word in words {
-                    if word_chunk.len() + word.len() + 1 > max_chunk_size {
-                        if !word_chunk.is_empty() {
-                            chunks.push(word_chunk.trim().to_string());
-                            word_chunk.clear();
-                        }
+                    if word_chunk.len() + word.len() + 1 > max_chunk_size && !word_chunk.is_empty() {
+                        chunks.push(word_chunk.trim().to_string());
+                        word_chunk.clear();
                     }
                     
                     if !word_chunk.is_empty() {

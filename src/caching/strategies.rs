@@ -179,6 +179,58 @@ impl CacheStrategy for WriteThroughStrategy {
     }
 }
 
+impl CacheAsideStrategy {
+    /// Create a new cache-aside strategy
+    pub fn new(name: String, data_source: Arc<dyn DataSource>) -> Self {
+        Self {
+            name: name.clone(),
+            config: StrategyConfig {
+                name,
+                strategy_type: StrategyType::CacheAside,
+                parameters: HashMap::new(),
+                enabled: true,
+            },
+            data_source,
+        }
+    }
+}
+
+impl CacheStrategy for CacheAsideStrategy {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn config(&self) -> StrategyConfig {
+        self.config.clone()
+    }
+}
+
+impl ReadThroughStrategy {
+    /// Create a new read-through strategy
+    pub fn new(name: String, data_source: Arc<dyn DataSource>) -> Self {
+        Self {
+            name: name.clone(),
+            config: StrategyConfig {
+                name,
+                strategy_type: StrategyType::ReadThrough,
+                parameters: HashMap::new(),
+                enabled: true,
+            },
+            data_source,
+        }
+    }
+}
+
+impl CacheStrategy for ReadThroughStrategy {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn config(&self) -> StrategyConfig {
+        self.config.clone()
+    }
+}
+
 impl WriteBehindStrategy {
     /// Create a new write-behind strategy
     pub fn new(name: String, data_source: Arc<dyn DataSource>, batch_size: usize, flush_interval: Duration) -> Self {
@@ -425,5 +477,309 @@ impl CacheStrategy for CircuitBreakerStrategy {
 
     fn config(&self) -> StrategyConfig {
         self.config.clone()
+    }
+}
+
+/// Simple in-memory data source for testing and development
+pub struct MemoryDataSource {
+    data: Arc<RwLock<HashMap<String, Vec<u8>>>>,
+    name: String,
+}
+
+impl MemoryDataSource {
+    /// Create a new memory data source
+    pub fn new(name: String) -> Self {
+        Self {
+            data: Arc::new(RwLock::new(HashMap::new())),
+            name,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl DataSource for MemoryDataSource {
+    async fn load_bytes(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        let data = self.data.read().await;
+        Ok(data.get(key).cloned())
+    }
+
+    async fn save_bytes(&self, key: &str, data: &[u8]) -> Result<()> {
+        let mut storage = self.data.write().await;
+        storage.insert(key.to_string(), data.to_vec());
+        debug!("Saved data to memory source {}: {} bytes", self.name, data.len());
+        Ok(())
+    }
+
+    async fn delete(&self, key: &str) -> Result<bool> {
+        let mut data = self.data.write().await;
+        Ok(data.remove(key).is_some())
+    }
+
+    async fn health_check(&self) -> Result<bool> {
+        Ok(true) // Memory source is always healthy
+    }
+}
+
+/// Database data source implementation
+pub struct DatabaseDataSource {
+    /// Connection string
+    connection_string: String,
+    /// Table name
+    table_name: String,
+    /// Key column name
+    key_column: String,
+    /// Value column name
+    value_column: String,
+    /// Connection pool
+    pool: Arc<RwLock<Option<String>>>, // Simplified for now
+}
+
+impl DatabaseDataSource {
+    /// Create a new database data source
+    pub fn new(
+        connection_string: String,
+        table_name: String,
+        key_column: String,
+        value_column: String,
+    ) -> Self {
+        Self {
+            connection_string,
+            table_name,
+            key_column,
+            value_column,
+            pool: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// Initialize database connection
+    pub async fn initialize(&self) -> Result<()> {
+        // In a real implementation, this would establish a database connection
+        let mut pool = self.pool.write().await;
+        *pool = Some(self.connection_string.clone());
+        info!("Initialized database data source: {}", self.table_name);
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl DataSource for DatabaseDataSource {
+    async fn load_bytes(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        let pool = self.pool.read().await;
+        if pool.is_none() {
+            return Err(AgentError::validation("Database not initialized".to_string()));
+        }
+
+        // Simulate database query
+        debug!("Loading from database: {} WHERE {} = '{}'", self.table_name, self.key_column, key);
+
+        // In a real implementation, this would execute:
+        // SELECT {value_column} FROM {table_name} WHERE {key_column} = ?
+        // For now, return None to simulate cache miss
+        Ok(None)
+    }
+
+    async fn save_bytes(&self, key: &str, data: &[u8]) -> Result<()> {
+        let pool = self.pool.read().await;
+        if pool.is_none() {
+            return Err(AgentError::validation("Database not initialized".to_string()));
+        }
+
+        // Simulate database insert/update
+        debug!("Saving to database: {} SET {} = ? WHERE {} = '{}'",
+               self.table_name, self.value_column, self.key_column, key);
+
+        // In a real implementation, this would execute:
+        // INSERT INTO {table_name} ({key_column}, {value_column}) VALUES (?, ?)
+        // ON DUPLICATE KEY UPDATE {value_column} = VALUES({value_column})
+        info!("Saved {} bytes to database for key: {}", data.len(), key);
+        Ok(())
+    }
+
+    async fn delete(&self, key: &str) -> Result<bool> {
+        let pool = self.pool.read().await;
+        if pool.is_none() {
+            return Err(AgentError::validation("Database not initialized".to_string()));
+        }
+
+        // Simulate database delete
+        debug!("Deleting from database: {} WHERE {} = '{}'", self.table_name, self.key_column, key);
+
+        // In a real implementation, this would execute:
+        // DELETE FROM {table_name} WHERE {key_column} = ?
+        Ok(true) // Assume successful deletion
+    }
+
+    async fn health_check(&self) -> Result<bool> {
+        let pool = self.pool.read().await;
+        Ok(pool.is_some())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::time::{sleep, Duration};
+
+    #[tokio::test]
+    async fn test_memory_data_source() {
+        let source = MemoryDataSource::new("test".to_string());
+
+        // Test save and load
+        let test_data = b"test data";
+        source.save_bytes("key1", test_data).await.unwrap();
+
+        let loaded = source.load_bytes("key1").await.unwrap();
+        assert_eq!(loaded, Some(test_data.to_vec()));
+
+        // Test non-existent key
+        let missing = source.load_bytes("missing").await.unwrap();
+        assert_eq!(missing, None);
+
+        // Test delete
+        let deleted = source.delete("key1").await.unwrap();
+        assert!(deleted);
+
+        let after_delete = source.load_bytes("key1").await.unwrap();
+        assert_eq!(after_delete, None);
+
+        // Test health check
+        assert!(source.health_check().await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_write_through_strategy() {
+        let source = Arc::new(MemoryDataSource::new("test".to_string()));
+        let strategy = WriteThroughStrategy::new("test_strategy".to_string(), source);
+
+        assert_eq!(strategy.name(), "test_strategy");
+        assert_eq!(strategy.config().strategy_type, StrategyType::WriteThrough);
+        assert!(strategy.config().enabled);
+    }
+
+    #[tokio::test]
+    async fn test_cache_aside_strategy() {
+        let source = Arc::new(MemoryDataSource::new("test".to_string()));
+        let strategy = CacheAsideStrategy::new("cache_aside_test".to_string(), source);
+
+        assert_eq!(strategy.name(), "cache_aside_test");
+        assert_eq!(strategy.config().strategy_type, StrategyType::CacheAside);
+        assert!(strategy.config().enabled);
+    }
+
+    #[tokio::test]
+    async fn test_read_through_strategy() {
+        let source = Arc::new(MemoryDataSource::new("test".to_string()));
+        let strategy = ReadThroughStrategy::new("read_through_test".to_string(), source);
+
+        assert_eq!(strategy.name(), "read_through_test");
+        assert_eq!(strategy.config().strategy_type, StrategyType::ReadThrough);
+        assert!(strategy.config().enabled);
+    }
+
+    #[tokio::test]
+    async fn test_refresh_ahead_strategy() {
+        let source = Arc::new(MemoryDataSource::new("test".to_string()));
+        let strategy = RefreshAheadStrategy::new("refresh_test".to_string(), source, 0.3);
+
+        assert_eq!(strategy.name(), "refresh_test");
+        assert_eq!(strategy.config().strategy_type, StrategyType::RefreshAhead);
+        assert!(strategy.config().enabled);
+        assert_eq!(strategy.refresh_threshold, 0.3);
+    }
+
+    #[tokio::test]
+    async fn test_write_behind_strategy() {
+        let source = Arc::new(MemoryDataSource::new("test".to_string()));
+        let strategy = WriteBehindStrategy::new(
+            "write_behind_test".to_string(),
+            source,
+            10, // batch size
+            Duration::from_millis(100), // flush interval
+        );
+
+        assert_eq!(strategy.name(), "write_behind_test");
+        assert_eq!(strategy.config().strategy_type, StrategyType::WriteBehind);
+        assert!(strategy.config().enabled);
+        assert_eq!(strategy.batch_size, 10);
+        assert_eq!(strategy.flush_interval, Duration::from_millis(100));
+    }
+
+    #[tokio::test]
+    async fn test_circuit_breaker_strategy() {
+        let source = Arc::new(MemoryDataSource::new("test".to_string()));
+        let inner_strategy = Arc::new(CacheAsideStrategy::new("inner".to_string(), source));
+
+        let circuit_breaker = CircuitBreakerStrategy::new(
+            "circuit_test".to_string(),
+            inner_strategy,
+            3, // failure threshold
+            Duration::from_secs(5), // recovery timeout
+            2, // success threshold
+        );
+
+        assert_eq!(circuit_breaker.name(), "circuit_test");
+        assert_eq!(circuit_breaker.config().strategy_type, StrategyType::CircuitBreaker);
+
+        // Test circuit breaker state
+        let breaker_state = circuit_breaker.circuit_breaker.read().await;
+        assert_eq!(breaker_state.state, CircuitState::Closed);
+        assert_eq!(breaker_state.failure_threshold, 3);
+        assert_eq!(breaker_state.success_threshold, 2);
+    }
+
+    #[tokio::test]
+    async fn test_circuit_breaker_failure_handling() {
+        let source = Arc::new(MemoryDataSource::new("test".to_string()));
+        let inner_strategy = Arc::new(CacheAsideStrategy::new("inner".to_string(), source));
+
+        let circuit_breaker = CircuitBreakerStrategy::new(
+            "circuit_test".to_string(),
+            inner_strategy,
+            2, // failure threshold
+            Duration::from_millis(100), // recovery timeout
+            1, // success threshold
+        );
+
+        // Record failures
+        circuit_breaker.record_result(false).await;
+        circuit_breaker.record_result(false).await;
+
+        // Circuit should be open now
+        let breaker_state = circuit_breaker.circuit_breaker.read().await;
+        assert_eq!(breaker_state.state, CircuitState::Open);
+        assert_eq!(breaker_state.failure_count, 2);
+
+        drop(breaker_state);
+
+        // Wait for recovery timeout
+        sleep(Duration::from_millis(150)).await;
+
+        // Should be able to attempt reset
+        assert!(circuit_breaker.should_attempt_reset().await);
+    }
+
+    #[tokio::test]
+    async fn test_database_data_source() {
+        let source = DatabaseDataSource::new(
+            "test://connection".to_string(),
+            "cache_table".to_string(),
+            "cache_key".to_string(),
+            "cache_value".to_string(),
+        );
+
+        // Initialize the source
+        source.initialize().await.unwrap();
+
+        // Test health check
+        assert!(source.health_check().await.unwrap());
+
+        // Test operations (these are simulated)
+        let result = source.load_bytes("test_key").await.unwrap();
+        assert_eq!(result, None); // Simulated miss
+
+        source.save_bytes("test_key", b"test_data").await.unwrap();
+
+        let deleted = source.delete("test_key").await.unwrap();
+        assert!(deleted); // Simulated success
     }
 }

@@ -329,28 +329,26 @@ pub struct AuditStats {
 }
 
 /// Global audit logger instance
-static mut AUDIT_LOGGER: Option<Arc<AuditLogger>> = None;
-static AUDIT_LOGGER_INIT: std::sync::Once = std::sync::Once::new();
+static AUDIT_LOGGER: std::sync::OnceLock<Arc<AuditLogger>> = std::sync::OnceLock::new();
 
 /// Initialize global audit logger
 pub fn init_audit_logger(config: AuditLoggerConfig) -> Result<()> {
-    AUDIT_LOGGER_INIT.call_once(|| match AuditLogger::new(config) {
-        Ok(logger) => {
-            unsafe {
-                AUDIT_LOGGER = Some(Arc::new(logger));
-            }
+    let logger = Arc::new(AuditLogger::new(config)?);
+    match AUDIT_LOGGER.set(logger) {
+        Ok(()) => {
             info!("Audit logger initialized");
+            Ok(())
         }
-        Err(e) => {
-            error!("Failed to initialize audit logger: {}", e);
+        Err(_) => {
+            warn!("Audit logger already initialized");
+            Ok(())
         }
-    });
-    Ok(())
+    }
 }
 
 /// Get global audit logger
 pub fn get_audit_logger() -> Option<Arc<AuditLogger>> {
-    unsafe { AUDIT_LOGGER.as_ref().cloned() }
+    AUDIT_LOGGER.get().cloned()
 }
 
 /// Convenience function to log audit events

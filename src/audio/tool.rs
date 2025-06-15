@@ -2,10 +2,10 @@
 // Provides Tool trait integration for the audio processing system
 
 use super::{
-    AudioConfig, AudioProcessor, AudioQuality,
-    codecs::AudioCodec,
+    AudioConfig, AudioProcessor, AudioQuality, EffectsConfig,
+    codecs::{AudioCodec, AudioData},
     effects::{AudioEffects, create_voice_effects_processor, create_music_effects_processor},
-    metadata::MetadataExtractor,
+    metadata::{MetadataExtractor, AudioMetadata},
     synthesis::SynthesisService,
     transcription::TranscriptionService,
 };
@@ -19,6 +19,38 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
+
+/// Comprehensive audio analysis result
+#[derive(Debug, Clone)]
+pub struct AudioAnalysisResult {
+    /// Extracted metadata
+    pub metadata: super::metadata::AudioMetadata,
+    /// Audio effects analysis
+    pub effects_analysis: super::effects::AudioAnalysis,
+    /// Estimated synthesis duration if text content available
+    pub estimated_synthesis_duration: Option<f64>,
+    /// Source file path
+    pub file_path: String,
+    /// Analysis timestamp
+    pub analysis_timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+/// Processed audio result with comprehensive information
+#[derive(Debug, Clone)]
+pub struct ProcessedAudioResult {
+    /// Initial metadata before processing
+    pub initial_metadata: super::metadata::AudioMetadata,
+    /// Final metadata after processing
+    pub final_metadata: super::metadata::AudioMetadata,
+    /// Processed audio data
+    pub processed_audio: super::codecs::AudioData,
+    /// Effects analysis of processed audio
+    pub effects_analysis: super::effects::AudioAnalysis,
+    /// Whether effects were applied
+    pub effects_applied: bool,
+    /// Processing timestamp
+    pub processing_timestamp: chrono::DateTime<chrono::Utc>,
+}
 
 /// Audio processing tool for comprehensive audio operations
 #[derive(Debug)]
@@ -433,6 +465,162 @@ impl AudioProcessingTool {
             "Audio processing statistics:\n{}",
             serde_json::to_string_pretty(&result)?
         )))
+    }
+
+    /// Extract comprehensive metadata using the instance metadata extractor
+    pub async fn extract_comprehensive_metadata(&self, file_path: &str) -> Result<AudioMetadata> {
+        // Validate file path
+        crate::utils::validation::validate_path(file_path)?;
+
+        // Use the instance metadata extractor
+        let metadata = self.metadata_extractor.extract_metadata(file_path).await?;
+
+        info!("Extracted comprehensive metadata from: {} (duration: {:?}s, format: {:?})",
+              file_path, metadata.duration_seconds, metadata.format);
+
+        Ok(metadata)
+    }
+
+    /// Extract metadata from audio data buffer using instance extractor
+    pub async fn extract_metadata_from_buffer(&self, audio_data: &AudioData) -> Result<AudioMetadata> {
+        // Use the instance metadata extractor for buffer analysis
+        let metadata = self.metadata_extractor.extract_from_buffer(audio_data).await?;
+
+        info!("Extracted metadata from audio buffer (samples: {}, channels: {}, sample_rate: {})",
+              audio_data.samples.len(), audio_data.channels, audio_data.sample_rate);
+
+        Ok(metadata)
+    }
+
+    /// Get audio file duration using instance metadata extractor
+    pub async fn get_audio_duration(&self, file_path: &str) -> Result<f64> {
+        let metadata = self.extract_comprehensive_metadata(file_path).await?;
+        Ok(metadata.duration_seconds)
+    }
+
+    /// Estimate synthesis duration for text using synthesis service
+    pub async fn estimate_synthesis_duration(&self, text: &str, speed: Option<f32>) -> Result<f64> {
+        let synthesis_service = self.synthesis_service.as_ref()
+            .ok_or_else(|| AgentError::tool("audio_processing".to_string(), "Synthesis service not configured".to_string()))?;
+
+        let service = synthesis_service.lock().await;
+        let duration = service.estimate_audio_duration(text, speed.unwrap_or(1.0));
+        drop(service);
+
+        info!("Estimated synthesis duration for {} characters: {:.2}s (speed: {:.1}x)",
+              text.len(), duration, speed.unwrap_or(1.0));
+
+        Ok(duration)
+    }
+
+    /// Analyze audio file comprehensively using all available tools
+    pub async fn analyze_audio_comprehensive(&self, file_path: &str) -> Result<AudioAnalysisResult> {
+        info!("Starting comprehensive audio analysis for: {}", file_path);
+
+        // Extract metadata using instance extractor
+        let metadata = self.extract_comprehensive_metadata(file_path).await?;
+
+        // Load audio data for effects analysis
+        let audio_data = AudioCodec::decode_file(std::path::Path::new(file_path))?;
+
+        // Analyze audio characteristics using effects processor
+        let effects_analysis = {
+            let effects = self.effects.lock().await;
+            effects.analyze_audio_characteristics(&audio_data).await?
+        };
+
+        // Estimate synthesis duration if text content is available
+        let estimated_synthesis_duration = if let Some(ref synthesis_service) = self.synthesis_service {
+            if let Some(text_content) = metadata.title.as_ref().or(metadata.comment.as_ref()) {
+                let service = synthesis_service.lock().await;
+                Some(service.estimate_audio_duration(text_content, 1.0))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let result = AudioAnalysisResult {
+            metadata,
+            effects_analysis,
+            estimated_synthesis_duration,
+            file_path: file_path.to_string(),
+            analysis_timestamp: chrono::Utc::now(),
+        };
+
+        info!("Completed comprehensive audio analysis for: {}", file_path);
+        Ok(result)
+    }
+
+    /// Process audio with comprehensive pipeline using all components
+    pub async fn process_audio_comprehensive(&self, file_path: &str, effects_config: Option<EffectsConfig>) -> Result<ProcessedAudioResult> {
+        info!("Starting comprehensive audio processing pipeline for: {}", file_path);
+
+        // Step 1: Extract initial metadata using instance extractor
+        let initial_metadata = self.extract_comprehensive_metadata(file_path).await?;
+
+        // Step 2: Load audio data
+        let mut audio_data = AudioCodec::decode_file(std::path::Path::new(file_path))?;
+
+        // Step 3: Apply effects if configured
+        let effects_applied = if let Some(config) = effects_config {
+            let effects = self.effects.lock().await;
+            effects.apply_effects(&mut audio_data, &config).await?;
+            true
+        } else {
+            false
+        };
+
+        // Step 4: Extract metadata from processed audio using instance extractor
+        let final_metadata = self.extract_metadata_from_buffer(&audio_data).await?;
+
+        // Step 5: Analyze processed audio
+        let effects_analysis = {
+            let effects = self.effects.lock().await;
+            effects.analyze_audio_characteristics(&audio_data).await?
+        };
+
+        let result = ProcessedAudioResult {
+            initial_metadata,
+            final_metadata,
+            processed_audio: audio_data,
+            effects_analysis,
+            effects_applied,
+            processing_timestamp: chrono::Utc::now(),
+        };
+
+        info!("Completed comprehensive audio processing pipeline for: {} (effects applied: {})",
+              file_path, effects_applied);
+
+        Ok(result)
+    }
+
+    /// Batch process multiple audio files using comprehensive analysis
+    pub async fn batch_process_audio(&self, file_paths: &[String]) -> Result<Vec<AudioAnalysisResult>> {
+        let mut results = Vec::new();
+
+        info!("Starting batch processing of {} audio files", file_paths.len());
+
+        for (index, file_path) in file_paths.iter().enumerate() {
+            match self.analyze_audio_comprehensive(file_path).await {
+                Ok(result) => {
+                    results.push(result);
+                    info!("Successfully processed audio file {}/{}: {}",
+                          index + 1, file_paths.len(), file_path);
+                }
+                Err(e) => {
+                    warn!("Failed to process audio file {}/{} ({}): {}",
+                          index + 1, file_paths.len(), file_path, e);
+                    // Continue processing other files
+                }
+            }
+        }
+
+        info!("Batch processing completed: {} successful out of {} files",
+              results.len(), file_paths.len());
+
+        Ok(results)
     }
 }
 
