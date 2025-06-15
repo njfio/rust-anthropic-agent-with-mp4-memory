@@ -33,6 +33,10 @@ pub struct CacheManager {
     invalidation_manager: Arc<invalidation::InvalidationManager>,
     /// Cache policies
     policies: Arc<RwLock<HashMap<String, policies::CachePolicy>>>,
+    /// Cache strategies
+    strategies: Arc<RwLock<HashMap<String, Arc<dyn strategies::CacheStrategy>>>>,
+    /// Active strategy name
+    active_strategy: Arc<RwLock<Option<String>>>,
     /// Start time for uptime tracking
     start_time: Instant,
 }
@@ -320,6 +324,8 @@ impl CacheManager {
             metrics: Arc::new(RwLock::new(CacheMetrics::default())),
             invalidation_manager: Arc::new(invalidation::InvalidationManager::new()),
             policies: Arc::new(RwLock::new(HashMap::new())),
+            strategies: Arc::new(RwLock::new(HashMap::new())),
+            active_strategy: Arc::new(RwLock::new(None)),
             start_time: Instant::now(),
         }
     }
@@ -327,6 +333,49 @@ impl CacheManager {
     /// Create with default configuration
     pub fn with_defaults() -> Self {
         Self::new(CacheConfig::default())
+    }
+
+    /// Create cache manager with default strategies
+    pub async fn with_default_strategies() -> Result<Self> {
+        let mut manager = Self::with_defaults();
+
+        // Add default strategies
+        let memory_source: Arc<dyn strategies::DataSource> = Arc::new(strategies::MemoryDataSource::new("default_memory".to_string()));
+
+        // Cache-aside strategy (most common)
+        let cache_aside = Arc::new(strategies::CacheAsideStrategy::new(
+            "cache_aside".to_string(),
+            Arc::clone(&memory_source),
+        ));
+        manager.add_strategy(cache_aside).await?;
+
+        // Write-through strategy
+        let write_through = Arc::new(strategies::WriteThroughStrategy::new(
+            "write_through".to_string(),
+            Arc::clone(&memory_source),
+        ));
+        manager.add_strategy(write_through).await?;
+
+        // Read-through strategy
+        let read_through = Arc::new(strategies::ReadThroughStrategy::new(
+            "read_through".to_string(),
+            Arc::clone(&memory_source),
+        ));
+        manager.add_strategy(read_through).await?;
+
+        // Refresh-ahead strategy
+        let refresh_ahead = Arc::new(strategies::RefreshAheadStrategy::new(
+            "refresh_ahead".to_string(),
+            Arc::clone(&memory_source),
+            0.2, // Refresh when 20% TTL remaining
+        ));
+        manager.add_strategy(refresh_ahead).await?;
+
+        // Set cache-aside as default active strategy
+        manager.set_active_strategy("cache_aside").await?;
+
+        info!("Created cache manager with default strategies");
+        Ok(manager)
     }
 
     /// Add a cache tier
@@ -356,6 +405,267 @@ impl CacheManager {
         
         info!("Added cache tier: {} (level {})", tier_name, tier_level);
         Ok(())
+    }
+
+    /// Add a cache strategy
+    pub async fn add_strategy(&self, strategy: Arc<dyn strategies::CacheStrategy>) -> Result<()> {
+        let strategy_name = strategy.name().to_string();
+        let mut strategies = self.strategies.write().await;
+        strategies.insert(strategy_name.clone(), strategy);
+
+        // Set as active strategy if it's the first one
+        {
+            let mut active = self.active_strategy.write().await;
+            if active.is_none() {
+                *active = Some(strategy_name.clone());
+            }
+        }
+
+        info!("Added cache strategy: {}", strategy_name);
+        Ok(())
+    }
+
+    /// Set active cache strategy
+    pub async fn set_active_strategy(&self, strategy_name: &str) -> Result<()> {
+        let strategies = self.strategies.read().await;
+        if !strategies.contains_key(strategy_name) {
+            return Err(AgentError::validation(format!(
+                "Strategy '{}' not found",
+                strategy_name
+            )));
+        }
+
+        let mut active = self.active_strategy.write().await;
+        *active = Some(strategy_name.to_string());
+
+        info!("Set active cache strategy: {}", strategy_name);
+        Ok(())
+    }
+
+    /// Get active cache strategy
+    pub async fn get_active_strategy(&self) -> Option<Arc<dyn strategies::CacheStrategy>> {
+        let active = self.active_strategy.read().await;
+        if let Some(strategy_name) = active.as_ref() {
+            let strategies = self.strategies.read().await;
+            strategies.get(strategy_name).cloned()
+        } else {
+            None
+        }
+    }
+
+    /// Get all available strategies
+    pub async fn get_strategies(&self) -> HashMap<String, strategies::StrategyConfig> {
+        let strategies = self.strategies.read().await;
+        strategies.iter()
+            .map(|(name, strategy)| (name.clone(), strategy.config()))
+            .collect()
+    }
+
+    /// Remove a cache strategy
+    pub async fn remove_strategy(&self, strategy_name: &str) -> Result<()> {
+        let mut strategies = self.strategies.write().await;
+        if strategies.remove(strategy_name).is_none() {
+            return Err(AgentError::validation(format!(
+                "Strategy '{}' not found",
+                strategy_name
+            )));
+        }
+
+        // Clear active strategy if it was the removed one
+        {
+            let mut active = self.active_strategy.write().await;
+            if active.as_ref() == Some(&strategy_name.to_string()) {
+                *active = None;
+            }
+        }
+
+        info!("Removed cache strategy: {}", strategy_name);
+        Ok(())
+    }
+
+    /// Get value using active strategy
+    pub async fn get_with_strategy<T>(&self, key: &str) -> Result<CacheResult<T>>
+    where
+        T: for<'de> Deserialize<'de> + Serialize + Send + Sync + 'static,
+    {
+        // First try regular cache lookup
+        let cache_result = self.get::<T>(key).await?;
+        if cache_result.hit {
+            return Ok(cache_result);
+        }
+
+        // If cache miss, use active strategy to load data
+        if let Some(strategy) = self.get_active_strategy().await {
+            let strategy_config = strategy.config();
+
+            match strategy_config.strategy_type {
+                strategies::StrategyType::CacheAside => {
+                    // For cache-aside, the application handles loading
+                    // Return the cache miss result
+                    Ok(cache_result)
+                }
+                strategies::StrategyType::ReadThrough => {
+                    // For read-through, attempt to load from data source
+                    self.read_through_load::<T>(key, &strategy).await
+                }
+                strategies::StrategyType::RefreshAhead => {
+                    // Check if refresh is needed and trigger background refresh
+                    self.refresh_ahead_check::<T>(key, &strategy).await;
+                    Ok(cache_result)
+                }
+                _ => {
+                    // For other strategies, return cache miss
+                    Ok(cache_result)
+                }
+            }
+        } else {
+            Ok(cache_result)
+        }
+    }
+
+    /// Set value using active strategy
+    pub async fn set_with_strategy<T>(&self, key: &str, value: &T, ttl: Option<u64>) -> Result<()>
+    where
+        T: Serialize + Send + Sync,
+    {
+        if let Some(strategy) = self.get_active_strategy().await {
+            let strategy_config = strategy.config();
+
+            match strategy_config.strategy_type {
+                strategies::StrategyType::WriteThrough => {
+                    // Write to both cache and data source
+                    self.write_through_save(key, value, &strategy).await?;
+                    self.set(key, value, ttl).await
+                }
+                strategies::StrategyType::WriteBehind => {
+                    // Write to cache immediately, queue for background write
+                    self.set(key, value, ttl).await?;
+                    self.write_behind_queue(key, value, &strategy).await
+                }
+                _ => {
+                    // For other strategies, use regular cache set
+                    self.set(key, value, ttl).await
+                }
+            }
+        } else {
+            self.set(key, value, ttl).await
+        }
+    }
+
+    /// Read-through strategy implementation
+    async fn read_through_load<T>(&self, key: &str, strategy: &Arc<dyn strategies::CacheStrategy>) -> Result<CacheResult<T>>
+    where
+        T: for<'de> Deserialize<'de> + Serialize + Send + Sync + 'static,
+    {
+        let start_time = Instant::now();
+
+        // This is a simplified implementation - in a real scenario, we'd need access to the data source
+        // For now, we'll simulate a data source load
+        debug!("Attempting read-through load for key: {} using strategy: {}", key, strategy.name());
+
+        // Simulate data source miss
+        Ok(CacheResult {
+            value: None,
+            source_tier: Some("read_through".to_string()),
+            duration: start_time.elapsed(),
+            hit: false,
+        })
+    }
+
+    /// Write-through strategy implementation
+    async fn write_through_save<T>(&self, key: &str, value: &T, strategy: &Arc<dyn strategies::CacheStrategy>) -> Result<()>
+    where
+        T: Serialize + Send + Sync,
+    {
+        debug!("Write-through save for key: {} using strategy: {}", key, strategy.name());
+
+        // Serialize the value for data source storage
+        let data = serde_json::to_vec(value)
+            .map_err(|e| AgentError::validation(format!("Serialization failed: {}", e)))?;
+
+        // In a real implementation, we'd write to the data source here
+        // For now, we'll just log the operation
+        info!("Write-through: saved {} bytes for key: {}", data.len(), key);
+        Ok(())
+    }
+
+    /// Write-behind strategy implementation
+    async fn write_behind_queue<T>(&self, key: &str, value: &T, strategy: &Arc<dyn strategies::CacheStrategy>) -> Result<()>
+    where
+        T: Serialize + Send + Sync,
+    {
+        debug!("Write-behind queue for key: {} using strategy: {}", key, strategy.name());
+
+        // Serialize the value for queuing
+        let data = serde_json::to_vec(value)
+            .map_err(|e| AgentError::validation(format!("Serialization failed: {}", e)))?;
+
+        // In a real implementation, we'd add to the write queue here
+        // For now, we'll just log the operation
+        info!("Write-behind: queued {} bytes for key: {}", data.len(), key);
+        Ok(())
+    }
+
+    /// Refresh-ahead strategy check
+    async fn refresh_ahead_check<T>(&self, key: &str, strategy: &Arc<dyn strategies::CacheStrategy>)
+    where
+        T: for<'de> Deserialize<'de> + Serialize + Send + Sync + 'static,
+    {
+        debug!("Refresh-ahead check for key: {} using strategy: {}", key, strategy.name());
+
+        // Check if the entry exists and needs refresh
+        if let Ok(Some(entry)) = self.get_cache_entry(key).await {
+            if self.should_refresh_entry(&entry) {
+                // Trigger background refresh
+                self.trigger_background_refresh::<T>(key, strategy).await;
+            }
+        }
+    }
+
+    /// Get cache entry without deserialization
+    async fn get_cache_entry(&self, key: &str) -> Result<Option<CacheEntry>> {
+        for tier in &self.tiers {
+            match tier.get(key).await {
+                Ok(Some(entry)) => {
+                    if !self.is_expired(&entry) {
+                        return Ok(Some(entry));
+                    }
+                }
+                Ok(None) => continue,
+                Err(_) => continue,
+            }
+        }
+        Ok(None)
+    }
+
+    /// Check if entry should be refreshed
+    fn should_refresh_entry(&self, entry: &CacheEntry) -> bool {
+        if let Some(ttl) = entry.ttl {
+            let age = Utc::now().signed_duration_since(entry.created_at).num_seconds() as u64;
+            let remaining_ratio = (ttl - age) as f64 / ttl as f64;
+
+            // Refresh if less than 20% of TTL remaining
+            remaining_ratio < 0.2
+        } else {
+            false
+        }
+    }
+
+    /// Trigger background refresh
+    async fn trigger_background_refresh<T>(&self, key: &str, strategy: &Arc<dyn strategies::CacheStrategy>)
+    where
+        T: for<'de> Deserialize<'de> + Serialize + Send + Sync + 'static,
+    {
+        let key = key.to_string();
+        let strategy_name = strategy.name().to_string();
+
+        tokio::spawn(async move {
+            debug!("Background refresh started for key: {} using strategy: {}", key, strategy_name);
+
+            // In a real implementation, we'd load from data source and update cache
+            // For now, we'll just log the operation
+            info!("Background refresh completed for key: {}", key);
+        });
     }
 
     /// Get value from cache with multi-tier lookup

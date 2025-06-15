@@ -1,7 +1,7 @@
 // Basic Cache Manager Tests
 // Testing core cache functionality in small chunks
 
-use super::{CacheConfig, CacheEntry, CacheManager, CacheMetadata, CompressionType, ConnectionStatus, CacheTier};
+use super::{CacheConfig, CacheEntry, CacheManager, CacheMetadata, CompressionType, ConnectionStatus, CacheTier, CacheResult};
 use crate::caching::memory_cache::{MemoryCache, MemoryCacheConfig, EvictionPolicy};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -637,4 +637,95 @@ async fn test_cache_manager_clear_all() {
     let metrics = manager.get_metrics().await;
     assert_eq!(metrics.hits, 0);
     assert_eq!(metrics.misses, 0);
+}
+
+// Cache Strategy Integration Tests
+#[tokio::test]
+async fn test_cache_manager_with_strategies() {
+    let manager = CacheManager::with_default_strategies().await.unwrap();
+
+    // Verify strategies were added
+    let strategies = manager.get_strategies().await;
+    assert!(strategies.contains_key("cache_aside"));
+    assert!(strategies.contains_key("write_through"));
+    assert!(strategies.contains_key("read_through"));
+    assert!(strategies.contains_key("refresh_ahead"));
+
+    // Verify active strategy
+    let active = manager.get_active_strategy().await;
+    assert!(active.is_some());
+    assert_eq!(active.unwrap().name(), "cache_aside");
+}
+
+#[tokio::test]
+async fn test_strategy_management() {
+    let mut manager = CacheManager::with_defaults();
+
+    // Add a strategy
+    let source = Arc::new(crate::caching::strategies::MemoryDataSource::new("test".to_string()));
+    let strategy = Arc::new(crate::caching::strategies::CacheAsideStrategy::new(
+        "test_strategy".to_string(),
+        source,
+    ));
+
+    manager.add_strategy(strategy).await.unwrap();
+
+    // Verify strategy was added
+    let strategies = manager.get_strategies().await;
+    assert!(strategies.contains_key("test_strategy"));
+
+    // Set as active
+    manager.set_active_strategy("test_strategy").await.unwrap();
+    let active = manager.get_active_strategy().await;
+    assert!(active.is_some());
+    assert_eq!(active.unwrap().name(), "test_strategy");
+
+    // Remove strategy
+    manager.remove_strategy("test_strategy").await.unwrap();
+    let strategies = manager.get_strategies().await;
+    assert!(!strategies.contains_key("test_strategy"));
+
+    // Active strategy should be cleared
+    let active = manager.get_active_strategy().await;
+    assert!(active.is_none());
+}
+
+#[tokio::test]
+async fn test_strategy_aware_operations() {
+    let manager = CacheManager::with_default_strategies().await.unwrap();
+
+    // Add memory cache tier for testing
+    let memory_cache = Arc::new(crate::caching::memory_cache::MemoryCache::new(
+        "test_memory".to_string(),
+        crate::caching::memory_cache::MemoryCacheConfig::default(),
+    ));
+    let mut manager = manager;
+    manager.add_tier(memory_cache).await.unwrap();
+
+    // Test strategy-aware get (cache miss)
+    let result: CacheResult<TestData> = manager.get_with_strategy("test_key").await.unwrap();
+    assert!(!result.hit);
+    assert!(result.value.is_none());
+
+    // Test strategy-aware set
+    let test_value = TestData::new(1, "strategy_test", 42.0);
+    manager.set_with_strategy("test_key", &test_value, Some(3600)).await.unwrap();
+
+    // Verify value was cached
+    let result: CacheResult<TestData> = manager.get("test_key").await.unwrap();
+    assert!(result.hit);
+    assert_eq!(result.value.unwrap(), test_value);
+}
+
+#[tokio::test]
+async fn test_strategy_error_handling() {
+    let mut manager = CacheManager::with_defaults();
+
+    // Try to set non-existent strategy as active
+    let result = manager.set_active_strategy("non_existent").await;
+    assert!(result.is_err());
+
+    // Try to remove non-existent strategy
+    let result = manager.remove_strategy("non_existent").await;
+    assert!(result.is_err());
 }
