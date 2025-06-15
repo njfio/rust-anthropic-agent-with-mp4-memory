@@ -44,6 +44,73 @@ pub struct CsvFileExporter {
     file_path: String,
 }
 
+impl CsvFileExporter {
+    /// Create a new CSV file exporter
+    pub fn new(config: ExporterConfig) -> Self {
+        let file_path = config.endpoint.clone().unwrap_or_else(|| "/tmp/metrics.csv".to_string());
+        Self {
+            config,
+            stats: Arc::new(RwLock::new(ExportStats::default())),
+            file_path,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl MetricsExporter for CsvFileExporter {
+    fn name(&self) -> &str {
+        &self.config.name
+    }
+
+    async fn export(&self, metrics: &[Metric]) -> Result<()> {
+        // Simple CSV export implementation
+        let csv_content = self.format_metrics_as_csv(metrics);
+
+        // Write to file (simplified implementation)
+        std::fs::write(&self.file_path, csv_content)
+            .map_err(|e| AgentError::config(format!("Failed to write CSV file: {}", e)))?;
+
+        // Update stats
+        let mut stats = self.stats.write().await;
+        stats.total_exports += 1;
+        stats.successful_exports += 1;
+        stats.total_metrics_exported += metrics.len() as u64;
+
+        Ok(())
+    }
+
+    async fn health_check(&self) -> Result<ExporterHealth> {
+        let stats = self.stats.read().await;
+        Ok(ExporterHealth {
+            is_healthy: stats.last_error.is_none(),
+            last_export: stats.last_export,
+            error_count: stats.failed_exports as u32,
+            export_duration_ms: Some(stats.avg_export_time as u64),
+        })
+    }
+
+    fn config(&self) -> ExporterConfig {
+        self.config.clone()
+    }
+}
+
+impl CsvFileExporter {
+    fn format_metrics_as_csv(&self, metrics: &[Metric]) -> String {
+        let mut csv = String::from("name,value,timestamp,type\n");
+        for metric in metrics {
+            let value_str = match &metric.value {
+                super::MetricValue::Counter(v) => v.to_string(),
+                super::MetricValue::Gauge(v) => v.to_string(),
+                super::MetricValue::Histogram(_) => "histogram".to_string(),
+                super::MetricValue::Summary(_) => "summary".to_string(),
+            };
+            csv.push_str(&format!("{},{},{},{:?}\n",
+                metric.name, value_str, metric.timestamp, metric.metric_type));
+        }
+        csv
+    }
+}
+
 /// Console exporter for debugging
 pub struct ConsoleExporter {
     /// Exporter configuration
