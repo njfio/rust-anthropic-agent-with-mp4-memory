@@ -754,6 +754,82 @@ impl SecurityManager {
             Ok(Vec::new())
         }
     }
+
+    /// Comprehensive input validation using all validation constants
+    pub async fn validate_input_comprehensive(&self, input: &str, input_type: &str) -> Result<()> {
+        use crate::utils::validation::ValidationService;
+
+        let validator = ValidationService::new();
+        validator.validate_comprehensive_input(input, input_type)
+    }
+
+    /// Validate input with custom configuration
+    pub async fn validate_input_with_config(&self, input: &str, input_type: &str, strict_mode: bool) -> Result<()> {
+        use crate::utils::validation::ValidationService;
+
+        let validator = ValidationService::with_config(strict_mode);
+        validator.validate_comprehensive_input(input, input_type)
+    }
+
+    /// Sanitize input using character whitelists
+    pub async fn sanitize_input_with_whitelist(&self, input: &str, input_type: &str) -> String {
+        use crate::utils::validation::ValidationService;
+
+        let validator = ValidationService::new();
+        validator.sanitize_input_with_whitelist(input, input_type)
+    }
+
+    /// Validate multiple inputs in batch
+    pub async fn validate_batch_inputs(&self, inputs: &[(String, String)]) -> Result<Vec<crate::utils::validation::ValidationResult>> {
+        use crate::utils::validation::ValidationService;
+
+        let validator = ValidationService::new();
+        validator.validate_batch(inputs)
+    }
+
+    /// Get validation service statistics
+    pub async fn get_validation_stats(&self) -> crate::utils::validation::ValidationStats {
+        use crate::utils::validation::ValidationService;
+
+        let validator = ValidationService::new();
+        validator.get_validation_stats()
+    }
+
+    /// Validate path with enhanced security checks
+    pub async fn validate_secure_path(&self, path: &str) -> Result<()> {
+        use crate::utils::validation;
+
+        // Use both standard path validation and comprehensive validation
+        validation::validate_path(path)?;
+        self.validate_input_comprehensive(path, "path").await
+    }
+
+    /// Validate command with enhanced security checks
+    pub async fn validate_secure_command(&self, command: &str) -> Result<()> {
+        use crate::utils::validation;
+
+        // Use both standard command validation and comprehensive validation
+        validation::validate_command(command)?;
+        self.validate_input_comprehensive(command, "command").await
+    }
+
+    /// Validate URL with enhanced security checks
+    pub async fn validate_secure_url(&self, url: &str) -> Result<()> {
+        use crate::utils::validation;
+
+        // Use both standard URL validation and comprehensive validation
+        validation::validate_url(url)?;
+        self.validate_input_comprehensive(url, "url").await
+    }
+
+    /// Validate file content with enhanced security checks
+    pub async fn validate_secure_file_content(&self, content: &str) -> Result<()> {
+        use crate::utils::validation;
+
+        // Use both standard file content validation and comprehensive validation
+        validation::validate_file_content(content)?;
+        self.validate_input_comprehensive(content, "file_content").await
+    }
 }
 
 impl std::fmt::Debug for SecurityManager {
