@@ -19,6 +19,9 @@ pub mod resource_tracker;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod integration_tests;
+
 /// Performance monitoring manager
 pub struct PerformanceMonitor {
     /// Metrics collectors
