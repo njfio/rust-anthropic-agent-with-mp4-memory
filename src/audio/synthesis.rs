@@ -528,7 +528,7 @@ impl SynthesisService {
     }
 
     /// Estimate audio duration based on text and speech rate
-    fn estimate_audio_duration(&self, text: &str, speed: f32) -> f64 {
+    pub fn estimate_audio_duration(&self, text: &str, speed: f32) -> f64 {
         // Average speaking rate is about 150 words per minute
         let base_wpm = 150.0f64;
         let adjusted_wpm = base_wpm * speed as f64;

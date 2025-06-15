@@ -470,6 +470,47 @@ impl AudioEffects {
             sample_count: audio.samples.len(),
         }
     }
+
+    /// Analyze audio characteristics with comprehensive analysis
+    pub async fn analyze_audio_characteristics(&self, audio_data: &super::codecs::AudioData) -> Result<AudioAnalysis> {
+        // Use the existing analyze_audio method
+        Ok(self.analyze_audio(audio_data))
+    }
+
+    /// Apply effects to audio data with configuration
+    pub async fn apply_effects(&self, audio_data: &mut super::codecs::AudioData, config: &EffectsConfig) -> Result<()> {
+        // Create a temporary effects processor with the provided config
+        let mut temp_effects = AudioEffects::new(config.clone());
+
+        // Process the audio with the temporary effects processor
+        let processed_audio = temp_effects.process(audio_data)?;
+
+        // Update the original audio data with processed results
+        audio_data.samples = processed_audio.samples;
+        audio_data.duration = processed_audio.duration;
+
+        debug!("Applied effects to audio data: {} samples processed", audio_data.samples.len());
+
+        Ok(())
+    }
+
+    /// Get current effects configuration
+    pub fn get_config(&self) -> &EffectsConfig {
+        &self.config
+    }
+
+    /// Update effects configuration
+    pub fn set_config(&mut self, config: EffectsConfig) {
+        self.config = config;
+    }
+
+    /// Check if effects are enabled
+    pub fn has_effects_enabled(&self) -> bool {
+        self.config.enable_noise_reduction ||
+        self.config.enable_normalization ||
+        self.config.enable_highpass_filter ||
+        self.config.enable_lowpass_filter
+    }
 }
 
 /// Audio analysis results
