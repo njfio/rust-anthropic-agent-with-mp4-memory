@@ -589,11 +589,9 @@ pub fn split_text_for_synthesis(text: &str, max_chunk_size: usize) -> Vec<String
                 let mut word_chunk = String::new();
                 
                 for word in words {
-                    if word_chunk.len() + word.len() + 1 > max_chunk_size {
-                        if !word_chunk.is_empty() {
-                            chunks.push(word_chunk.trim().to_string());
-                            word_chunk.clear();
-                        }
+                    if word_chunk.len() + word.len() + 1 > max_chunk_size && !word_chunk.is_empty() {
+                        chunks.push(word_chunk.trim().to_string());
+                        word_chunk.clear();
                     }
                     
                     if !word_chunk.is_empty() {
