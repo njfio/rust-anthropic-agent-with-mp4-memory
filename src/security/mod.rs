@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::utils::error::Result;
+use crate::utils::error::{AgentError, Result};
 
 pub mod audit;
 /// Enterprise-grade security framework for the agent system
@@ -681,6 +681,78 @@ impl SecurityManager {
     pub async fn get_policy_statistics(&self) -> Result<policy::PolicyStatistics> {
         let policy_engine = self.policy_engine.read().await;
         policy_engine.get_evaluation_statistics().await
+    }
+
+    /// Create an authorization policy in the RBAC system
+    pub async fn create_authorization_policy(&self, policy: authorization::Policy) -> Result<()> {
+        let authz_service = self.authz_service.read().await;
+        // Downcast to RbacAuthorizationService to access policy methods
+        if let Some(rbac_service) = authz_service.as_any().downcast_ref::<authorization::RbacAuthorizationService>() {
+            rbac_service.create_policy(policy).await
+        } else {
+            Err(AgentError::validation("Authorization service does not support policies".to_string()))
+        }
+    }
+
+    /// Update an authorization policy in the RBAC system
+    pub async fn update_authorization_policy(&self, policy: authorization::Policy) -> Result<()> {
+        let authz_service = self.authz_service.read().await;
+        if let Some(rbac_service) = authz_service.as_any().downcast_ref::<authorization::RbacAuthorizationService>() {
+            rbac_service.update_policy(policy).await
+        } else {
+            Err(AgentError::validation("Authorization service does not support policies".to_string()))
+        }
+    }
+
+    /// Delete an authorization policy from the RBAC system
+    pub async fn delete_authorization_policy(&self, policy_name: &str) -> Result<()> {
+        let authz_service = self.authz_service.read().await;
+        if let Some(rbac_service) = authz_service.as_any().downcast_ref::<authorization::RbacAuthorizationService>() {
+            rbac_service.delete_policy(policy_name).await
+        } else {
+            Err(AgentError::validation("Authorization service does not support policies".to_string()))
+        }
+    }
+
+    /// Check if an authorization policy exists
+    pub async fn authorization_policy_exists(&self, policy_name: &str) -> Result<bool> {
+        let authz_service = self.authz_service.read().await;
+        if let Some(rbac_service) = authz_service.as_any().downcast_ref::<authorization::RbacAuthorizationService>() {
+            rbac_service.policy_exists(policy_name).await
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Get all authorization policies
+    pub async fn get_all_authorization_policies(&self) -> Result<Vec<authorization::Policy>> {
+        let authz_service = self.authz_service.read().await;
+        if let Some(rbac_service) = authz_service.as_any().downcast_ref::<authorization::RbacAuthorizationService>() {
+            rbac_service.get_all_policies().await
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    /// Get detailed authorization decision with policy evaluation
+    pub async fn get_detailed_authorization_decision(
+        &self,
+        context: &SecurityContext,
+        resource: &str,
+        action: &str,
+    ) -> Result<authorization::AuthorizationDecision> {
+        let authz_service = self.authz_service.read().await;
+        authz_service.get_authorization_decision(context, resource, action).await
+    }
+
+    /// Get policies applicable to a specific resource and action
+    pub async fn get_applicable_authorization_policies(&self, resource: &str, action: &str) -> Result<Vec<authorization::Policy>> {
+        let authz_service = self.authz_service.read().await;
+        if let Some(rbac_service) = authz_service.as_any().downcast_ref::<authorization::RbacAuthorizationService>() {
+            rbac_service.get_applicable_policies(resource, action).await
+        } else {
+            Ok(Vec::new())
+        }
     }
 }
 
