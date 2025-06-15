@@ -1,52 +1,67 @@
-# Rust Anthropic Agent
+# Rust MemVid Agent
 
-A Rust agent system with Anthropic Claude integration and audio processing capabilities.
+An AI agent system in Rust with Anthropic Claude integration, synaptic memory, and comprehensive audio processing capabilities.
 
 ## Features
 
 ### Core Agent System
-- **Anthropic Claude Integration**: Claude Sonnet 4 with tool calling
-- **Async/Await Architecture**: Async operations using tokio
-- **Tool System**: Tool framework with built-in tools
-- **Memory Management**: JSON-based persistent memory with search
-- **Configuration**: TOML-based configuration
-- **Error Handling**: Error types and recovery mechanisms
+- **Anthropic Claude Integration**: Claude API integration with tool calling support
+- **Synaptic Memory System**: JSON-based persistent memory using rust-synaptic library
+- **Async/Await Architecture**: Full async operations using tokio runtime
+- **Tool Framework**: Extensible tool system with built-in tools
+- **Configuration Management**: TOML-based configuration with environment variable support
+- **Error Handling**: Comprehensive error types and recovery mechanisms
 
 ### Audio Processing System
-- **Multi-Format Support**: WAV, MP3, FLAC, OGG, AAC, M4A encoding/decoding
-- **Audio I/O**: Cross-platform audio I/O with CPAL
-- **Audio Effects**: Noise reduction, normalization, filtering, fade effects
+- **Multi-Format Support**: WAV, MP3, FLAC, OGG, AAC, M4A codec support via symphonia
+- **Audio I/O**: Cross-platform audio input/output with CPAL
+- **Audio Effects**: Noise reduction, normalization, filtering, and fade effects
 - **Metadata Extraction**: Audio metadata reading and validation
-- **Speech-to-Text**: OpenAI Whisper API integration
-- **Text-to-Speech**: OpenAI TTS API integration
-- **Audio Analysis**: RMS, peak detection, dynamic range analysis
+- **Speech-to-Text**: OpenAI Whisper API integration for transcription
+- **Text-to-Speech**: OpenAI TTS API integration for synthesis
+- **Audio Analysis**: RMS, peak detection, and dynamic range analysis
+
+### Monitoring System
+- **Performance Monitoring**: Comprehensive metrics collection and export
+- **Resource Tracking**: Memory, CPU, and system resource monitoring
+- **Alert Management**: Configurable thresholds and alert notifications
+- **Metrics Export**: Prometheus, console, and CSV export formats
+- **Health Checks**: Component health monitoring and status reporting
+
+### Caching System
+- **Multi-Backend Support**: Memory, Redis, and file-based caching
+- **Cache Strategies**: Write-through, cache-aside, read-through patterns
+- **Invalidation Policies**: TTL, LRU, and custom invalidation strategies
+- **Performance Metrics**: Cache hit rates and performance tracking
 
 ### Security Features
-- **Input Validation**: Path traversal protection, command injection prevention
-- **Rate Limiting**: Per-tool and global rate limits
-- **Audit Logging**: JSON logging with rotation
-- **Resource Monitoring**: Memory and CPU usage monitoring
-- **Security Headers**: HTTP security headers
+- **Input Validation**: Path traversal and command injection prevention
+- **Rate Limiting**: Per-tool and global rate limiting with configurable windows
+- **Audit Logging**: Structured JSON logging with rotation and severity levels
+- **Resource Monitoring**: Memory and CPU usage limits with enforcement
+- **Security Headers**: HTTP security headers for web requests
+- **Encryption**: Ring-based encryption for sensitive data
 
-## Built-in Tools
-
-- **Memory Tools**: Save, search, and manage persistent memory entries
-- **File System Tools**: Read, write, and list files with security validation
-- **Text Editor**: View and edit files
-- **HTTP Client**: Web requests with security headers and domain filtering
+### Built-in Tools
+- **File Operations**: Local file reading, writing, and management with security validation
+- **HTTP Client**: HTTP requests with authentication and error handling
+- **WebSocket Client**: Real-time WebSocket communication
+- **Memory Tools**: Synaptic memory operations and search capabilities
+- **Code Analysis**: Code parsing and analysis capabilities
+- **UUID Generator**: UUID generation for unique identifiers
 - **Audio Processing**: Audio encoding, decoding, and effects processing
-- **UUID Generator**: Generate unique identifiers
-- **Shell Commands**: Execute system commands with security filtering
 
 ## Test Coverage
 
-Test coverage includes:
+The codebase includes comprehensive test coverage with 487 tests:
 
-- **Audio Module**: 34 tests covering audio processing functionality
-- **Security Tests**: Input validation, rate limiting, and audit logging
-- **Tool Tests**: Built-in tools with error handling scenarios
-- **Integration Tests**: Agent functionality
-- **Memory Tests**: JSON storage and search functionality
+- **Monitoring System**: 32 integration tests covering complete monitoring pipeline
+- **Audio Processing**: 34 tests covering audio functionality and codecs
+- **Security Features**: Input validation, rate limiting, and audit logging tests
+- **Tool System**: Built-in tools with error handling and validation scenarios
+- **Memory Management**: JSON storage, search, and synaptic memory functionality
+- **Caching System**: Multi-backend caching with performance metrics
+- **Agent Core**: Conversation management and tool coordination tests
 
 ## Quick Start
 
@@ -54,6 +69,7 @@ Test coverage includes:
 
 1. **Rust**: Install from [rustup.rs](https://rustup.rs/)
 2. **Anthropic API Key**: Get one from [Anthropic Console](https://console.anthropic.com/)
+3. **OpenAI API Key**: Required for audio transcription and synthesis features
 
 ### Installation
 
@@ -70,14 +86,11 @@ use rust_memvid_agent::{Agent, AgentConfig};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize the agent system
-    rust_memvid_agent::init().await?;
-
     // Create configuration
     let config = AgentConfig::default()
         .with_anthropic_key("your-api-key")
         .with_memory_path("agent_memory.json")
-        .with_model("claude-sonnet-4-20250514");
+        .with_model("claude-3-5-sonnet-20241022");
 
     // Create and use the agent
     let mut agent = Agent::new(config).await?;
@@ -100,75 +113,75 @@ async fn main() -> anyhow::Result<()> {
 ### CLI Usage
 
 ```bash
-# Set your API key
-export ANTHROPIC_API_KEY="your-api-key"
+# Set your API keys
+export ANTHROPIC_API_KEY="your-anthropic-api-key"
+export OPENAI_API_KEY="your-openai-api-key"
 
-# Interactive chat
+# Interactive chat mode
 cargo run -- chat
 
 # Direct message
 cargo run -- chat "Hello, can you help me with Rust?"
 
 # Memory operations
-cargo run -- search "rust programming"
-cargo run -- save "Important fact about Rust" --entry-type fact
+cargo run -- memory search "rust programming"
+cargo run -- memory save "Important fact about Rust"
 
-# List available tools
-cargo run -- tools
+# Audio processing
+cargo run -- audio transcribe input.wav
+cargo run -- audio synthesize "Hello world" output.mp3
+
+# System monitoring
+cargo run -- monitor status
+cargo run -- monitor metrics
+
+# Configuration management
+cargo run -- config validate
+cargo run -- config show
 ```
 
 ## Configuration
 
-Create a `agent_config.toml` file:
+Create a `config.toml` file:
 
 ```toml
 [anthropic]
-api_key = "your-api-key"
-model = "claude-sonnet-4-20250514"
+api_key = "your-anthropic-api-key"
+model = "claude-3-5-sonnet-20241022"
 max_tokens = 4096
-temperature = 0.7
+timeout = 30
+
+[audio]
+openai_api_key = "your-openai-api-key"
+max_file_size = 104857600  # 100MB
+enable_caching = true
+default_quality = "high"
 
 [memory]
-memory_path = "agent_memory.json"
-auto_save = true
+file_path = "memory.json"
+max_entries = 10000
 enable_search = true
-max_chunks = 1000
+backup_enabled = true
 
-[tools]
-enable_text_editor = true
-enable_memory_tools = true
-enable_file_tools = true
-enable_audio_tools = true
-
-# Rate limiting configuration
-[tools.rate_limiting]
-max_requests_per_minute = 100
-per_tool_limiting = true
-window_duration_seconds = 60
-
-# Security configuration
-[tools.security]
-max_file_size = 10485760  # 10MB
-max_path_length = 4096
-max_command_length = 8192
-
-# Audit logging
-[audit]
-log_file_path = "audit.log"
-max_file_size = 104857600  # 100MB
-max_files = 10
-minimum_severity = "low"
-
-# Resource monitoring
 [monitoring]
-max_memory_bytes = 2147483648  # 2GB
-max_memory_percentage = 25.0
-max_cpu_percentage = 80.0
-max_threads = 100
-monitoring_interval_seconds = 30
+collection_interval = 30
+enable_resource_monitoring = true
+enable_prometheus = true
+prometheus_endpoint = "0.0.0.0:9090"
+
+[caching]
+backend = "memory"  # or "redis" or "file"
+ttl_seconds = 3600
+max_size = 1000
+
+[security]
+enable_rate_limiting = true
+max_requests_per_minute = 60
+enable_audit_logging = true
+log_level = "info"
 
 [agent]
-name = "MyAgent"
+name = "MemVidAgent"
 persist_conversations = true
 max_history_length = 50
 ```
@@ -176,17 +189,25 @@ max_history_length = 50
 ## Testing
 
 ```bash
-# Run all tests
-cargo test
+# Run all tests (487 tests)
+cargo test --lib
 
-# Run audio tests specifically
-cargo test audio::
+# Run monitoring integration tests
+cargo test monitoring::integration_tests --lib
 
-# Run security tests
-cargo test security_tests --lib
+# Run audio processing tests
+cargo test audio --lib
 
-# Run with all features
-cargo test --features all-tools
+# Run security and validation tests
+cargo test security --lib
+
+# Run with verbose output
+cargo test --lib -- --nocapture
+
+# Run specific test modules
+cargo test caching --lib
+cargo test tools --lib
+cargo test memory --lib
 ```
 
 ## Architecture
@@ -194,23 +215,29 @@ cargo test --features all-tools
 System architecture:
 
 - **Agent Core**: Manages conversations and coordinates tool usage
-- **Tool System**: Framework for adding new capabilities
-- **Memory Manager**: JSON-based persistent storage with search
+- **Tool System**: Extensible framework for adding new capabilities
+- **Synaptic Memory**: JSON-based persistent storage with search using rust-synaptic
 - **Anthropic Client**: HTTP client with retry logic and error handling
-- **Audio Processing**: Audio codec and effects system
+- **Audio Processing**: Multi-format audio codec and effects system
+- **Monitoring System**: Comprehensive metrics collection and export
+- **Caching Layer**: Multi-backend caching with performance optimization
 - **Security Layer**: Input validation, rate limiting, and audit logging
 
 ## Dependencies
 
 Key dependencies include:
 
-- **tokio**: Async runtime
-- **reqwest**: HTTP client for Anthropic API
-- **serde**: JSON serialization
-- **symphonia**: Audio codec support
-- **cpal**: Cross-platform audio I/O
-- **hound**: WAV codec
-- **rustfft**: FFT for audio effects
+- **tokio**: Async runtime for concurrent operations
+- **reqwest**: HTTP client for Anthropic API communication
+- **serde**: JSON serialization and deserialization
+- **symphonia**: Multi-format audio codec support
+- **cpal**: Cross-platform audio input/output
+- **hound**: WAV audio codec implementation
+- **rustfft**: Fast Fourier Transform for audio effects
+- **rust-synaptic**: Synaptic memory management
+- **tracing**: Structured logging and instrumentation
+- **chrono**: Date and time handling
+- **uuid**: UUID generation for unique identifiers
 
 ## License
 
