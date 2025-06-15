@@ -207,19 +207,15 @@ impl ToolOrchestrator {
                     // Server tools are handled by Anthropic, we don't need to execute them
                     // They will appear as results in subsequent API responses
                 }
-                ContentBlock::CodeExecutionToolResult { tool_use_id, content } => {
-                    debug!("Received code execution result for {}", tool_use_id);
-                    self.server_tool_results.push(ContentBlock::CodeExecutionToolResult {
-                        tool_use_id: tool_use_id.clone(),
-                        content: content.clone(),
-                    });
+                ContentBlock::CodeExecutionToolResult { tool_use_id, .. } => {
+                    debug!("Code execution result for {} is already in assistant response", tool_use_id);
+                    // Server tool results are already included in the assistant's response
+                    // by Anthropic's API, so we don't need to collect them separately
                 }
-                ContentBlock::WebSearchToolResult { tool_use_id, content } => {
-                    debug!("Received web search result for {}", tool_use_id);
-                    self.server_tool_results.push(ContentBlock::WebSearchToolResult {
-                        tool_use_id: tool_use_id.clone(),
-                        content: content.clone(),
-                    });
+                ContentBlock::WebSearchToolResult { tool_use_id, .. } => {
+                    debug!("Web search result for {} is already in assistant response", tool_use_id);
+                    // Server tool results are already included in the assistant's response
+                    // by Anthropic's API, so we don't need to collect them separately
                 }
                 _ => {
                     // Not a tool use block, skip

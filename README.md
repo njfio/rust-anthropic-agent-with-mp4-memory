@@ -1,145 +1,131 @@
-# Rust MemVid Agent 🦀🤖
+# Rust MemVid Agent
 
-
+A Rust-based AI agent system with Anthropic Claude integration and persistent memory using rust-synaptic.
 
 ## Recent Updates
 
-### 🔒 **Enterprise Security Hardening** (Latest - December 2024)
-- **Comprehensive Security Audit**: Complete security assessment and hardening with OWASP Top 10 protection
-- **Advanced Audit Logging**: Enterprise-grade audit trails with structured JSON logging, automatic rotation, and configurable severity levels
-- **Security Headers**: Comprehensive HTTP security headers (CSP, HSTS, X-Frame-Options) with configurable policies for production environments
-- **Automated Security Scanning**: Daily CI/CD security pipeline with cargo-audit, CodeQL, Semgrep, Trivy, and OSSF Scorecard integration
-- **Resource Monitoring**: Real-time memory/CPU monitoring with configurable limits, alerts, and automatic violation detection
-- **Penetration Testing**: Automated security testing framework with OWASP coverage and scheduled vulnerability assessments
-- **Input Validation**: Comprehensive validation for paths, commands, URLs with SSRF protection and injection prevention
-- **Rate Limiting**: Advanced rate limiting with sliding windows, per-tool limits, and configurable thresholds
-- **Dependency Security**: Automated vulnerability scanning, license compliance, and unmaintained dependency detection
+### 🧠 **Advanced Memory System Integration** (Latest - December 2024)
+- **rust-synaptic Integration**: Integrated rust-synaptic for persistent memory with JSON storage backend
+- **Performance Optimization**: Added in-memory LRU caching layer with 1000-entry capacity and 5-minute TTL
+- **Batch Operations**: Implemented bulk memory store/search operations for improved throughput
+- **Multimodal Support**: Basic file type detection and binary content storage capabilities
+- **Security Features**: Basic encryption, access control policies, and audit logging through rust-synaptic
+- **Analytics**: Memory usage statistics, cache hit rates, and basic performance metrics
+- **Bug Fixes**: Fixed timeout issues in memory stats and server tool result handling
 
-### 🚀 **Production-Ready Agent System**
-- **Complete HTTP Connection Optimization**: Enhanced timeout handling (300s), connection pooling, TCP keepalive, and robust retry logic with exponential backoff
-- **Advanced Parameter Validation**: Comprehensive tool parameter checking with detailed error messages and clear guidance for create vs str_replace operations
-- **Enhanced System Prompt**: Implementation-focused behavior with explicit parameter requirements and format examples
-- **Increased Iteration Capacity**: Expanded from 25 to 50 iterations for complex tasks like game development and large codebases
-- **Complete Request/Response Logging**: Full visibility into Anthropic API communication for debugging and optimization
-- **Robust Error Handling**: Specific error messages for timeout, connection, and parameter issues with actionable guidance
-- **Context Size Optimization**: Simplified tool descriptions to reduce token pressure while maintaining functionality
-- **File Operation Excellence**: Flawless create and str_replace operations with proper parameter handling
+### 🔒 **Security & Reliability** (December 2024)
+- **Audit Logging**: Structured JSON logging with configurable severity levels
+- **Security Headers**: HTTP security headers (CSP, HSTS, X-Frame-Options) with configurable policies
+- **Input Validation**: Path, command, and URL validation with basic injection prevention
+- **Rate Limiting**: Basic rate limiting with configurable thresholds
+- **Resource Monitoring**: Memory/CPU monitoring with configurable limits
+- **Timeout Protection**: Added timeout handling to prevent hanging operations
+- **Error Recovery**: Improved error handling and recovery mechanisms
 
-### ⚡ **Fast JSON Memory System**
+### 🚀 **Core Agent System**
+- **HTTP Connection Handling**: Timeout handling (120s), connection pooling, and retry logic with exponential backoff
+- **Parameter Validation**: Tool parameter checking with error messages and guidance
+- **System Prompt**: Implementation-focused behavior with parameter requirements
+- **Iteration Capacity**: Support for up to 50 iterations for complex tasks
+- **Request/Response Logging**: API communication logging for debugging
+- **Error Handling**: Specific error messages for timeout, connection, and parameter issues
+- **File Operations**: Create and str_replace operations with proper parameter handling
 
-- **Simple JSON Storage**: Lightning-fast memory operations using simple JSON file persistence
-- **Instant Memory Access**: No video encoding/decoding overhead - immediate read/write operations
-- **Simplified Architecture**: Clean, maintainable codebase without complex video processing dependencies
-- **Fast Search**: Simple text-based search through memory chunks without embedding overhead
-- **Immediate Persistence**: Changes saved instantly to JSON file for reliability
-- **Reduced Dependencies**: Eliminated heavy video processing and embedding model dependencies
-- **Performance Focus**: Optimized for speed and simplicity over advanced features
+### ⚡ **Memory System**
+- **JSON Storage**: Fast memory operations using JSON file persistence with rust-synaptic backend
+- **Memory Access**: Direct read/write operations without video processing overhead
+- **Simple Architecture**: Clean, maintainable codebase focused on core functionality
+- **Text Search**: Basic text-based search through memory chunks
+- **Persistence**: Changes saved to JSON files for reliability
+- **Caching**: In-memory LRU cache for improved performance
 
 ## 🌟 Features
 
-### 🔧 **Complete Anthropic Integration**
-- **All Latest Tools**: Support for code execution, web search, and text editor tools
-- **Latest Models**: Compatible with Claude Opus 4, Sonnet 4, and Sonnet 3.7
-- **Tool Versioning**: Automatic tool version selection based on model
-- **Production-Ready HTTP**: Enhanced connection handling with 300s timeouts, connection pooling, and retry logic
-- **Robust Error Handling**: Comprehensive error recovery with specific timeout and connection error messages
-- **Parameter Validation**: Advanced tool parameter checking with detailed error messages and guidance
-- **Streaming Support**: Architecture ready for streaming responses (HTTP-based implementation complete)
+### 🔧 **Anthropic Integration**
+- **Server Tools**: Support for Anthropic's web search, code execution, and text editor tools
+- **Models**: Compatible with Claude Sonnet 4 and other Claude models
+- **HTTP Client**: Connection handling with timeouts, connection pooling, and retry logic
+- **Error Handling**: Error recovery with timeout and connection error messages
+- **Parameter Validation**: Tool parameter checking with error messages and guidance
 
-### 🧠 **Advanced AI Memory System (rust-synaptic)**
-- **State-of-the-Art Memory**: Powered by [rust-synaptic](https://github.com/njfio/rust-synaptic) for intelligent memory management
-- **Knowledge Graphs**: Automatic relationship mapping between memories with intelligent connections
-- **Temporal Tracking**: Time-based memory analysis and pattern recognition
-- **Smart Content Merging**: Automatic deduplication and content optimization
-- **Semantic Search**: Intelligent search with relevance scoring and context understanding
-- **Analytics**: Memory usage insights, performance monitoring, and learning patterns
-- **Incremental Updates**: Efficient memory updates without full reprocessing
+### 🧠 **Memory System (rust-synaptic)**
+- **Persistent Storage**: JSON-based storage with rust-synaptic backend for conversations and memory
+- **Knowledge Graphs**: Basic relationship mapping between memory entries (placeholder implementation)
+- **Caching Layer**: In-memory LRU cache with 1000-entry capacity and 5-minute TTL
+- **Semantic Search**: Basic TF-IDF search (embeddings feature available but not fully implemented)
+- **Batch Operations**: Bulk store/search operations for improved throughput
+- **Analytics**: Cache hit rates, memory usage statistics, and performance metrics
+- **Fast Stats**: Optimized memory statistics with timeout protection
 
-### 🛠️ **Extensible Tool System**
+### 🛠️ **Tool System**
 - **Built-in Tools**: Text editor, file system, memory, and utility tools
-- **AI Code Analysis**: Intelligent code explanations, security scanning, and refactoring suggestions
-- **Custom Tools**: Easy framework for developing custom tools
-- **Server Tools**: Integration with Anthropic's server-side tools
-- **Tool Orchestration**: Intelligent tool execution and result handling
-- **Advanced Parameter Validation**: Comprehensive tool parameter checking with detailed error messages
-- **Robust File Operations**: Flawless create and str_replace operations with proper parameter handling
-- **Enhanced Error Recovery**: Clear guidance for tool usage and parameter requirements
+- **Code Analysis**: Code explanations, basic security scanning, and refactoring suggestions via rust-treesitter-agent-code-utility
+- **Custom Tools**: Framework for developing custom tools
+- **Server Tools**: Integration with Anthropic's server-side tools (web search, code execution)
+- **Tool Orchestration**: Tool execution and result handling
+- **Parameter Validation**: Tool parameter checking with error messages
+- **File Operations**: Create and str_replace operations with parameter handling
 
-### 🧠 **AI-Powered Code Analysis**
-- **Smart Explanations**: AI-generated code explanations with learning mode
-- **Security Scanning**: Automated vulnerability detection and compliance checking
-- **Refactoring Suggestions**: Intelligent code improvement recommendations
-- **Pattern Recognition**: Advanced code pattern analysis and insights
+### 🧠 **Code Analysis**
+- **Code Explanations**: AI-generated code explanations
+- **Security Scanning**: Basic vulnerability detection
+- **Refactoring Suggestions**: Code improvement recommendations
+- **Pattern Recognition**: Basic code pattern analysis
 
-### 🚀 **Phase 2 Advanced Intelligence Features**
+### 🚀 **Advanced Features**
 
-#### 🧠 Advanced Memory Analytics
-- **Knowledge Graph Generation**: Build conceptual knowledge graphs from memory content with confidence scoring
-- **Temporal Analysis**: Track memory evolution, learning patterns, and knowledge growth over time
-- **Content Synthesis**: AI-powered content summarization, insights generation, and trend analysis
-- **Analytics Dashboard**: Comprehensive memory usage metrics, engagement patterns, and activity analysis
-- **Concept Extraction**: Intelligent extraction of key concepts with semantic categorization
-- **Relationship Analysis**: Discover hidden connections and relationships between memory entries
+#### 🧠 Memory Analytics
+- **Basic Analytics**: Memory usage statistics, cache hit rates, and performance metrics
+- **Knowledge Graph APIs**: Basic relationship creation and discovery (placeholder implementation)
+- **Memory Evolution**: Version tracking and intelligent updates (basic implementation)
+- **Content Analysis**: Simple content analysis and concept extraction
 
-#### 🔍 Enhanced Code Analysis
-- **Semantic Analysis**: Deep understanding of code concepts, abstractions, and domain patterns
-- **Pattern Recognition**: Automatic detection of architecture patterns, design patterns, and anti-patterns
-- **Learning Path Generation**: Personalized learning recommendations based on code complexity and skill level
-- **Advanced Security Scanning**: OWASP Top 10 vulnerability detection with CWE mapping and compliance assessment
-- **Secrets Detection**: Entropy-based detection of API keys, tokens, and credentials with risk assessment
-- **Smart Refactoring**: Automated code improvement suggestions with impact analysis and roadmap generation
-- **Performance Optimization**: Hotspot identification, algorithmic improvements, and benchmarking suggestions
-- **Test Coverage Analysis**: Comprehensive testing gap analysis, quality assessment, and test recommendations
-- **Dependency Management**: Security scanning, license compliance, outdated dependency detection, and update recommendations
+#### 🔍 Code Analysis Features
+- **Code Explanations**: Generate explanations of code structure and functionality
+- **Security Scanning**: Basic vulnerability detection and security analysis
+- **Refactoring Suggestions**: Code improvement recommendations
+- **Pattern Detection**: Basic detection of code patterns and structures
+- **Dependency Analysis**: Basic dependency scanning and analysis
+- **Test Analysis**: Basic test coverage and quality analysis
 
-#### 🤖 AI-Powered Insights
-- **Multi-dimensional Analysis**: Combine semantic, temporal, and structural analysis for comprehensive insights
-- **Confidence Scoring**: AI confidence levels for all recommendations, insights, and analysis results
-- **Automated Roadmaps**: Generate comprehensive improvement roadmaps with phases and effort estimation
-- **Cross-reference Intelligence**: Discover hidden connections across different domains and contexts
-- **Adaptive Learning**: System learns from usage patterns to improve recommendations and insights over time
+### 🔒 **Security Features**
+- **Audit Logging**: JSON structured logging with configurable severity filtering
+- **Security Headers**: HTTP security headers (CSP, HSTS, X-Frame-Options) with basic configurations
+- **Input Validation**: Basic validation for paths, commands, URLs with injection prevention
+- **Rate Limiting**: Basic rate limiting with configurable thresholds
+- **Resource Monitoring**: Memory/CPU monitoring with configurable limits
+- **Timeout Protection**: Timeout handling to prevent hanging operations
 
-### 🔒 **Enterprise Security Features**
-- **Audit Logging**: Comprehensive audit trails with JSON structured logging, automatic rotation, and configurable severity filtering
-- **Security Headers**: Production-ready HTTP security headers (CSP, HSTS, X-Frame-Options, Permissions-Policy) with strict/relaxed configurations
-- **Input Validation**: Advanced validation for paths, commands, URLs with SSRF protection, injection prevention, and length limits
-- **Rate Limiting**: Sliding window rate limiting with global and per-tool limits, configurable thresholds, and violation tracking
-- **Resource Monitoring**: Real-time memory/CPU monitoring with configurable limits, warning thresholds, and automatic enforcement
-- **Automated Security Scanning**: Daily CI/CD pipeline with cargo-audit, CodeQL, Semgrep, Trivy, and dependency vulnerability scanning
-- **Penetration Testing**: Automated security testing framework with OWASP Top 10 coverage and scheduled assessments
-- **Compliance**: License compliance checking, dependency security scanning, and security best practices enforcement
+### 🏗️ **Architecture**
+- **Type Safety**: Type system for API interactions
+- **Error Handling**: Error types and recovery mechanisms
+- **Async/Await**: Async operations throughout
+- **Configuration**: TOML-based configuration system
+- **HTTP Client**: Connection handling with timeouts, pooling, and retry logic
+- **Parameter Validation**: Tool parameter checking and error recovery
+- **Iteration Support**: Support for up to 50 iterations for complex tasks
 
-### 🏗️ **Robust Architecture**
-- **Type Safety**: Comprehensive type system for all API interactions
-- **Error Handling**: Detailed error types and recovery mechanisms with specific guidance
-- **Async/Await**: High-performance async operations throughout
-- **Configuration**: Flexible configuration system with TOML support
-- **Production-Ready HTTP**: Enhanced connection handling with timeouts, pooling, and retry logic
-- **Advanced Parameter Validation**: Comprehensive tool parameter checking and error recovery
-- **Optimized Context Management**: Reduced token pressure with simplified tool descriptions
-- **Enhanced Iteration Capacity**: Support for complex tasks with 50-iteration limit
+## 🎯 **Capabilities**
 
-## 🎯 **Production-Ready Capabilities**
+### ✅ **Core Functionality**
+- **Application Development**: Can create applications and multi-file projects
+- **File Operations**: Create and str_replace operations with parameter validation
+- **HTTP Reliability**: 120-second timeouts, connection pooling, and retry logic
+- **Error Recovery**: Error messages with guidance for resolution
+- **Context Management**: Handles conversation context and memory
 
-### ✅ **Proven Performance**
-- **Complex Application Development**: Successfully creates complete applications (e.g., 3D games with 600+ lines of code)
-- **Robust File Operations**: Flawless create and str_replace operations with comprehensive parameter validation
-- **Enhanced HTTP Reliability**: 300-second timeouts, connection pooling, and exponential backoff retry logic
-- **Advanced Error Recovery**: Specific error messages with actionable guidance for quick resolution
-- **Optimized Context Management**: Reduced token pressure while maintaining full functionality
+### 🔧 **System Features**
+- **Multi-Step Tasks**: Handle complex tasks with up to 50 iterations
+- **Request/Response Logging**: API communication logging for debugging
+- **Parameter Validation**: Tool parameter checking with error messages
+- **Memory Persistence**: Conversation and memory persistence across sessions
+- **Tool Integration**: Integration with Anthropic's server-side tools
 
-### 🔧 **Enterprise-Grade Features**
-- **50-Iteration Capacity**: Handle complex, multi-step tasks like game development and large codebase modifications
-- **Complete Request/Response Logging**: Full visibility into API communication for debugging and optimization
-- **Parameter Validation Excellence**: Comprehensive tool parameter checking with detailed error messages
-- **Implementation-Focused Behavior**: Enhanced system prompt ensures actual code creation, not just descriptions
-- **Robust Connection Handling**: TCP keepalive, connection pooling, and enhanced timeout management
-
-### 🎮 **Real-World Testing**
-- **Successfully implemented**: Complete 3D Frogger game with Three.js graphics, collision detection, and game mechanics
-- **File operation excellence**: Created 600+ line JavaScript files with proper parameter handling
-- **Complex task completion**: Multi-file projects with HTML, CSS, and JavaScript coordination
-- **Error recovery validation**: Comprehensive testing of timeout, connection, and parameter error scenarios
+### 🧪 **Testing & Validation**
+- **Integration Tests**: Comprehensive test suite for memory and tool functionality
+- **Performance Benchmarks**: Benchmarks for memory operations and caching
+- **Error Handling**: Timeout and connection error handling validation
+- **Security Testing**: Basic security validation and input sanitization
 
 ## 🚀 Quick Start
 
@@ -219,99 +205,61 @@ cargo run -- stats
 # List available tools
 cargo run -- tools
 
-# AI-powered code analysis
-cargo run -- analyze src --action explain --detailed --learning
-cargo run -- analyze src --action security --compliance
-cargo run -- analyze src --action refactor --quick-wins
-
-# Phase 2 Advanced Intelligence Features
-cargo run -- analyze src --action advanced_ai --semantic --patterns
-cargo run -- analyze src --action owasp_scan --owasp_top10 --secrets
-cargo run -- analyze src --action smart_refactor --roadmap --benchmarks
-cargo run -- analyze src --action test_coverage --missing_tests
-cargo run -- analyze src --action dependency_scan --security_deps
+# Code analysis
+cargo run -- analyze src --action explain --detailed
+cargo run -- analyze src --action security
+cargo run -- analyze src --action refactor
 ```
 
-## 🧠 AI Code Analysis
+## 🧠 Code Analysis
 
-The agent includes powerful AI-driven code analysis capabilities powered by the integrated rust-treesitter-agent-code-utility.
+The agent includes code analysis capabilities powered by rust-treesitter-agent-code-utility.
 
 ### Available Analysis Actions
 
 #### 🔍 **Code Explanations** (`explain`)
-Generate intelligent explanations of your codebase with AI insights:
+Generate explanations of your codebase:
 
 ```bash
 # Basic explanation
 cargo run -- analyze src/main.rs --action explain
 
-# Detailed explanation with learning mode
-cargo run -- analyze src --action explain --detailed --learning
+# Detailed explanation
+cargo run -- analyze src --action explain --detailed
 ```
 
 #### 🔒 **Security Scanning** (`security`)
-Automated security vulnerability detection and compliance checking:
+Basic security vulnerability detection:
 
 ```bash
-# Basic security scan
+# Security scan
 cargo run -- analyze src --action security
-
-# Security scan with compliance assessment
-cargo run -- analyze src --action security --compliance
 ```
 
 #### 🔧 **Refactoring Suggestions** (`refactor`)
-Smart code improvement recommendations:
+Code improvement recommendations:
 
 ```bash
-# General refactoring suggestions
+# Refactoring suggestions
 cargo run -- analyze src --action refactor
-
-# Quick wins for immediate improvements
-cargo run -- analyze src --action refactor --quick-wins
 ```
 
 #### 📊 **Other Analysis Types**
-- `analyze` - Comprehensive code analysis
-- `insights` - Generate architectural insights
+- `analyze` - General code analysis
+- `insights` - Architectural insights
 - `find_symbols` - Find specific symbols
 - `query_patterns` - Query code patterns
 - `stats` - Generate code statistics
 - `map_structure` - Map code structure
 
-#### 🚀 **Phase 2 Advanced Analysis Actions**
-- `advanced_ai` / `semantic_analysis` - Deep semantic understanding with concept recognition
-- `pattern_recognition` - Architecture and design pattern detection
-- `learning_paths` - Personalized learning recommendations
-- `advanced_security` / `owasp_scan` - OWASP Top 10 vulnerability detection
-- `secrets_detection` - Advanced secrets detection with entropy analysis
-- `vulnerability_scan` - Comprehensive vulnerability scanning
-- `smart_refactor` / `code_smells` - Intelligent refactoring with roadmaps
-- `design_patterns` - Design pattern analysis and recommendations
-- `performance_optimize` - Performance optimization suggestions
-- `test_coverage` - Test coverage analysis and gap identification
-- `missing_tests` - Missing test identification and prioritization
-- `test_quality` - Test quality assessment and improvement suggestions
-- `coverage_gaps` - Coverage gap analysis and remediation
-- `dependency_scan` - Dependency analysis and optimization
-- `security_deps` - Security dependency scanning
-- `outdated_deps` - Outdated dependency detection
-- `license_check` - License compliance checking
+### Interactive Analysis
 
-### Interactive AI Analysis
-
-The agent can also perform code analysis through natural conversation:
+The agent can also perform code analysis through conversation:
 
 ```bash
 cargo run -- chat "Can you perform a security scan on my src directory?"
-cargo run -- chat "Explain the code structure in src/main.rs with learning insights"
-cargo run -- chat "Give me refactoring suggestions for quick wins"
-
-# Advanced Memory Analytics through conversation
-cargo run -- chat "Build a knowledge graph from my memory"
-cargo run -- chat "Show me temporal analysis of my learning patterns"
-cargo run -- chat "Synthesize insights from my recent conversations"
-cargo run -- chat "Generate an analytics dashboard for my memory usage"
+cargo run -- chat "Explain the code structure in src/main.rs"
+cargo run -- chat "Give me refactoring suggestions"
 ```
 
 ## 📖 Examples
@@ -469,21 +417,20 @@ max_history_length = 50
 
 ### Built-in Tools
 
-- **Memory Tools**: Search, save, and manage persistent memory
-- **Advanced Memory Analytics**: Knowledge graphs, temporal analysis, content synthesis, and analytics dashboards
-- **Code Analysis**: AI-powered code explanations, security scanning, and refactoring suggestions with Phase 2 advanced intelligence
-- **Text Editor**: View and edit files with full Anthropic text editor support and security validation
-- **File System**: Read, write, and list files with path traversal protection and size limits
-- **HTTP Requests**: Make web requests with domain filtering, security headers, and SSRF protection
-- **Shell Commands**: Execute system commands with allowlist-based security filtering
+- **Memory Tools**: Search, save, and manage persistent memory with basic analytics
+- **Code Analysis**: Code explanations, basic security scanning, and refactoring suggestions
+- **Text Editor**: View and edit files with basic security validation
+- **File System**: Read, write, and list files with path validation and size limits
+- **HTTP Requests**: Make web requests with basic domain filtering and security headers
+- **Shell Commands**: Execute system commands with basic security filtering
 - **UUID Generator**: Generate unique identifiers
-- **Security Tools**: Audit logging, resource monitoring, input validation, and rate limiting
+- **Security Tools**: Basic audit logging, resource monitoring, and input validation
 
 ### Anthropic Server Tools
 
-- **Code Execution**: Run Python code in secure sandboxes
+- **Code Execution**: Run Python code in Anthropic's secure sandboxes
 - **Web Search**: Search the web for current information
-- **Text Editor**: Advanced file editing capabilities
+- **Text Editor**: File editing capabilities provided by Anthropic
 
 ## 🏗️ Architecture
 
@@ -530,14 +477,14 @@ cargo test --test security    # Security-specific tests
 
 ## 🔒 Security
 
-This project implements comprehensive security measures including:
+This project implements basic security measures including:
 
-- **Audit Logging**: All sensitive operations are logged with structured JSON format
-- **Input Validation**: Comprehensive validation prevents path traversal, command injection, and SSRF attacks
-- **Rate Limiting**: Configurable rate limits prevent resource exhaustion
-- **Security Headers**: HTTP requests include security headers (CSP, HSTS, etc.)
-- **Resource Monitoring**: Real-time monitoring prevents resource exhaustion attacks
-- **Automated Scanning**: Daily CI/CD security pipeline with multiple security tools
+- **Audit Logging**: Sensitive operations are logged with JSON format
+- **Input Validation**: Basic validation to prevent path traversal and command injection
+- **Rate Limiting**: Configurable rate limits to prevent resource exhaustion
+- **Security Headers**: HTTP requests include basic security headers
+- **Resource Monitoring**: Basic monitoring to prevent resource exhaustion
+- **Timeout Protection**: Timeout handling to prevent hanging operations
 
 For security issues, please see [SECURITY.md](SECURITY.md) for our vulnerability reporting process.
 

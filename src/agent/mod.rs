@@ -269,11 +269,12 @@ impl Agent {
                     return Err(AgentError::tool("memory_stats", "Tool execution timed out - this may indicate a performance issue or infinite loop"));
                 }
             };
-            // Include any server tool results that may have been returned by the API
-            let mut server_results = self.tool_orchestrator.take_server_tool_results();
+            // Server tool results are already included in the assistant's response content
+            // by Anthropic's API, so we don't need to process them separately.
+            // Just clear any that might have been collected to avoid confusion.
+            let server_results = self.tool_orchestrator.take_server_tool_results();
             if !server_results.is_empty() {
-                debug!("Received {} server tool results", server_results.len());
-                tool_results.extend(server_results);
+                debug!("Clearing {} server tool results (already in assistant response)", server_results.len());
             }
 
             info!("Tool execution completed: {} tool_use blocks, {} tool_result blocks",

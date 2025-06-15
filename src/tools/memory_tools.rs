@@ -7,8 +7,8 @@ use tracing::{debug, info};
 use crate::anthropic::models::ToolDefinition;
 use crate::memory::MemoryManager;
 use crate::tools::{
-    create_tool_definition, extract_optional_int_param, extract_optional_string_param,
-    extract_string_param, Tool, ToolResult,
+    create_tool_definition, extract_optional_bool_param, extract_optional_int_param,
+    extract_optional_string_param, extract_string_param, Tool, ToolResult,
 };
 use crate::utils::error::{AgentError, Result};
 
@@ -346,6 +346,25 @@ impl MemoryStatsTool {
         let memory_size_mb = stats.memory_file_size as f64 / 1024.0 / 1024.0;
         let index_size_kb = stats.index_file_size as f64 / 1024.0;
 
+        // Handle the case where counts might be 0 (fast stats mode)
+        let conversations_display = if stats.total_conversations == 0 {
+            "~".to_string() // Indicate approximate/unknown
+        } else {
+            stats.total_conversations.to_string()
+        };
+
+        let memories_display = if stats.total_memories == 0 {
+            "~".to_string() // Indicate approximate/unknown
+        } else {
+            stats.total_memories.to_string()
+        };
+
+        let mode_info = if stats.total_conversations == 0 && stats.total_memories == 0 {
+            "\n             ℹ️  Fast mode: ~ indicates approximate values. Use 'detailed: true' for exact counts."
+        } else {
+            "\n             ✅ Detailed mode: Exact counts provided."
+        };
+
         format!(
             "╭─────────────────────────────────────────────────────────────────╮\n\
              │ 📊 Memory System Statistics                                     │\n\
@@ -363,15 +382,16 @@ impl MemoryStatsTool {
              │ 🎯 System Health:                                               │\n\
              │   • Status: {}                                        │\n\
              │   • Performance: {}                                   │\n\
-             ╰─────────────────────────────────────────────────────────────────╯\n\n\
+             ╰─────────────────────────────────────────────────────────────────╯{}\n\n\
              💡 Memory system is actively storing and indexing your interactions",
             stats.total_chunks,
-            stats.total_conversations,
-            stats.total_memories,
+            conversations_display,
+            memories_display,
             memory_size_mb,
             index_size_kb,
             if stats.total_chunks > 0 { "🟢 Active" } else { "🟡 Empty" },
-            if memory_size_mb < 100.0 { "🟢 Optimal" } else if memory_size_mb < 500.0 { "🟡 Good" } else { "🟠 Large" }
+            if memory_size_mb < 100.0 { "🟢 Optimal" } else if memory_size_mb < 500.0 { "🟡 Good" } else { "🟠 Large" },
+            mode_info
         )
     }
 }
@@ -384,17 +404,34 @@ impl Tool for MemoryStatsTool {
             "Get statistics about the agent's memory system",
             json!({
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "detailed": {
+                        "type": "boolean",
+                        "description": "Whether to include detailed counts (slower but more accurate)",
+                        "default": false
+                    }
+                },
                 "required": []
             }),
         )
     }
 
-    async fn execute(&self, _input: serde_json::Value) -> Result<ToolResult> {
+    async fn execute(&self, input: serde_json::Value) -> Result<ToolResult> {
         debug!("Getting memory statistics");
 
+        // Check if detailed stats are requested
+        let detailed = extract_optional_bool_param(&input, "detailed").unwrap_or(false);
+
         let memory_manager = self.memory_manager.lock().await;
-        let stats = memory_manager.get_stats().await?;
+
+        // Use fast stats by default to avoid timeouts
+        let stats = if detailed {
+            debug!("Getting detailed memory statistics (may be slower)");
+            memory_manager.get_stats().await?
+        } else {
+            debug!("Getting fast memory statistics");
+            memory_manager.get_fast_stats().await?
+        };
 
         let stats_text = Self::format_memory_stats(&stats);
 
@@ -605,6 +642,427 @@ impl Tool for ConversationSearchTool {
 
     fn description(&self) -> Option<&str> {
         Some("Search through past conversations")
+    }
+}
+
+/// Tool for semantic memory search using rust-synaptic's embeddings
+#[cfg(feature = "embeddings")]
+#[derive(Debug, Clone)]
+pub struct SemanticMemorySearchTool {
+    memory_manager: Arc<Mutex<MemoryManager>>,
+}
+
+#[cfg(feature = "embeddings")]
+impl SemanticMemorySearchTool {
+    pub fn new(memory_manager: Arc<Mutex<MemoryManager>>) -> Self {
+        Self { memory_manager }
+    }
+}
+
+#[cfg(feature = "embeddings")]
+#[async_trait]
+impl Tool for SemanticMemorySearchTool {
+    fn definition(&self) -> ToolDefinition {
+        create_tool_definition(
+            "semantic_memory_search",
+            "Search memory using semantic similarity (meaning-based search)",
+            json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The semantic query to search for (searches by meaning, not just keywords)"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return",
+                        "default": 5,
+                        "minimum": 1,
+                        "maximum": 20
+                    }
+                },
+                "required": ["query"]
+            }),
+        )
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<ToolResult> {
+        let query = extract_string_param(&input, "query")?;
+        let limit = extract_optional_int_param(&input, "limit")?.unwrap_or(5) as usize;
+
+        debug!("Performing semantic search for: {} (limit: {})", query, limit);
+
+        let memory_manager = self.memory_manager.lock().await;
+        let results = memory_manager.semantic_search(&query, limit).await?;
+
+        if results.is_empty() {
+            return Ok(ToolResult::success("No semantically similar memories found."));
+        }
+
+        let mut response = format!("🧠 Found {} semantically similar memories:\n\n", results.len());
+        for (i, result) in results.iter().enumerate() {
+            response.push_str(&format!(
+                "{}. **Semantic Score: {:.3}**\n{}\n\n",
+                i + 1,
+                result.score,
+                result.content
+            ));
+        }
+
+        Ok(ToolResult::success(response))
+    }
+
+    fn name(&self) -> &str {
+        "semantic_memory_search"
+    }
+
+    fn description(&self) -> Option<&str> {
+        Some("Search memory using semantic similarity (meaning-based search)")
+    }
+}
+
+/// Tool for finding related memories using knowledge graph
+#[derive(Debug, Clone)]
+pub struct RelatedMemoryTool {
+    memory_manager: Arc<Mutex<MemoryManager>>,
+}
+
+impl RelatedMemoryTool {
+    pub fn new(memory_manager: Arc<Mutex<MemoryManager>>) -> Self {
+        Self { memory_manager }
+    }
+}
+
+#[async_trait]
+impl Tool for RelatedMemoryTool {
+    fn definition(&self) -> ToolDefinition {
+        create_tool_definition(
+            "find_related_memories",
+            "Find memories related to a specific memory using knowledge graph relationships",
+            json!({
+                "type": "object",
+                "properties": {
+                    "memory_key": {
+                        "type": "string",
+                        "description": "The key/ID of the memory to find relationships for"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of related memories to return",
+                        "default": 5,
+                        "minimum": 1,
+                        "maximum": 15
+                    }
+                },
+                "required": ["memory_key"]
+            }),
+        )
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<ToolResult> {
+        let memory_key = extract_string_param(&input, "memory_key")?;
+        let limit = extract_optional_int_param(&input, "limit").unwrap_or(5) as usize;
+
+        debug!("Finding related memories for: {} (limit: {})", memory_key, limit);
+
+        let memory_manager = self.memory_manager.lock().await;
+        let results = memory_manager.find_related_memories(&memory_key, limit).await?;
+
+        if results.is_empty() {
+            return Ok(ToolResult::success("No related memories found."));
+        }
+
+        let mut response = format!("🔗 Found {} related memories:\n\n", results.len());
+        for (i, result) in results.iter().enumerate() {
+            response.push_str(&format!(
+                "{}. **Relationship Strength: {:.3}**\n{}\n\n",
+                i + 1,
+                result.score,
+                result.content
+            ));
+        }
+
+        Ok(ToolResult::success(response))
+    }
+
+    fn name(&self) -> &str {
+        "find_related_memories"
+    }
+
+    fn description(&self) -> Option<&str> {
+        Some("Find memories related to a specific memory using knowledge graph relationships")
+    }
+}
+
+/// Tool for getting advanced memory analytics
+#[cfg(feature = "analytics")]
+#[derive(Debug, Clone)]
+pub struct MemoryAnalyticsTool {
+    memory_manager: Arc<Mutex<MemoryManager>>,
+}
+
+#[cfg(feature = "analytics")]
+impl MemoryAnalyticsTool {
+    pub fn new(memory_manager: Arc<Mutex<MemoryManager>>) -> Self {
+        Self { memory_manager }
+    }
+}
+
+#[cfg(feature = "analytics")]
+#[async_trait]
+impl Tool for MemoryAnalyticsTool {
+    fn definition(&self) -> ToolDefinition {
+        create_tool_definition(
+            "memory_analytics",
+            "Get advanced analytics about memory usage patterns and performance",
+            json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        )
+    }
+
+    async fn execute(&self, _input: serde_json::Value) -> Result<ToolResult> {
+        debug!("Getting advanced memory analytics");
+
+        let memory_manager = self.memory_manager.lock().await;
+        let analytics = memory_manager.get_analytics().await?;
+
+        let response = format!(
+            "📊 **Advanced Memory Analytics**\n\n\
+            🧠 **Knowledge Graph:**\n\
+            - Nodes: {}\n\
+            - Relationships: {}\n\
+            - Graph Density: {:.3}\n\n\
+            ⚡ **Performance:**\n\
+            - Memory Efficiency: {:.1}%\n\n\
+            📈 **Usage Patterns:**\n\
+            - Access Patterns: Available\n\
+            - Temporal Patterns: Available\n\
+            - Search Performance: Available\n\n\
+            💡 The knowledge graph shows how memories are interconnected,\n\
+            helping the AI understand relationships between different pieces of information.",
+            analytics.node_count,
+            analytics.relationship_count,
+            analytics.graph_density,
+            analytics.memory_efficiency * 100.0
+        );
+
+        Ok(ToolResult::success(response))
+    }
+
+    fn name(&self) -> &str {
+        "memory_analytics"
+    }
+
+    fn description(&self) -> Option<&str> {
+        Some("Get advanced analytics about memory usage patterns and performance")
+    }
+}
+
+/// Tool for getting cache performance statistics
+#[derive(Debug, Clone)]
+pub struct CacheStatsTool {
+    memory_manager: Arc<Mutex<MemoryManager>>,
+}
+
+impl CacheStatsTool {
+    pub fn new(memory_manager: Arc<Mutex<MemoryManager>>) -> Self {
+        Self { memory_manager }
+    }
+}
+
+#[async_trait]
+impl Tool for CacheStatsTool {
+    fn definition(&self) -> ToolDefinition {
+        create_tool_definition(
+            "cache_stats",
+            "Get cache performance statistics and memory optimization metrics",
+            json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        )
+    }
+
+    async fn execute(&self, _input: serde_json::Value) -> Result<ToolResult> {
+        debug!("Getting cache performance statistics");
+
+        let memory_manager = self.memory_manager.lock().await;
+        let cache_stats = memory_manager.get_cache_stats().await?;
+
+        let response = format!(
+            "🚀 **Cache Performance Statistics**\n\n\
+            📊 **Cache Utilization:**\n\
+            - Search Results: {}/{} entries\n\
+            - Conversations: {}/{} entries\n\
+            - Memory Entries: {}/{} entries\n\
+            - Total Cached: {}/{} entries\n\n\
+            ⚡ **Performance:**\n\
+            - Cache Hit Rate: {:.1}%\n\
+            - Memory Efficiency: {:.1}%\n\n\
+            💡 The cache improves performance by storing frequently accessed data in memory,\n\
+            reducing the need to query the persistent storage layer.",
+            cache_stats.search_entries, cache_stats.max_entries,
+            cache_stats.conversation_entries, cache_stats.max_entries,
+            cache_stats.memory_entries, cache_stats.max_entries,
+            cache_stats.total_entries, cache_stats.max_entries,
+            cache_stats.hit_rate * 100.0,
+            ((cache_stats.max_entries - cache_stats.total_entries) as f64 / cache_stats.max_entries as f64) * 100.0
+        );
+
+        Ok(ToolResult::success(response))
+    }
+
+    fn name(&self) -> &str {
+        "cache_stats"
+    }
+
+    fn description(&self) -> Option<&str> {
+        Some("Get cache performance statistics and memory optimization metrics")
+    }
+}
+
+/// Tool for batch memory operations
+#[derive(Debug, Clone)]
+pub struct BatchMemoryTool {
+    memory_manager: Arc<Mutex<MemoryManager>>,
+}
+
+impl BatchMemoryTool {
+    pub fn new(memory_manager: Arc<Mutex<MemoryManager>>) -> Self {
+        Self { memory_manager }
+    }
+}
+
+#[async_trait]
+impl Tool for BatchMemoryTool {
+    fn definition(&self) -> ToolDefinition {
+        create_tool_definition(
+            "batch_memory_operations",
+            "Perform batch memory operations for improved performance",
+            json!({
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "enum": ["batch_search", "batch_store"],
+                        "description": "Type of batch operation to perform"
+                    },
+                    "queries": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string"},
+                                "limit": {"type": "integer", "default": 5}
+                            },
+                            "required": ["query"]
+                        },
+                        "description": "Array of search queries for batch_search operation"
+                    },
+                    "entries": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "content": {"type": "string"},
+                                "entry_type": {"type": "string"},
+                                "key_prefix": {"type": "string", "default": ""},
+                                "metadata": {"type": "object", "default": {}}
+                            },
+                            "required": ["content", "entry_type"]
+                        },
+                        "description": "Array of memory entries for batch_store operation"
+                    }
+                },
+                "required": ["operation"]
+            }),
+        )
+    }
+
+    async fn execute(&self, input: serde_json::Value) -> Result<ToolResult> {
+        let operation = extract_string_param(&input, "operation")?;
+
+        match operation.as_str() {
+            "batch_search" => {
+                let queries_json = input.get("queries")
+                    .ok_or_else(|| AgentError::tool("batch_memory_operations", "Missing queries parameter for batch_search"))?;
+
+                let queries: Vec<(String, usize)> = queries_json.as_array()
+                    .ok_or_else(|| AgentError::tool("batch_memory_operations", "Queries must be an array"))?
+                    .iter()
+                    .map(|q| {
+                        let query = q.get("query").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let limit = q.get("limit").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+                        (query, limit)
+                    })
+                    .collect();
+
+                debug!("Performing batch search for {} queries", queries.len());
+
+                let memory_manager = self.memory_manager.lock().await;
+                let results = memory_manager.batch_search(queries).await?;
+
+                let mut response = format!("🔍 **Batch Search Results** ({} queries processed)\n\n", results.len());
+                for (i, query_results) in results.iter().enumerate() {
+                    response.push_str(&format!("**Query {}:** {} results\n", i + 1, query_results.len()));
+                    for (j, result) in query_results.iter().take(3).enumerate() {
+                        response.push_str(&format!("  {}. Score: {:.3} - {}\n", j + 1, result.score,
+                            result.content.chars().take(100).collect::<String>()));
+                    }
+                    if query_results.len() > 3 {
+                        response.push_str(&format!("  ... and {} more results\n", query_results.len() - 3));
+                    }
+                    response.push('\n');
+                }
+
+                Ok(ToolResult::success(response))
+            },
+            "batch_store" => {
+                let entries_json = input.get("entries")
+                    .ok_or_else(|| AgentError::tool("batch_memory_operations", "Missing entries parameter for batch_store"))?;
+
+                let entries: Vec<(String, String, String, std::collections::HashMap<String, String>)> = entries_json.as_array()
+                    .ok_or_else(|| AgentError::tool("batch_memory_operations", "Entries must be an array"))?
+                    .iter()
+                    .map(|e| {
+                        let content = e.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let entry_type = e.get("entry_type").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let key_prefix = e.get("key_prefix").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let metadata = std::collections::HashMap::new(); // Simplified for now
+                        (content, entry_type, key_prefix, metadata)
+                    })
+                    .collect();
+
+                debug!("Performing batch store for {} entries", entries.len());
+
+                let mut memory_manager = self.memory_manager.lock().await;
+                let memory_ids = memory_manager.batch_store_memories(entries).await?;
+
+                let response = format!(
+                    "💾 **Batch Store Complete**\n\n\
+                    Successfully stored {} memory entries.\n\
+                    Memory IDs: {}\n\n\
+                    ⚡ Batch operations are more efficient than individual stores.",
+                    memory_ids.len(),
+                    memory_ids.join(", ")
+                );
+
+                Ok(ToolResult::success(response))
+            },
+            _ => Err(AgentError::tool("batch_memory_operations", &format!("Unknown batch operation: {}", operation)))
+        }
+    }
+
+    fn name(&self) -> &str {
+        "batch_memory_operations"
+    }
+
+    fn description(&self) -> Option<&str> {
+        Some("Perform batch memory operations for improved performance")
     }
 }
 

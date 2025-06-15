@@ -62,7 +62,8 @@ pub struct WebSearchResult {
     pub url: String,
     pub title: String,
     pub encrypted_content: String,
-    pub page_age: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_age: Option<String>,
 }
 
 /// A message in the conversation (internal representation with metadata)

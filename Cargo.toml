@@ -113,8 +113,10 @@ distributed = ["synaptic/distributed"]
 embeddings = ["synaptic/embeddings"]
 analytics = ["synaptic/analytics"]
 realtime = ["synaptic/realtime"]
+multimodal = ["synaptic/multimodal"]
+cross-platform = ["synaptic/cross-platform"]
 # Combined feature for maximum stable power
-full-power = ["external-integrations", "distributed", "analytics", "realtime", "embeddings"]
+full-power = ["external-integrations", "distributed", "analytics", "realtime", "embeddings", "multimodal"]
 
 [profile.release]
 opt-level = 3
