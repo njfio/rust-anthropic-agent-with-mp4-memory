@@ -150,36 +150,41 @@ impl<I, O> AdaptiveBatchProcessor<I, O> {
             _phantom: std::marker::PhantomData,
         }
     }
-    
+
     /// Get current optimal batch size
     pub fn get_batch_size(&self) -> usize {
         self.current_batch_size
     }
-    
+
     /// Update batch size based on performance
     pub fn update_performance(&mut self, latency_ms: f64, batch_size: usize) {
         self.recent_latencies.push(latency_ms);
-        
+
         // Keep only recent measurements
         if self.recent_latencies.len() > 10 {
             self.recent_latencies.remove(0);
         }
-        
-        let avg_latency = self.recent_latencies.iter().sum::<f64>() / self.recent_latencies.len() as f64;
-        
+
+        let avg_latency =
+            self.recent_latencies.iter().sum::<f64>() / self.recent_latencies.len() as f64;
+
         // Adjust batch size based on performance
         if avg_latency > self.target_latency_ms * 1.2 {
             // Too slow, reduce batch size
-            self.current_batch_size = (self.current_batch_size as f64 * (1.0 - self.adjustment_factor)) as usize;
+            self.current_batch_size =
+                (self.current_batch_size as f64 * (1.0 - self.adjustment_factor)) as usize;
             self.current_batch_size = self.current_batch_size.max(self.min_batch_size);
         } else if avg_latency < self.target_latency_ms * 0.8 {
             // Fast enough, increase batch size
-            self.current_batch_size = (self.current_batch_size as f64 * (1.0 + self.adjustment_factor)) as usize;
+            self.current_batch_size =
+                (self.current_batch_size as f64 * (1.0 + self.adjustment_factor)) as usize;
             self.current_batch_size = self.current_batch_size.min(self.max_batch_size);
         }
-        
-        debug!("Adaptive batch size updated to {} (avg latency: {:.2}ms)", 
-               self.current_batch_size, avg_latency);
+
+        debug!(
+            "Adaptive batch size updated to {} (avg latency: {:.2}ms)",
+            self.current_batch_size, avg_latency
+        );
     }
 }
 
@@ -214,29 +219,32 @@ impl ConnectionPool {
             metrics: Arc::new(Mutex::new(ConnectionPoolMetrics::default())),
         }
     }
-    
+
     /// Acquire connection from pool
     pub async fn acquire_connection(&self) -> DspyResult<ConnectionGuard<'_>> {
         let start_time = Instant::now();
-        
-        let permit = self.active_connections.acquire().await
+
+        let permit = self
+            .active_connections
+            .acquire()
+            .await
             .map_err(|_| DspyError::module("ConnectionPool", "Failed to acquire connection"))?;
-        
+
         let wait_time = start_time.elapsed();
-        
+
         // Update metrics
         {
             let mut metrics = self.metrics.lock().unwrap();
             metrics.connection_wait_time_ms = wait_time.as_millis() as f64;
             metrics.current_active_connections += 1;
         }
-        
+
         Ok(ConnectionGuard {
             _permit: permit,
             pool_metrics: self.metrics.clone(),
         })
     }
-    
+
     /// Get connection pool metrics
     pub fn get_metrics(&self) -> ConnectionPoolMetrics {
         self.metrics.lock().unwrap().clone()
@@ -276,43 +284,41 @@ where
             _phantom: std::marker::PhantomData,
         }
     }
-    
+
     /// Submit request for coalescing
-    pub async fn submit_request<M>(
-        &mut self,
-        module: &M,
-        input: I,
-    ) -> DspyResult<O>
+    pub async fn submit_request<M>(&mut self, module: &M, input: I) -> DspyResult<O>
     where
         M: Module<Input = I, Output = O>,
         I: std::fmt::Debug,
     {
         let request_key = format!("{:?}", input);
-        
+
         // Check if similar request is already pending
         if let Some(senders) = self.pending_requests.get_mut(&request_key) {
             let (tx, rx) = tokio::sync::oneshot::channel();
             senders.push(tx);
-            return rx.await.map_err(|_| DspyError::module("RequestCoalescer", "Request cancelled"))?;
+            return rx
+                .await
+                .map_err(|_| DspyError::module("RequestCoalescer", "Request cancelled"))?;
         }
-        
+
         // Start new coalesced request
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.pending_requests.insert(request_key.clone(), vec![tx]);
-        
+
         // Wait for coalescing window
         tokio::time::sleep(Duration::from_millis(self.coalescing_window_ms)).await;
-        
+
         // Execute request
         let result = module.forward(input).await;
-        
+
         // Send result to all waiting requests
         if let Some(senders) = self.pending_requests.remove(&request_key) {
             for sender in senders {
                 let _ = sender.send(result.clone());
             }
         }
-        
+
         result
     }
 }
@@ -335,21 +341,24 @@ impl<M> MemoryAwareModule<M> {
             memory_check_interval: Duration::from_secs(10),
         }
     }
-    
+
     /// Check current memory usage
     fn check_memory_usage(&self) -> DspyResult<()> {
         let current_memory = *self.current_memory_mb.lock().unwrap();
-        
+
         if current_memory > self.memory_limit_mb as f64 {
             return Err(DspyError::module(
                 "MemoryAwareModule",
-                &format!("Memory limit exceeded: {:.1}MB > {}MB", current_memory, self.memory_limit_mb)
+                &format!(
+                    "Memory limit exceeded: {:.1}MB > {}MB",
+                    current_memory, self.memory_limit_mb
+                ),
             ));
         }
-        
+
         Ok(())
     }
-    
+
     /// Update memory usage
     fn update_memory_usage(&self, memory_mb: f64) {
         *self.current_memory_mb.lock().unwrap() = memory_mb;
@@ -365,48 +374,51 @@ where
 {
     type Input = I;
     type Output = O;
-    
+
     fn id(&self) -> &str {
         self.inner.id()
     }
-    
+
     fn name(&self) -> &str {
         self.inner.name()
     }
-    
+
     fn signature(&self) -> &Signature<Self::Input, Self::Output> {
         self.inner.signature()
     }
-    
+
     async fn forward(&self, input: Self::Input) -> DspyResult<Self::Output> {
         // Check memory before processing
         self.check_memory_usage()?;
-        
+
         // Monitor memory during processing
         let start_memory = self.get_current_memory_usage();
-        
+
         let result = self.inner.forward(input).await;
-        
+
         let end_memory = self.get_current_memory_usage();
         self.update_memory_usage(end_memory);
-        
+
         // Log memory usage change
         let memory_delta = end_memory - start_memory;
         if memory_delta > 10.0 {
-            debug!("Memory usage increased by {:.1}MB during processing", memory_delta);
+            debug!(
+                "Memory usage increased by {:.1}MB during processing",
+                memory_delta
+            );
         }
-        
+
         result
     }
-    
+
     fn metadata(&self) -> &ModuleMetadata {
         self.inner.metadata()
     }
-    
+
     fn stats(&self) -> &ModuleStats {
         self.inner.stats()
     }
-    
+
     fn supports_compilation(&self) -> bool {
         self.inner.supports_compilation()
     }
@@ -429,33 +441,33 @@ impl PerformanceOptimizer {
             optimization_history: Vec::new(),
         }
     }
-    
+
     /// Record request metric
     pub fn record_request(&self, metric: RequestMetric) {
         let mut collector = self.metrics_collector.lock().unwrap();
         collector.request_metrics.push(metric);
-        
+
         // Keep only recent metrics
         if collector.request_metrics.len() > 10000 {
             collector.request_metrics.drain(0..1000);
         }
     }
-    
+
     /// Record resource metric
     pub fn record_resource(&self, metric: ResourceMetric) {
         let mut collector = self.metrics_collector.lock().unwrap();
         collector.resource_metrics.push(metric);
-        
+
         // Keep only recent metrics
         if collector.resource_metrics.len() > 1000 {
             collector.resource_metrics.drain(0..100);
         }
     }
-    
+
     /// Get performance summary
     pub fn get_performance_summary(&self) -> PerformanceSummary {
         let collector = self.metrics_collector.lock().unwrap();
-        
+
         if collector.request_metrics.is_empty() {
             return PerformanceSummary {
                 average_latency_ms: 0.0,
@@ -465,29 +477,38 @@ impl PerformanceOptimizer {
                 cpu_usage_percent: 0.0,
             };
         }
-        
+
         let total_requests = collector.request_metrics.len();
-        let successful_requests = collector.request_metrics.iter()
+        let successful_requests = collector
+            .request_metrics
+            .iter()
             .filter(|m| m.success)
             .count();
-        
-        let average_latency_ms = collector.request_metrics.iter()
+
+        let average_latency_ms = collector
+            .request_metrics
+            .iter()
             .map(|m| m.latency_ms)
-            .sum::<f64>() / total_requests as f64;
-        
+            .sum::<f64>()
+            / total_requests as f64;
+
         let elapsed_seconds = collector.start_time.elapsed().as_secs_f64();
         let throughput_rps = total_requests as f64 / elapsed_seconds;
-        
+
         let error_rate = (total_requests - successful_requests) as f64 / total_requests as f64;
-        
-        let memory_usage_mb = collector.resource_metrics.last()
+
+        let memory_usage_mb = collector
+            .resource_metrics
+            .last()
             .map(|m| m.memory_mb)
             .unwrap_or(0.0);
-        
-        let cpu_usage_percent = collector.resource_metrics.last()
+
+        let cpu_usage_percent = collector
+            .resource_metrics
+            .last()
             .map(|m| m.cpu_percent)
             .unwrap_or(0.0);
-        
+
         PerformanceSummary {
             average_latency_ms,
             throughput_rps,
@@ -496,22 +517,22 @@ impl PerformanceOptimizer {
             cpu_usage_percent,
         }
     }
-    
+
     /// Check if optimization is needed
     pub fn should_optimize(&self) -> bool {
         if !self.config.enable_auto_optimization {
             return false;
         }
-        
+
         let summary = self.get_performance_summary();
-        
+
         // Check various performance indicators
-        summary.average_latency_ms > 1000.0 ||
-        summary.error_rate > 0.05 ||
-        summary.memory_usage_mb > self.config.memory_limit_mb.unwrap_or(1024) as f64 * 0.9 ||
-        summary.cpu_usage_percent > self.config.cpu_limit_percent.unwrap_or(80.0) * 0.9
+        summary.average_latency_ms > 1000.0
+            || summary.error_rate > 0.05
+            || summary.memory_usage_mb > self.config.memory_limit_mb.unwrap_or(1024) as f64 * 0.9
+            || summary.cpu_usage_percent > self.config.cpu_limit_percent.unwrap_or(80.0) * 0.9
     }
-    
+
     /// Get optimization history
     pub fn get_optimization_history(&self) -> &[OptimizationResult] {
         &self.optimization_history
@@ -533,9 +554,7 @@ impl MetricsCollector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
-    
     #[test]
     fn test_optimization_types() {
         let types = vec![
@@ -613,10 +632,10 @@ mod tests {
 
     #[test]
     fn test_memory_aware_module_creation() {
-        use crate::dspy::predictor::Predict;
-        use crate::dspy::signature::Signature;
         use crate::anthropic::AnthropicClient;
         use crate::config::AnthropicConfig;
+        use crate::dspy::predictor::Predict;
+        use crate::dspy::signature::Signature;
         use std::sync::Arc;
 
         // Create a mock module
@@ -792,7 +811,10 @@ mod tests {
             details: "Cache hit rate improved from 60% to 85%".to_string(),
         };
 
-        assert_eq!(optimization_result.optimization_type, OptimizationType::CacheOptimization);
+        assert_eq!(
+            optimization_result.optimization_type,
+            OptimizationType::CacheOptimization
+        );
         assert!(optimization_result.success);
         assert_eq!(optimization_result.improvement_percentage, 25.0);
     }

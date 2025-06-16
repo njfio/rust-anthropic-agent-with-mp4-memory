@@ -2,9 +2,9 @@
 //!
 //! This module implements CLI commands for DSPy pipeline creation and execution.
 
-use crate::cli::dspy::{DspyCliContext, DspyCliResult};
-use crate::cli::dspy::commands::{PipelineCommand, OutputFormat};
+use crate::cli::dspy::commands::{OutputFormat, PipelineCommand};
 use crate::cli::dspy::utils::{OutputFormatter, ValidationUtils};
+use crate::cli::dspy::{DspyCliContext, DspyCliResult};
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 use tracing::{debug, info};
@@ -15,21 +15,46 @@ pub async fn execute_pipeline_command(
     context: &DspyCliContext,
 ) -> DspyCliResult<()> {
     match command {
-        PipelineCommand::Create { name, template, modules, config, description, force } => {
-            create_pipeline(context, name, template, modules, config, description, force).await
+        PipelineCommand::Create {
+            name,
+            template,
+            modules,
+            config,
+            description,
+            force,
+        } => create_pipeline(context, name, template, modules, config, description, force).await,
+        PipelineCommand::Run {
+            name,
+            input,
+            output,
+            format,
+            timeout,
+            parallel,
+            monitor,
+        } => {
+            run_pipeline(
+                context, name, input, output, format, timeout, parallel, monitor,
+            )
+            .await
         }
-        PipelineCommand::Run { name, input, output, format, timeout, parallel, monitor } => {
-            run_pipeline(context, name, input, output, format, timeout, parallel, monitor).await
-        }
-        PipelineCommand::List { format, filter, sort } => {
-            list_pipelines(context, format, filter, sort).await
-        }
-        PipelineCommand::Show { name, format, include_modules, include_stats } => {
-            show_pipeline(context, name, format, include_modules, include_stats).await
-        }
-        PipelineCommand::Stats { name, format, metric, since, trend } => {
-            show_stats(context, name, format, metric, since, trend).await
-        }
+        PipelineCommand::List {
+            format,
+            filter,
+            sort,
+        } => list_pipelines(context, format, filter, sort).await,
+        PipelineCommand::Show {
+            name,
+            format,
+            include_modules,
+            include_stats,
+        } => show_pipeline(context, name, format, include_modules, include_stats).await,
+        PipelineCommand::Stats {
+            name,
+            format,
+            metric,
+            since,
+            trend,
+        } => show_stats(context, name, format, metric, since, trend).await,
     }
 }
 
@@ -79,10 +104,10 @@ async fn create_pipeline(
     _force: bool,
 ) -> DspyCliResult<()> {
     debug!("Creating DSPy pipeline: {}", name);
-    
+
     // Validate pipeline name (similar to module name validation)
     ValidationUtils::validate_module_name(&name)?;
-    
+
     // Parse modules if provided
     let module_list = if let Some(modules_str) = modules {
         let modules = crate::cli::dspy::utils::StringUtils::parse_comma_separated(&modules_str);
@@ -93,7 +118,7 @@ async fn create_pipeline(
     } else {
         Vec::new()
     };
-    
+
     // TODO: Implement actual pipeline creation
     // This would involve:
     // 1. Check if pipeline already exists
@@ -101,7 +126,7 @@ async fn create_pipeline(
     // 3. Validate module dependencies
     // 4. Create pipeline configuration
     // 5. Save to pipeline registry
-    
+
     println!("✓ Pipeline '{}' created successfully", name);
     if !module_list.is_empty() {
         println!("  Modules: {}", module_list.join(", "));
@@ -109,9 +134,9 @@ async fn create_pipeline(
     if let Some(desc) = description {
         println!("  Description: {}", desc);
     }
-    
+
     info!("Created DSPy pipeline: {}", name);
-    
+
     Ok(())
 }
 
@@ -127,13 +152,13 @@ async fn run_pipeline(
     _monitor: bool,
 ) -> DspyCliResult<()> {
     debug!("Running DSPy pipeline: {}", name);
-    
+
     // Validate inputs
     ValidationUtils::validate_module_name(&name)?;
     ValidationUtils::validate_timeout(timeout)?;
-    
+
     let format = format.unwrap_or(OutputFormat::Table);
-    
+
     // TODO: Implement actual pipeline execution
     // This would involve:
     // 1. Load pipeline configuration
@@ -142,24 +167,25 @@ async fn run_pipeline(
     // 4. Monitor progress
     // 5. Handle errors and retries
     // 6. Generate execution report
-    
+
     // Simulate execution with progress
-    let mut progress = crate::cli::dspy::utils::ProgressIndicator::new("Pipeline Execution", Some(3));
-    
+    let mut progress =
+        crate::cli::dspy::utils::ProgressIndicator::new("Pipeline Execution", Some(3));
+
     progress.update("Initializing pipeline");
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-    
+
     progress.update("Executing stage 1/3");
     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-    
+
     progress.update("Executing stage 2/3");
     tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
-    
+
     progress.update("Executing stage 3/3");
     tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
-    
+
     progress.finish("Pipeline execution completed");
-    
+
     // Placeholder result
     let result = PipelineResult {
         pipeline: name.clone(),
@@ -170,10 +196,10 @@ async fn run_pipeline(
         stages_total: 3,
         timestamp: chrono::Utc::now().to_rfc3339(),
     };
-    
+
     OutputFormatter::print(&result, format)?;
     info!("Completed pipeline execution: {}", name);
-    
+
     Ok(())
 }
 
@@ -185,9 +211,9 @@ async fn list_pipelines(
     _sort: Option<crate::cli::dspy::commands::SortOrder>,
 ) -> DspyCliResult<()> {
     debug!("Listing DSPy pipelines");
-    
+
     let format = format.unwrap_or(OutputFormat::Table);
-    
+
     // TODO: Implement actual pipeline listing from registry
     // For now, return placeholder data
     let mut pipelines = vec![
@@ -210,18 +236,18 @@ async fn list_pipelines(
             status: "active".to_string(),
         },
     ];
-    
+
     // Apply filter if provided
     if let Some(filter_pattern) = filter {
         pipelines.retain(|pipeline| {
-            pipeline.name.contains(&filter_pattern) || 
-            pipeline.description.contains(&filter_pattern)
+            pipeline.name.contains(&filter_pattern)
+                || pipeline.description.contains(&filter_pattern)
         });
     }
-    
+
     OutputFormatter::print_list(&pipelines, format)?;
     info!("Listed {} pipelines", pipelines.len());
-    
+
     Ok(())
 }
 
@@ -234,12 +260,12 @@ async fn show_pipeline(
     _include_stats: bool,
 ) -> DspyCliResult<()> {
     debug!("Showing DSPy pipeline: {}", name);
-    
+
     let format = format.unwrap_or(OutputFormat::Table);
-    
+
     // Validate pipeline name
     ValidationUtils::validate_module_name(&name)?;
-    
+
     // TODO: Implement actual pipeline retrieval from registry
     // For now, return placeholder data
     let pipeline_info = PipelineInfo {
@@ -251,10 +277,10 @@ async fn show_pipeline(
         last_run: "2024-01-15T14:30:00Z".to_string(),
         status: "active".to_string(),
     };
-    
+
     OutputFormatter::print(&pipeline_info, format)?;
     info!("Displayed pipeline information: {}", name);
-    
+
     Ok(())
 }
 
@@ -268,19 +294,19 @@ async fn show_stats(
     _trend: bool,
 ) -> DspyCliResult<()> {
     debug!("Showing pipeline statistics: {}", name);
-    
+
     let format = format.unwrap_or(OutputFormat::Table);
-    
+
     // Validate pipeline name
     ValidationUtils::validate_module_name(&name)?;
-    
+
     // TODO: Implement actual statistics retrieval
     // This would involve:
     // 1. Query pipeline execution history
     // 2. Calculate performance metrics
     // 3. Generate trends if requested
     // 4. Format results
-    
+
     // Placeholder statistics
     let stats = PipelineStats {
         pipeline: name.clone(),
@@ -290,10 +316,10 @@ async fn show_stats(
         success_rate: 0.956,
         last_run: "2024-01-15T14:30:00Z".to_string(),
     };
-    
+
     OutputFormatter::print(&stats, format)?;
     info!("Displayed pipeline statistics: {}", name);
-    
+
     Ok(())
 }
 
@@ -312,7 +338,7 @@ mod tests {
             last_run: "2024-01-15T14:30:00Z".to_string(),
             status: "active".to_string(),
         };
-        
+
         let json = serde_json::to_string(&pipeline_info).unwrap();
         assert!(json.contains("test_pipeline"));
         assert!(json.contains("custom"));
@@ -329,7 +355,7 @@ mod tests {
             stages_total: 3,
             timestamp: "2024-01-15T10:00:00Z".to_string(),
         };
-        
+
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("test_pipeline"));
         assert!(json.contains("completed"));

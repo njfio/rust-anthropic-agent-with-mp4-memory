@@ -2,9 +2,9 @@
 //!
 //! This module implements CLI commands for DSPy module lifecycle management.
 
-use crate::cli::dspy::{DspyCliContext, DspyCliResult, DspyCliError};
 use crate::cli::dspy::commands::{ModulesCommand, OutputFormat};
 use crate::cli::dspy::utils::{OutputFormatter, ValidationUtils};
+use crate::cli::dspy::{DspyCliContext, DspyCliError, DspyCliResult};
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 use tracing::{debug, info};
@@ -15,21 +15,35 @@ pub async fn execute_modules_command(
     context: &DspyCliContext,
 ) -> DspyCliResult<()> {
     match command {
-        ModulesCommand::List { format, filter, sort } => {
-            list_modules(context, format, filter, sort).await
-        }
-        ModulesCommand::Create { name, template, signature, description, force } => {
-            create_module(context, name, template, signature, description, force).await
-        }
-        ModulesCommand::Show { name, format, include_stats, include_history } => {
-            show_module(context, name, format, include_stats, include_history).await
-        }
-        ModulesCommand::Delete { name, force, backup } => {
-            delete_module(context, name, force, backup).await
-        }
-        ModulesCommand::Validate { file, strict, fix, output } => {
-            validate_module(context, file, strict, fix, output).await
-        }
+        ModulesCommand::List {
+            format,
+            filter,
+            sort,
+        } => list_modules(context, format, filter, sort).await,
+        ModulesCommand::Create {
+            name,
+            template,
+            signature,
+            description,
+            force,
+        } => create_module(context, name, template, signature, description, force).await,
+        ModulesCommand::Show {
+            name,
+            format,
+            include_stats,
+            include_history,
+        } => show_module(context, name, format, include_stats, include_history).await,
+        ModulesCommand::Delete {
+            name,
+            force,
+            backup,
+        } => delete_module(context, name, force, backup).await,
+        ModulesCommand::Validate {
+            file,
+            strict,
+            fix,
+            output,
+        } => validate_module(context, file, strict, fix, output).await,
         ModulesCommand::Templates { format, category } => {
             list_templates(context, format, category).await
         }
@@ -69,11 +83,14 @@ async fn list_modules(
             modules.push(ModuleInfo {
                 name: module_name.to_string(),
                 template: "unknown".to_string(), // Registry doesn't store template info
-                description: module_info.description().unwrap_or("No description").to_string(),
+                description: module_info
+                    .description()
+                    .unwrap_or("No description")
+                    .to_string(),
                 version: module_info.version().to_string(),
                 created: chrono::Utc::now().to_rfc3339(), // Registry doesn't store creation time
                 modified: chrono::Utc::now().to_rfc3339(), // Registry doesn't store modification time
-                size: "Unknown".to_string(), // Registry doesn't store size info
+                size: "Unknown".to_string(),               // Registry doesn't store size info
             });
         }
     }
@@ -81,9 +98,9 @@ async fn list_modules(
     // Apply filter if provided
     if let Some(filter_pattern) = filter {
         modules.retain(|module| {
-            module.name.contains(&filter_pattern) ||
-            module.description.contains(&filter_pattern) ||
-            module.template.contains(&filter_pattern)
+            module.name.contains(&filter_pattern)
+                || module.description.contains(&filter_pattern)
+                || module.template.contains(&filter_pattern)
         });
     }
 
@@ -146,20 +163,20 @@ async fn create_module(
     // Load signature if provided
     let signature_content = if let Some(sig_path) = signature {
         ValidationUtils::validate_file_path(&sig_path, true)?;
-        Some(tokio::fs::read_to_string(&sig_path).await
-            .map_err(|e| DspyCliError::resource_error(
+        Some(tokio::fs::read_to_string(&sig_path).await.map_err(|e| {
+            DspyCliError::resource_error(
                 "filesystem",
                 format!("Failed to read signature file: {}", e),
                 "Check file permissions and path",
-            ))?)
+            )
+        })?)
     } else {
         None
     };
 
     // Create module metadata
-    let module_description = description.unwrap_or_else(|| {
-        format!("DSPy {} module", template_name)
-    });
+    let module_description =
+        description.unwrap_or_else(|| format!("DSPy {} module", template_name));
 
     // Create a placeholder module info for the registry
     // Note: The current DspyRegistry doesn't support creating modules from templates
@@ -196,25 +213,29 @@ async fn show_module(
     ValidationUtils::validate_module_name(&name)?;
 
     // Get module from registry
-    let module_metadata = context.registry.get_module_info(&name)
-        .ok_or_else(|| DspyCliError::validation_error(
+    let module_metadata = context.registry.get_module_info(&name).ok_or_else(|| {
+        DspyCliError::validation_error(
             "module_name",
             format!("Module '{}' not found", name),
             vec![
                 "Check the module name spelling".to_string(),
                 "Use 'dspy modules list' to see available modules".to_string(),
             ],
-        ))?;
+        )
+    })?;
 
     // Create display info
     let module_info = ModuleInfo {
         name: name.clone(),
         template: "unknown".to_string(), // Registry doesn't store template info
-        description: module_metadata.description().unwrap_or("No description").to_string(),
+        description: module_metadata
+            .description()
+            .unwrap_or("No description")
+            .to_string(),
         version: module_metadata.version().to_string(),
         created: chrono::Utc::now().to_rfc3339(), // Registry doesn't store creation time
         modified: chrono::Utc::now().to_rfc3339(), // Registry doesn't store modification time
-        size: "Unknown".to_string(), // Registry doesn't store size info
+        size: "Unknown".to_string(),              // Registry doesn't store size info
     };
 
     OutputFormatter::print(&module_info, format)?;
@@ -324,15 +345,17 @@ async fn validate_module(
     crate::cli::dspy::utils::FileUtils::check_file_size_limit(
         &file,
         context.cli_config.security.max_file_size_mb,
-    ).await?;
+    )
+    .await?;
 
     // Read and parse the file
-    let content = tokio::fs::read_to_string(&file).await
-        .map_err(|e| DspyCliError::resource_error(
+    let content = tokio::fs::read_to_string(&file).await.map_err(|e| {
+        DspyCliError::resource_error(
             "filesystem",
             format!("Failed to read file: {}", e),
             "Check file permissions and path",
-        ))?;
+        )
+    })?;
 
     // Validate content based on file type
     let mut validation_errors = Vec::new();
@@ -387,7 +410,12 @@ async fn validate_module(
     // Generate validation report
     let validation_result = ValidationResult {
         file: file.display().to_string(),
-        status: if validation_errors.is_empty() { "valid" } else { "invalid" }.to_string(),
+        status: if validation_errors.is_empty() {
+            "valid"
+        } else {
+            "invalid"
+        }
+        .to_string(),
         errors: validation_errors.len(),
         warnings: validation_warnings.len(),
         suggestions: suggestions.len(),
@@ -400,15 +428,19 @@ async fn validate_module(
 
     // Output validation result
     if let Some(output_path) = output {
-        let report_content = serde_json::to_string_pretty(&validation_result)
-            .map_err(|e| DspyCliError::internal_error(format!("Failed to serialize report: {}", e)))?;
+        let report_content = serde_json::to_string_pretty(&validation_result).map_err(|e| {
+            DspyCliError::internal_error(format!("Failed to serialize report: {}", e))
+        })?;
 
-        tokio::fs::write(&output_path, report_content).await
-            .map_err(|e| DspyCliError::resource_error(
-                "filesystem",
-                format!("Failed to write report: {}", e),
-                "Check output path permissions",
-            ))?;
+        tokio::fs::write(&output_path, report_content)
+            .await
+            .map_err(|e| {
+                DspyCliError::resource_error(
+                    "filesystem",
+                    format!("Failed to write report: {}", e),
+                    "Check output path permissions",
+                )
+            })?;
 
         println!("✓ Validation report saved to: {}", output_path.display());
     } else {
@@ -439,7 +471,11 @@ async fn validate_module(
         println!("Validation score: {:.2}", validation_result.score);
     }
 
-    info!("Validated module file: {} (score: {:.2})", file.display(), validation_result.score);
+    info!(
+        "Validated module file: {} (score: {:.2})",
+        file.display(),
+        validation_result.score
+    );
 
     Ok(())
 }
@@ -472,19 +508,49 @@ async fn list_templates(
     category: Option<String>,
 ) -> DspyCliResult<()> {
     debug!("Listing DSPy module templates");
-    
+
     let format = format.unwrap_or(OutputFormat::Table);
-    
+
     // Get templates from configuration
     let mut templates = Vec::new();
 
     // Add built-in templates
     let builtin_templates = vec![
-        ("predict", "basic", "Basic prediction module", "text", "response"),
-        ("chain_of_thought", "reasoning", "Chain of thought reasoning", "question", "answer, reasoning"),
-        ("rag", "retrieval", "Retrieval-augmented generation", "query", "answer, sources"),
-        ("react", "reasoning", "Reasoning and acting", "task", "action, observation, thought"),
-        ("program_of_thought", "reasoning", "Program-aided reasoning", "problem", "solution, code"),
+        (
+            "predict",
+            "basic",
+            "Basic prediction module",
+            "text",
+            "response",
+        ),
+        (
+            "chain_of_thought",
+            "reasoning",
+            "Chain of thought reasoning",
+            "question",
+            "answer, reasoning",
+        ),
+        (
+            "rag",
+            "retrieval",
+            "Retrieval-augmented generation",
+            "query",
+            "answer, sources",
+        ),
+        (
+            "react",
+            "reasoning",
+            "Reasoning and acting",
+            "task",
+            "action, observation, thought",
+        ),
+        (
+            "program_of_thought",
+            "reasoning",
+            "Program-aided reasoning",
+            "problem",
+            "solution, code",
+        ),
     ];
 
     for (name, category, description, inputs, outputs) in builtin_templates {
@@ -496,15 +562,15 @@ async fn list_templates(
             outputs: outputs.to_string(),
         });
     }
-    
+
     // Apply category filter if provided
     if let Some(filter_category) = category {
         templates.retain(|template| template.category == filter_category);
     }
-    
+
     OutputFormatter::print_list(&templates, format)?;
     info!("Listed {} templates", templates.len());
-    
+
     Ok(())
 }
 
@@ -518,7 +584,7 @@ mod tests {
         // This test would require a proper DSPy CLI context
         // For now, we'll just test that the function signature is correct
         let config = AgentConfig::default();
-        
+
         // In a real test, we'd create a proper context and test the functionality
         // let context = DspyCliContext::new(config).await.unwrap();
         // let result = list_modules(&context, None, None, None).await;

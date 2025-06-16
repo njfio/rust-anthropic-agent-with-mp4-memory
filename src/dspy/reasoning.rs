@@ -350,7 +350,10 @@ impl AdvancedReasoning {
     }
 
     /// Perform tree-of-thought reasoning
-    async fn tree_of_thought_reasoning(&self, input: &AdvancedReasoningInput) -> DspyResult<TreeOfThought> {
+    async fn tree_of_thought_reasoning(
+        &self,
+        input: &AdvancedReasoningInput,
+    ) -> DspyResult<TreeOfThought> {
         debug!("Starting tree-of-thought reasoning");
 
         let root_id = uuid::Uuid::new_v4().to_string();
@@ -385,7 +388,10 @@ impl AdvancedReasoning {
     }
 
     /// Build reasoning graph
-    async fn build_reasoning_graph(&self, input: &AdvancedReasoningInput) -> DspyResult<ReasoningGraph> {
+    async fn build_reasoning_graph(
+        &self,
+        input: &AdvancedReasoningInput,
+    ) -> DspyResult<ReasoningGraph> {
         debug!("Building reasoning graph");
 
         let mut nodes = HashMap::new();
@@ -440,7 +446,10 @@ impl AdvancedReasoning {
     }
 
     /// Perform analogical reasoning
-    async fn analogical_reasoning(&self, input: &AdvancedReasoningInput) -> DspyResult<Vec<AnalogyMapping>> {
+    async fn analogical_reasoning(
+        &self,
+        input: &AdvancedReasoningInput,
+    ) -> DspyResult<Vec<AnalogyMapping>> {
         debug!("Performing analogical reasoning");
 
         if !input.reasoning_preferences.enable_analogical_reasoning {
@@ -456,14 +465,12 @@ impl AdvancedReasoning {
         let analogy = AnalogyMapping {
             source_domain: "Example domain".to_string(),
             target_domain: "Problem domain".to_string(),
-            mappings: vec![
-                ConceptMapping {
-                    source_concept: "source_concept".to_string(),
-                    target_concept: "target_concept".to_string(),
-                    mapping_type: MappingType::Functional,
-                    confidence: 0.8,
-                }
-            ],
+            mappings: vec![ConceptMapping {
+                source_concept: "source_concept".to_string(),
+                target_concept: "target_concept".to_string(),
+                mapping_type: MappingType::Functional,
+                confidence: 0.8,
+            }],
             structural_similarity: 0.7,
             semantic_similarity: 0.8,
             pragmatic_relevance: 0.9,
@@ -474,7 +481,10 @@ impl AdvancedReasoning {
     }
 
     /// Meta-cognitive monitoring and control
-    async fn meta_cognitive_reasoning(&self, input: &AdvancedReasoningInput) -> DspyResult<MetaCognition> {
+    async fn meta_cognitive_reasoning(
+        &self,
+        input: &AdvancedReasoningInput,
+    ) -> DspyResult<MetaCognition> {
         debug!("Performing meta-cognitive reasoning");
 
         if !input.reasoning_preferences.enable_meta_cognition {
@@ -493,7 +503,9 @@ impl AdvancedReasoning {
         monitoring_metrics.insert("resource_usage".to_string(), 0.3);
 
         let meta_cognition = MetaCognition {
-            current_strategy: input.reasoning_preferences.preferred_strategies
+            current_strategy: input
+                .reasoning_preferences
+                .preferred_strategies
                 .first()
                 .cloned()
                 .unwrap_or(ReasoningStrategy::Deductive),
@@ -503,13 +515,11 @@ impl AdvancedReasoning {
                 ReasoningStrategy::Analogical,
             ],
             monitoring_metrics,
-            adaptation_triggers: vec![
-                AdaptationTrigger {
-                    trigger_type: TriggerType::LowConfidence,
-                    threshold: 0.5,
-                    action: AdaptationAction::SwitchStrategy,
-                }
-            ],
+            adaptation_triggers: vec![AdaptationTrigger {
+                trigger_type: TriggerType::LowConfidence,
+                threshold: 0.5,
+                action: AdaptationAction::SwitchStrategy,
+            }],
         };
 
         debug!("Meta-cognitive reasoning completed");
@@ -517,7 +527,11 @@ impl AdvancedReasoning {
     }
 
     /// Generate alternative conclusions
-    async fn generate_alternatives(&self, main_conclusion: &str, confidence: f64) -> DspyResult<Vec<AlternativeConclusion>> {
+    async fn generate_alternatives(
+        &self,
+        main_conclusion: &str,
+        confidence: f64,
+    ) -> DspyResult<Vec<AlternativeConclusion>> {
         debug!("Generating alternative conclusions");
 
         // In a real implementation, you would:
@@ -539,7 +553,10 @@ impl AdvancedReasoning {
     }
 
     /// Perform the complete advanced reasoning process
-    async fn perform_reasoning(&self, input: AdvancedReasoningInput) -> DspyResult<AdvancedReasoningOutput> {
+    async fn perform_reasoning(
+        &self,
+        input: AdvancedReasoningInput,
+    ) -> DspyResult<AdvancedReasoningOutput> {
         info!("Starting advanced reasoning process");
 
         let mut reasoning_trace = Vec::new();
@@ -566,7 +583,9 @@ impl AdvancedReasoning {
         let main_confidence = 0.85;
 
         // Step 6: Generate alternatives
-        let alternative_conclusions = self.generate_alternatives(&main_conclusion, main_confidence).await?;
+        let alternative_conclusions = self
+            .generate_alternatives(&main_conclusion, main_confidence)
+            .await?;
 
         // Add reasoning steps
         reasoning_trace.push(ReasoningStep {
@@ -587,8 +606,14 @@ impl AdvancedReasoning {
         }
 
         let mut metadata = HashMap::new();
-        metadata.insert("total_reasoning_time_ms".to_string(), serde_json::Value::Number(150.into()));
-        metadata.insert("strategies_explored".to_string(), serde_json::Value::Number(used_strategies.len().into()));
+        metadata.insert(
+            "total_reasoning_time_ms".to_string(),
+            serde_json::Value::Number(150.into()),
+        );
+        metadata.insert(
+            "strategies_explored".to_string(),
+            serde_json::Value::Number(used_strategies.len().into()),
+        );
 
         let output = AdvancedReasoningOutput {
             conclusion: main_conclusion,
@@ -627,23 +652,33 @@ impl Module for AdvancedReasoning {
 
     async fn validate_input(&self, input: &Self::Input) -> DspyResult<()> {
         if input.problem.trim().is_empty() {
-            return Err(DspyError::module(self.name(), "Problem statement cannot be empty"));
+            return Err(DspyError::module(
+                self.name(),
+                "Problem statement cannot be empty",
+            ));
         }
 
         if input.goals.is_empty() {
             warn!("No explicit goals provided for reasoning");
         }
 
-        if input.reasoning_preferences.confidence_threshold < 0.0 || input.reasoning_preferences.confidence_threshold > 1.0 {
-            return Err(DspyError::module(self.name(), "Confidence threshold must be between 0.0 and 1.0"));
+        if input.reasoning_preferences.confidence_threshold < 0.0
+            || input.reasoning_preferences.confidence_threshold > 1.0
+        {
+            return Err(DspyError::module(
+                self.name(),
+                "Confidence threshold must be between 0.0 and 1.0",
+            ));
         }
 
         if input.reasoning_preferences.exploration_depth > self.config.max_thought_tree_depth {
             return Err(DspyError::module(
                 self.name(),
-                &format!("Exploration depth {} exceeds maximum {}",
-                        input.reasoning_preferences.exploration_depth,
-                        self.config.max_thought_tree_depth)
+                &format!(
+                    "Exploration depth {} exceeds maximum {}",
+                    input.reasoning_preferences.exploration_depth,
+                    self.config.max_thought_tree_depth
+                ),
             ));
         }
 
@@ -656,15 +691,24 @@ impl Module for AdvancedReasoning {
         }
 
         if output.confidence < 0.0 || output.confidence > 1.0 {
-            return Err(DspyError::module(self.name(), "Confidence must be between 0.0 and 1.0"));
+            return Err(DspyError::module(
+                self.name(),
+                "Confidence must be between 0.0 and 1.0",
+            ));
         }
 
         if output.reasoning_trace.is_empty() {
-            return Err(DspyError::module(self.name(), "Reasoning trace cannot be empty"));
+            return Err(DspyError::module(
+                self.name(),
+                "Reasoning trace cannot be empty",
+            ));
         }
 
         if output.used_strategies.is_empty() {
-            return Err(DspyError::module(self.name(), "At least one reasoning strategy must be used"));
+            return Err(DspyError::module(
+                self.name(),
+                "At least one reasoning strategy must be used",
+            ));
         }
 
         Ok(())
@@ -710,7 +754,9 @@ pub mod utils {
         let depth_penalty = 0.1 * node.depth as f64;
         let content_quality = if node.content.len() > 10 { 0.1 } else { 0.0 };
 
-        (base_score + content_quality - depth_penalty).max(0.0).min(1.0)
+        (base_score + content_quality - depth_penalty)
+            .max(0.0)
+            .min(1.0)
     }
 
     /// Prune thought tree based on threshold
@@ -721,10 +767,10 @@ pub mod utils {
 
     /// Calculate graph centrality measures
     pub fn calculate_node_centrality(graph: &ReasoningGraph, node_id: &str) -> f64 {
-        let incoming_edges = graph.edges.iter()
-            .filter(|e| e.to_node == node_id)
-            .count();
-        let outgoing_edges = graph.edges.iter()
+        let incoming_edges = graph.edges.iter().filter(|e| e.to_node == node_id).count();
+        let outgoing_edges = graph
+            .edges
+            .iter()
             .filter(|e| e.from_node == node_id)
             .count();
 
@@ -803,7 +849,11 @@ pub mod utils {
 
             // In a real implementation, would check logical consistency
             if curr_step.confidence < prev_step.confidence * 0.5 {
-                warn!("Significant confidence drop between reasoning steps {} and {}", i - 1, i);
+                warn!(
+                    "Significant confidence drop between reasoning steps {} and {}",
+                    i - 1,
+                    i
+                );
             }
         }
 
@@ -818,9 +868,12 @@ pub mod utils {
         quality_factors.push(output.confidence);
 
         // Reasoning trace quality
-        let avg_step_confidence = output.reasoning_trace.iter()
+        let avg_step_confidence = output
+            .reasoning_trace
+            .iter()
             .map(|step| step.confidence)
-            .sum::<f64>() / output.reasoning_trace.len() as f64;
+            .sum::<f64>()
+            / output.reasoning_trace.len() as f64;
         quality_factors.push(avg_step_confidence);
 
         // Strategy diversity bonus
@@ -847,15 +900,18 @@ mod tests {
     use std::sync::Arc;
 
     fn create_test_client() -> Arc<AnthropicClient> {
-        Arc::new(AnthropicClient::new(crate::config::AnthropicConfig {
-            api_key: "test_key".to_string(),
-            model: "claude-3-sonnet-20240229".to_string(),
-            base_url: "https://api.anthropic.com".to_string(),
-            max_tokens: 1000,
-            temperature: 0.7,
-            timeout_seconds: 30,
-            max_retries: 3,
-        }).unwrap())
+        Arc::new(
+            AnthropicClient::new(crate::config::AnthropicConfig {
+                api_key: "test_key".to_string(),
+                model: "claude-3-sonnet-20240229".to_string(),
+                base_url: "https://api.anthropic.com".to_string(),
+                max_tokens: 1000,
+                temperature: 0.7,
+                timeout_seconds: 30,
+                max_retries: 3,
+            })
+            .unwrap(),
+        )
     }
 
     fn create_test_input() -> AdvancedReasoningInput {
@@ -863,7 +919,10 @@ mod tests {
             problem: "How can we solve climate change?".to_string(),
             context: Some("Global environmental challenge".to_string()),
             constraints: vec!["Economic feasibility".to_string()],
-            goals: vec!["Reduce emissions".to_string(), "Maintain economic growth".to_string()],
+            goals: vec![
+                "Reduce emissions".to_string(),
+                "Maintain economic growth".to_string(),
+            ],
             available_knowledge: vec![
                 "Renewable energy is becoming cheaper".to_string(),
                 "Carbon pricing can incentivize clean technology".to_string(),
@@ -1040,19 +1099,17 @@ mod tests {
         assert!(quality > 0.0 && quality <= 1.0);
 
         // Test reasoning chain validation
-        let steps = vec![
-            ReasoningStep {
-                step_number: 1,
-                strategy_used: ReasoningStrategy::Deductive,
-                input: "input".to_string(),
-                output: "output".to_string(),
-                confidence: 0.9,
-                reasoning_type: "test".to_string(),
-                evidence_used: Vec::new(),
-                assumptions_made: Vec::new(),
-                execution_time_ms: 100.0,
-            }
-        ];
+        let steps = vec![ReasoningStep {
+            step_number: 1,
+            strategy_used: ReasoningStrategy::Deductive,
+            input: "input".to_string(),
+            output: "output".to_string(),
+            confidence: 0.9,
+            reasoning_type: "test".to_string(),
+            evidence_used: Vec::new(),
+            assumptions_made: Vec::new(),
+            execution_time_ms: 100.0,
+        }];
 
         assert!(utils::validate_reasoning_chain(&steps));
         assert!(!utils::validate_reasoning_chain(&[]));

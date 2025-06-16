@@ -2,9 +2,9 @@
 //!
 //! This module implements CLI commands for DSPy development tools and utilities.
 
-use crate::cli::dspy::{DspyCliContext, DspyCliResult};
 use crate::cli::dspy::commands::{DevCommand, OutputFormat};
 use crate::cli::dspy::utils::{OutputFormatter, ValidationUtils};
+use crate::cli::dspy::{DspyCliContext, DspyCliResult};
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 use tracing::{debug, info};
@@ -15,20 +15,56 @@ pub async fn execute_dev_command(
     context: &DspyCliContext,
 ) -> DspyCliResult<()> {
     match command {
-        DevCommand::Validate { signature, strict, format, fix, schema } => {
-            validate_signature(context, signature, strict, format, fix, schema).await
+        DevCommand::Validate {
+            signature,
+            strict,
+            format,
+            fix,
+            schema,
+        } => validate_signature(context, signature, strict, format, fix, schema).await,
+        DevCommand::Test {
+            module,
+            test_cases,
+            coverage,
+            format,
+            parallel,
+            output,
+        } => {
+            test_module(
+                context, module, test_cases, coverage, format, parallel, output,
+            )
+            .await
         }
-        DevCommand::Test { module, test_cases, coverage, format, parallel, output } => {
-            test_module(context, module, test_cases, coverage, format, parallel, output).await
-        }
-        DevCommand::Debug { module, input, breakpoint, trace, output } => {
-            debug_module(context, module, input, breakpoint, trace, output).await
-        }
-        DevCommand::Generate { template, name, output, parameters, force } => {
-            generate_template(context, template, name, output, parameters, force).await
-        }
-        DevCommand::Inspect { module, format, depth, include_cache, include_metrics } => {
-            inspect_module(context, module, format, depth, include_cache, include_metrics).await
+        DevCommand::Debug {
+            module,
+            input,
+            breakpoint,
+            trace,
+            output,
+        } => debug_module(context, module, input, breakpoint, trace, output).await,
+        DevCommand::Generate {
+            template,
+            name,
+            output,
+            parameters,
+            force,
+        } => generate_template(context, template, name, output, parameters, force).await,
+        DevCommand::Inspect {
+            module,
+            format,
+            depth,
+            include_cache,
+            include_metrics,
+        } => {
+            inspect_module(
+                context,
+                module,
+                format,
+                depth,
+                include_cache,
+                include_metrics,
+            )
+            .await
         }
     }
 }
@@ -76,12 +112,12 @@ async fn validate_signature(
     _schema: Option<std::path::PathBuf>,
 ) -> DspyCliResult<()> {
     debug!("Validating signature file: {}", signature.display());
-    
+
     let format = format.unwrap_or(OutputFormat::Table);
-    
+
     // Validate file path
     ValidationUtils::validate_file_path(&signature, true)?;
-    
+
     // TODO: Implement actual signature validation
     // This would involve:
     // 1. Parse the signature file
@@ -89,7 +125,7 @@ async fn validate_signature(
     // 3. Check field types and constraints
     // 4. Apply fixes if requested
     // 5. Generate validation report
-    
+
     // Placeholder validation result
     let result = ValidationResult {
         file: signature.display().to_string(),
@@ -99,10 +135,10 @@ async fn validate_signature(
         suggestions: 2,
         score: 0.95,
     };
-    
+
     OutputFormatter::print(&result, format)?;
     info!("Validated signature file: {}", signature.display());
-    
+
     Ok(())
 }
 
@@ -117,12 +153,12 @@ async fn test_module(
     _output: Option<std::path::PathBuf>,
 ) -> DspyCliResult<()> {
     debug!("Testing DSPy module: {}", module);
-    
+
     let format = format.unwrap_or(OutputFormat::Table);
-    
+
     // Validate module name
     ValidationUtils::validate_module_name(&module)?;
-    
+
     // TODO: Implement actual module testing
     // This would involve:
     // 1. Load the module
@@ -130,24 +166,24 @@ async fn test_module(
     // 3. Execute tests (parallel if requested)
     // 4. Collect coverage information
     // 5. Generate test report
-    
+
     // Simulate test execution with progress
     let mut progress = crate::cli::dspy::utils::ProgressIndicator::new("Module Testing", Some(4));
-    
+
     progress.update("Loading module");
     tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-    
+
     progress.update("Loading test cases");
     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-    
+
     progress.update("Executing tests");
     tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
-    
+
     progress.update("Generating report");
     tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-    
+
     progress.finish("Testing completed");
-    
+
     // Placeholder test result
     let result = TestResult {
         module: module.clone(),
@@ -157,10 +193,10 @@ async fn test_module(
         coverage: 0.87,
         duration_ms: 2300,
     };
-    
+
     OutputFormatter::print(&result, format)?;
     info!("Completed testing for module: {}", module);
-    
+
     Ok(())
 }
 
@@ -174,10 +210,10 @@ async fn debug_module(
     _output: Option<std::path::PathBuf>,
 ) -> DspyCliResult<()> {
     debug!("Starting debug session for module: {}", module);
-    
+
     // Validate module name
     ValidationUtils::validate_module_name(&module)?;
-    
+
     // TODO: Implement actual interactive debugging
     // This would involve:
     // 1. Load the module
@@ -186,7 +222,7 @@ async fn debug_module(
     // 4. Start interactive debugging session
     // 5. Handle user commands (step, continue, inspect, etc.)
     // 6. Save debug session if requested
-    
+
     println!("🔍 Debug session started for module: {}", module);
     println!("Debug commands:");
     println!("  step    - Execute next step");
@@ -194,14 +230,11 @@ async fn debug_module(
     println!("  inspect - Inspect current state");
     println!("  quit    - Exit debug session");
     println!();
-    
+
     // Simulate interactive debugging
     loop {
-        let input = crate::cli::dspy::utils::InteractionUtils::prompt_input(
-            "debug> ",
-            None,
-        )?;
-        
+        let input = crate::cli::dspy::utils::InteractionUtils::prompt_input("debug> ", None)?;
+
         match input.trim() {
             "step" => {
                 println!("Executing step...");
@@ -228,9 +261,9 @@ async fn debug_module(
             }
         }
     }
-    
+
     info!("Completed debug session for module: {}", module);
-    
+
     Ok(())
 }
 
@@ -244,10 +277,10 @@ async fn generate_template(
     _force: bool,
 ) -> DspyCliResult<()> {
     debug!("Generating template: {}", template);
-    
+
     let item_name = name.unwrap_or_else(|| format!("generated_{}", template));
     let output_dir = output.unwrap_or_else(|| std::path::PathBuf::from("."));
-    
+
     // TODO: Implement actual template generation
     // This would involve:
     // 1. Load template definition
@@ -255,12 +288,12 @@ async fn generate_template(
     // 3. Generate code files
     // 4. Apply formatting
     // 5. Save to output directory
-    
+
     println!("✓ Generated {} template: {}", template, item_name);
     println!("  Output directory: {}", output_dir.display());
-    
+
     info!("Generated template: {} as {}", template, item_name);
-    
+
     Ok(())
 }
 
@@ -274,12 +307,12 @@ async fn inspect_module(
     _include_metrics: bool,
 ) -> DspyCliResult<()> {
     debug!("Inspecting DSPy module: {}", module);
-    
+
     let format = format.unwrap_or(OutputFormat::Table);
-    
+
     // Validate module name
     ValidationUtils::validate_module_name(&module)?;
-    
+
     // TODO: Implement actual module inspection
     // This would involve:
     // 1. Load the module
@@ -287,7 +320,7 @@ async fn inspect_module(
     // 3. Collect performance metrics
     // 4. Inspect cache state
     // 5. Generate inspection report
-    
+
     // Placeholder inspection result
     let result = InspectionResult {
         module: module.clone(),
@@ -297,10 +330,10 @@ async fn inspect_module(
         cache_entries: 128,
         last_used: chrono::Utc::now().to_rfc3339(),
     };
-    
+
     OutputFormatter::print(&result, format)?;
     info!("Completed inspection of module: {}", module);
-    
+
     Ok(())
 }
 
@@ -318,7 +351,7 @@ mod tests {
             suggestions: 2,
             score: 0.95,
         };
-        
+
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("test.json"));
         assert!(json.contains("valid"));
@@ -335,7 +368,7 @@ mod tests {
             coverage: 0.87,
             duration_ms: 2300,
         };
-        
+
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("test_module"));
         assert!(json.contains("25"));
@@ -352,7 +385,7 @@ mod tests {
             cache_entries: 128,
             last_used: "2024-01-15T10:00:00Z".to_string(),
         };
-        
+
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("test_module"));
         assert!(json.contains("Predict"));

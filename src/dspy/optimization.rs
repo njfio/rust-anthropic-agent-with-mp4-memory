@@ -207,7 +207,11 @@ impl fmt::Display for OptimizationStrategy {
             Self::Bootstrap {
                 num_samples,
                 sample_size,
-            } => write!(f, "Bootstrap(samples={}, size={})", num_samples, sample_size),
+            } => write!(
+                f,
+                "Bootstrap(samples={}, size={})",
+                num_samples, sample_size
+            ),
             Self::QualityBased {
                 min_quality,
                 max_examples,
@@ -255,7 +259,11 @@ impl fmt::Display for OptimizationStrategy {
             } => write!(
                 f,
                 "MIPROv2(bootstrap={}, candidates={}, batch={}, iter={}, conf={:.2})",
-                num_bootstrap, num_candidates, mini_batch_size, max_iterations, confidence_threshold
+                num_bootstrap,
+                num_candidates,
+                mini_batch_size,
+                max_iterations,
+                confidence_threshold
             ),
             Self::BootstrapFinetune {
                 learning_rate,
@@ -285,7 +293,9 @@ impl fmt::Display for OptimizationStrategy {
             } => write!(
                 f,
                 "HyperparameterTuning(params={}, method={}, max_evals={})",
-                param_ranges.len(), search_method, max_evaluations
+                param_ranges.len(),
+                search_method,
+                max_evaluations
             ),
         }
     }
@@ -513,7 +523,9 @@ impl Optimizer {
                 examples_per_cluster,
             } => self.diversity_based_selection(examples, *num_clusters, *examples_per_cluster)?,
             OptimizationStrategy::GradientBased { .. } => {
-                warn!("Gradient-based selection not yet implemented, falling back to quality-based");
+                warn!(
+                    "Gradient-based selection not yet implemented, falling back to quality-based"
+                );
                 self.quality_based_selection(examples, 0.5, None)?
             }
             OptimizationStrategy::Evolutionary { .. } => {

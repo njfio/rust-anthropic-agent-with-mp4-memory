@@ -315,23 +315,33 @@ impl Default for DspyGlobalConfig {
 impl Default for DspyModulesConfig {
     fn default() -> Self {
         let mut templates = HashMap::new();
-        templates.insert("predict".to_string(), ModuleTemplateConfig {
-            description: "Basic prediction module".to_string(),
-            inputs: vec!["text".to_string()],
-            outputs: vec!["response".to_string()],
-        });
-        templates.insert("chain_of_thought".to_string(), ModuleTemplateConfig {
-            description: "Chain of thought reasoning".to_string(),
-            inputs: vec!["question".to_string()],
-            outputs: vec!["answer".to_string(), "reasoning".to_string()],
-        });
+        templates.insert(
+            "predict".to_string(),
+            ModuleTemplateConfig {
+                description: "Basic prediction module".to_string(),
+                inputs: vec!["text".to_string()],
+                outputs: vec!["response".to_string()],
+            },
+        );
+        templates.insert(
+            "chain_of_thought".to_string(),
+            ModuleTemplateConfig {
+                description: "Chain of thought reasoning".to_string(),
+                inputs: vec!["question".to_string()],
+                outputs: vec!["answer".to_string(), "reasoning".to_string()],
+            },
+        );
 
         Self {
             auto_validate: true,
             template_auto_update: false,
             default_template: "predict".to_string(),
             signature_validation: "strict".to_string(),
-            metadata_required: vec!["name".to_string(), "description".to_string(), "version".to_string()],
+            metadata_required: vec![
+                "name".to_string(),
+                "description".to_string(),
+                "version".to_string(),
+            ],
             max_module_size_mb: 100,
             compression_enabled: true,
             templates,
@@ -360,7 +370,11 @@ impl Default for DspyBenchmarkConfig {
 impl Default for BenchmarkMetricsConfig {
     fn default() -> Self {
         Self {
-            default_metrics: vec!["latency".to_string(), "throughput".to_string(), "accuracy".to_string()],
+            default_metrics: vec![
+                "latency".to_string(),
+                "throughput".to_string(),
+                "accuracy".to_string(),
+            ],
             latency_percentiles: vec![50, 90, 95, 99],
             accuracy_threshold: 0.8,
             performance_baseline: "previous".to_string(),
@@ -371,12 +385,15 @@ impl Default for BenchmarkMetricsConfig {
 impl Default for DspyOptimizationConfig {
     fn default() -> Self {
         let mut strategies = HashMap::new();
-        strategies.insert("mipro_v2".to_string(), serde_json::json!({
-            "max_candidates": 50,
-            "max_bootstrapped_demos": 20,
-            "max_labeled_demos": 10,
-            "num_trials": 100
-        }));
+        strategies.insert(
+            "mipro_v2".to_string(),
+            serde_json::json!({
+                "max_candidates": 50,
+                "max_bootstrapped_demos": 20,
+                "max_labeled_demos": 10,
+                "num_trials": 100
+            }),
+        );
 
         Self {
             max_iterations: 50,
@@ -451,7 +468,12 @@ impl Default for DspySecurityConfig {
             validate_inputs: true,
             sanitize_file_paths: true,
             max_file_size_mb: 50,
-            allowed_file_extensions: vec![".json".to_string(), ".yaml".to_string(), ".toml".to_string(), ".txt".to_string()],
+            allowed_file_extensions: vec![
+                ".json".to_string(),
+                ".yaml".to_string(),
+                ".toml".to_string(),
+                ".txt".to_string(),
+            ],
             rate_limiting: true,
             max_operations_per_minute: 60,
         }
@@ -540,7 +562,11 @@ impl DspyCliConfig {
             if let Err(e) = std::fs::create_dir_all(&self.paths.base_dir) {
                 return Err(DspyCliError::Resource {
                     resource: "filesystem".to_string(),
-                    message: format!("Cannot create base directory {}: {}", self.paths.base_dir.display(), e),
+                    message: format!(
+                        "Cannot create base directory {}: {}",
+                        self.paths.base_dir.display(),
+                        e
+                    ),
                     current_usage: None,
                     limit: None,
                     suggestion: Some("Check directory permissions".to_string()),
@@ -600,25 +626,29 @@ impl DspyConfigManager {
     /// Load configuration from file
     pub async fn load_config(&self) -> DspyCliResult<DspyCliConfig> {
         if !self.config_path.exists() {
-            debug!("Configuration file not found, using defaults: {}", self.config_path.display());
+            debug!(
+                "Configuration file not found, using defaults: {}",
+                self.config_path.display()
+            );
             return Ok(DspyCliConfig::default());
         }
 
-        let content = fs::read_to_string(&self.config_path).await
-            .map_err(|e| DspyCliError::Config {
-                message: format!("Failed to read configuration file: {}", e),
-                suggestion: Some("Check file permissions and path".to_string()),
-                config_path: Some(self.config_path.clone()),
-                line_number: None,
-            })?;
+        let content =
+            fs::read_to_string(&self.config_path)
+                .await
+                .map_err(|e| DspyCliError::Config {
+                    message: format!("Failed to read configuration file: {}", e),
+                    suggestion: Some("Check file permissions and path".to_string()),
+                    config_path: Some(self.config_path.clone()),
+                    line_number: None,
+                })?;
 
-        let config: DspyCliConfig = toml::from_str(&content)
-            .map_err(|e| DspyCliError::Config {
-                message: format!("Failed to parse configuration file: {}", e),
-                suggestion: Some("Check TOML syntax and structure".to_string()),
-                config_path: Some(self.config_path.clone()),
-                line_number: None, // TOML error doesn't provide line info in this version
-            })?;
+        let config: DspyCliConfig = toml::from_str(&content).map_err(|e| DspyCliError::Config {
+            message: format!("Failed to parse configuration file: {}", e),
+            suggestion: Some("Check TOML syntax and structure".to_string()),
+            config_path: Some(self.config_path.clone()),
+            line_number: None, // TOML error doesn't provide line info in this version
+        })?;
 
         config.validate()?;
         info!("Configuration loaded from: {}", self.config_path.display());
@@ -632,7 +662,8 @@ impl DspyConfigManager {
 
         // Ensure parent directory exists
         if let Some(parent) = self.config_path.parent() {
-            fs::create_dir_all(parent).await
+            fs::create_dir_all(parent)
+                .await
                 .map_err(|e| DspyCliError::Resource {
                     resource: "filesystem".to_string(),
                     message: format!("Failed to create config directory: {}", e),
@@ -642,14 +673,14 @@ impl DspyConfigManager {
                 })?;
         }
 
-        let content = toml::to_string_pretty(config)
-            .map_err(|e| DspyCliError::Internal {
-                message: format!("Failed to serialize configuration: {}", e),
-                error_id: uuid::Uuid::new_v4().to_string(),
-                context: std::collections::HashMap::new(),
-            })?;
+        let content = toml::to_string_pretty(config).map_err(|e| DspyCliError::Internal {
+            message: format!("Failed to serialize configuration: {}", e),
+            error_id: uuid::Uuid::new_v4().to_string(),
+            context: std::collections::HashMap::new(),
+        })?;
 
-        fs::write(&self.config_path, content).await
+        fs::write(&self.config_path, content)
+            .await
             .map_err(|e| DspyCliError::Config {
                 message: format!("Failed to write configuration file: {}", e),
                 suggestion: Some("Check file permissions and disk space".to_string()),
@@ -666,7 +697,10 @@ impl DspyConfigManager {
         if !self.config_path.exists() {
             let default_config = DspyCliConfig::default();
             self.save_config(&default_config).await?;
-            info!("Created default configuration file: {}", self.config_path.display());
+            info!(
+                "Created default configuration file: {}",
+                self.config_path.display()
+            );
         }
         Ok(())
     }
@@ -698,8 +732,11 @@ mod tests {
     fn test_config_to_dspy_config() {
         let config = DspyCliConfig::default();
         let dspy_config = config.to_dspy_config();
-        
-        assert_eq!(dspy_config.max_optimization_iterations, config.optimization.max_iterations as u32);
+
+        assert_eq!(
+            dspy_config.max_optimization_iterations,
+            config.optimization.max_iterations as u32
+        );
         assert_eq!(dspy_config.enable_module_caching, config.cache.enabled);
     }
 
@@ -707,18 +744,21 @@ mod tests {
     async fn test_config_manager_save_load() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("test_config.toml");
-        
+
         let manager = DspyConfigManager::with_path(config_path);
         let original_config = DspyCliConfig::default();
-        
+
         // Save config
         manager.save_config(&original_config).await.unwrap();
-        
+
         // Load config
         let loaded_config = manager.load_config().await.unwrap();
-        
+
         // Compare (basic check)
         assert_eq!(original_config.version, loaded_config.version);
-        assert_eq!(original_config.dspy.default_strategy, loaded_config.dspy.default_strategy);
+        assert_eq!(
+            original_config.dspy.default_strategy,
+            loaded_config.dspy.default_strategy
+        );
     }
 }

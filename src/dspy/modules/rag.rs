@@ -218,27 +218,44 @@ where
     /// Retrieve relevant documents
     async fn retrieve_documents(&self, query: &str) -> DspyResult<Vec<RetrievedDocument>> {
         let memory_manager = self.memory_manager.lock().await;
-        
+
         // Perform search based on strategy
         let search_results = match self.config.retrieval_strategy {
-            RetrievalStrategy::Semantic => {
-                memory_manager.search_raw(query, self.config.num_documents).await
-                    .map_err(|e| DspyError::module(&self.name, &format!("Semantic search failed: {}", e)))?
-            }
+            RetrievalStrategy::Semantic => memory_manager
+                .search_raw(query, self.config.num_documents)
+                .await
+                .map_err(|e| {
+                    DspyError::module(&self.name, &format!("Semantic search failed: {}", e))
+                })?,
             RetrievalStrategy::Keyword => {
                 // TODO: Implement keyword search
-                memory_manager.search_raw(query, self.config.num_documents).await
-                    .map_err(|e| DspyError::module(&self.name, &format!("Keyword search failed: {}", e)))?
+                memory_manager
+                    .search_raw(query, self.config.num_documents)
+                    .await
+                    .map_err(|e| {
+                        DspyError::module(&self.name, &format!("Keyword search failed: {}", e))
+                    })?
             }
             RetrievalStrategy::Hybrid => {
                 // TODO: Implement hybrid search
-                memory_manager.search_raw(query, self.config.num_documents).await
-                    .map_err(|e| DspyError::module(&self.name, &format!("Hybrid search failed: {}", e)))?
+                memory_manager
+                    .search_raw(query, self.config.num_documents)
+                    .await
+                    .map_err(|e| {
+                        DspyError::module(&self.name, &format!("Hybrid search failed: {}", e))
+                    })?
             }
             RetrievalStrategy::DensePassage => {
                 // TODO: Implement dense passage retrieval
-                memory_manager.search_raw(query, self.config.num_documents).await
-                    .map_err(|e| DspyError::module(&self.name, &format!("Dense passage search failed: {}", e)))?
+                memory_manager
+                    .search_raw(query, self.config.num_documents)
+                    .await
+                    .map_err(|e| {
+                        DspyError::module(
+                            &self.name,
+                            &format!("Dense passage search failed: {}", e),
+                        )
+                    })?
             }
         };
 
@@ -274,7 +291,11 @@ where
         mut documents: Vec<RetrievedDocument>,
     ) -> DspyResult<Vec<RetrievedDocument>> {
         // Simple reranking: sort by relevance score
-        documents.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal));
+        documents.sort_by(|a, b| {
+            b.relevance_score
+                .partial_cmp(&a.relevance_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         Ok(documents)
     }
 
@@ -285,11 +306,11 @@ where
 
         for (i, doc) in documents.iter().enumerate() {
             let doc_text = format!("Document {}: {}\n\n", i + 1, doc.content);
-            
+
             if current_length + doc_text.len() > self.config.max_context_length {
                 break;
             }
-            
+
             context.push_str(&doc_text);
             current_length += doc_text.len();
         }
@@ -324,8 +345,12 @@ where
         };
 
         // Parse response to output type
-        serde_json::from_str::<O>(&response)
-            .map_err(|e| DspyError::module(&self.name, &format!("Failed to parse generated answer: {}", e)))
+        serde_json::from_str::<O>(&response).map_err(|e| {
+            DspyError::module(
+                &self.name,
+                &format!("Failed to parse generated answer: {}", e),
+            )
+        })
     }
 
     /// Calculate retrieval confidence
@@ -556,6 +581,9 @@ impl ModuleInfo for RAG<(), ()> {
     }
 
     fn supports_capability(&self, capability: &str) -> bool {
-        matches!(capability, "retrieval" | "generation" | "context_aware" | "knowledge_grounded" | "document_search")
+        matches!(
+            capability,
+            "retrieval" | "generation" | "context_aware" | "knowledge_grounded" | "document_search"
+        )
     }
 }

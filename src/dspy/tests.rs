@@ -1615,10 +1615,16 @@ mod teleprompter_tests {
         assert_eq!(teleprompter.optimizer().strategy().name(), "RandomSampling");
 
         let quality_teleprompter = Teleprompter::quality_focused(0.8);
-        assert_eq!(quality_teleprompter.optimizer().strategy().name(), "QualityBased");
+        assert_eq!(
+            quality_teleprompter.optimizer().strategy().name(),
+            "QualityBased"
+        );
 
         let bootstrap_teleprompter = Teleprompter::bootstrap(5, 20);
-        assert_eq!(bootstrap_teleprompter.optimizer().strategy().name(), "Bootstrap");
+        assert_eq!(
+            bootstrap_teleprompter.optimizer().strategy().name(),
+            "Bootstrap"
+        );
     }
 
     #[test]
@@ -1655,10 +1661,16 @@ mod teleprompter_tests {
         let mut module = MockModule::new(false);
         let empty_examples = ExampleSet::new();
 
-        let result = teleprompter.optimize(&mut module, empty_examples).await.unwrap();
+        let result = teleprompter
+            .optimize(&mut module, empty_examples)
+            .await
+            .unwrap();
         assert!(!result.success);
         assert!(result.error_message.is_some());
-        assert!(result.error_message.unwrap().contains("No examples provided"));
+        assert!(result
+            .error_message
+            .unwrap()
+            .contains("No examples provided"));
     }
 
     #[tokio::test]
@@ -1691,14 +1703,7 @@ mod teleprompter_tests {
     fn test_optimization_result_creation() {
         let metrics = OptimizationMetrics::new("TestStrategy".to_string());
 
-        let success_result = OptimizationResult::success(
-            0.85,
-            0.15,
-            10,
-            5.5,
-            25,
-            metrics.clone(),
-        );
+        let success_result = OptimizationResult::success(0.85, 0.15, 10, 5.5, 25, metrics.clone());
 
         assert!(success_result.success);
         assert_eq!(success_result.final_score, 0.85);
@@ -1707,10 +1712,7 @@ mod teleprompter_tests {
         assert_eq!(success_result.optimization_time, 5.5);
         assert_eq!(success_result.best_examples_count, 25);
 
-        let failure_result = OptimizationResult::failure(
-            "Test error".to_string(),
-            metrics,
-        );
+        let failure_result = OptimizationResult::failure("Test error".to_string(), metrics);
 
         assert!(!failure_result.success);
         assert!(failure_result.error_message.is_some());
@@ -1735,7 +1737,14 @@ mod teleprompter_tests {
 
         // Validation function that validates examples with even indices
         let validator = |example: &Example<SimpleInput, SimpleOutput>| -> DspyResult<bool> {
-            let index: usize = example.input.text.chars().last().unwrap().to_digit(10).unwrap() as usize;
+            let index: usize = example
+                .input
+                .text
+                .chars()
+                .last()
+                .unwrap()
+                .to_digit(10)
+                .unwrap() as usize;
             Ok(index % 2 == 0)
         };
 
@@ -1775,7 +1784,10 @@ mod bootstrap_tests {
 
         assert_eq!(custom_config.max_labeled_demos, 8);
         assert_eq!(custom_config.max_bootstrapped_demos, 8);
-        assert_eq!(custom_config.validation_strictness, ValidationStrictness::High);
+        assert_eq!(
+            custom_config.validation_strictness,
+            ValidationStrictness::High
+        );
     }
 
     #[test]
@@ -1790,7 +1802,8 @@ mod bootstrap_tests {
             ..Default::default()
         };
 
-        let custom_bootstrap = BootstrapFewShot::<SimpleInput, SimpleOutput>::with_config(custom_config);
+        let custom_bootstrap =
+            BootstrapFewShot::<SimpleInput, SimpleOutput>::with_config(custom_config);
         assert_eq!(custom_bootstrap.config().max_labeled_demos, 5);
         assert_eq!(custom_bootstrap.config().max_bootstrapped_demos, 5);
     }
@@ -1964,7 +1977,10 @@ mod bootstrap_tests {
         )
         .with_quality_score(0.5); // Low quality
 
-        let is_valid = bootstrap.validate_example(&bootstrap_example, &original).await.unwrap();
+        let is_valid = bootstrap
+            .validate_example(&bootstrap_example, &original)
+            .await
+            .unwrap();
         assert!(is_valid); // Low strictness accepts all
     }
 
@@ -1997,7 +2013,10 @@ mod bootstrap_tests {
         )
         .with_quality_score(0.8);
 
-        let is_valid = bootstrap.validate_example(&high_quality_example, &original).await.unwrap();
+        let is_valid = bootstrap
+            .validate_example(&high_quality_example, &original)
+            .await
+            .unwrap();
         assert!(is_valid);
 
         // Low quality example should fail
@@ -2011,7 +2030,10 @@ mod bootstrap_tests {
         )
         .with_quality_score(0.5);
 
-        let is_valid = bootstrap.validate_example(&low_quality_example, &original).await.unwrap();
+        let is_valid = bootstrap
+            .validate_example(&low_quality_example, &original)
+            .await
+            .unwrap();
         assert!(!is_valid);
     }
 
@@ -2045,7 +2067,10 @@ mod bootstrap_tests {
         )
         .with_quality_score(0.8);
 
-        let is_valid = bootstrap.validate_example(&better_example, &original).await.unwrap();
+        let is_valid = bootstrap
+            .validate_example(&better_example, &original)
+            .await
+            .unwrap();
         assert!(is_valid);
 
         // Example with lower quality than original should fail
@@ -2059,21 +2084,30 @@ mod bootstrap_tests {
         )
         .with_quality_score(0.5);
 
-        let is_valid = bootstrap.validate_example(&worse_example, &original).await.unwrap();
+        let is_valid = bootstrap
+            .validate_example(&worse_example, &original)
+            .await
+            .unwrap();
         assert!(!is_valid);
     }
 
     #[tokio::test]
     async fn test_bootstrap_with_custom_metric() {
-        let metric = Arc::new(|original: &Example<SimpleInput, SimpleOutput>, generated: &SimpleOutput| -> DspyResult<bool> {
-            // Custom validation: generated output must contain "valid"
-            Ok(generated.result.contains("valid"))
-        });
+        let metric = Arc::new(
+            |original: &Example<SimpleInput, SimpleOutput>,
+             generated: &SimpleOutput|
+             -> DspyResult<bool> {
+                // Custom validation: generated output must contain "valid"
+                Ok(generated.result.contains("valid"))
+            },
+        );
 
-        let bootstrap = BootstrapFewShot::<SimpleInput, SimpleOutput>::new()
-            .with_metric(metric);
+        let bootstrap = BootstrapFewShot::<SimpleInput, SimpleOutput>::new().with_metric(metric);
 
-        assert_eq!(bootstrap.config().validation_strictness, ValidationStrictness::Custom);
+        assert_eq!(
+            bootstrap.config().validation_strictness,
+            ValidationStrictness::Custom
+        );
 
         let original = Example::new(
             SimpleInput {
@@ -2094,7 +2128,10 @@ mod bootstrap_tests {
             },
         );
 
-        let is_valid = bootstrap.validate_example(&valid_example, &original).await.unwrap();
+        let is_valid = bootstrap
+            .validate_example(&valid_example, &original)
+            .await
+            .unwrap();
         assert!(is_valid);
 
         // Invalid example should fail
@@ -2107,7 +2144,10 @@ mod bootstrap_tests {
             },
         );
 
-        let is_valid = bootstrap.validate_example(&invalid_example, &original).await.unwrap();
+        let is_valid = bootstrap
+            .validate_example(&invalid_example, &original)
+            .await
+            .unwrap();
         assert!(!is_valid);
     }
 
@@ -2181,8 +2221,6 @@ mod bootstrap_tests {
 mod compiler_tests {
     use super::*;
     use std::path::PathBuf;
-
-
 
     #[test]
     fn test_compiler_config_creation() {
@@ -2343,7 +2381,7 @@ mod cache_tests {
 
         let custom_config = CacheConfig {
             max_size_bytes: 512 * 1024 * 1024, // 512MB
-            ttl_seconds: 3600, // 1 hour
+            ttl_seconds: 3600,                 // 1 hour
             persistent: false,
             enable_compression: false,
             max_entries: 5000,
@@ -2423,7 +2461,9 @@ mod cache_tests {
         };
 
         let tags = vec!["tag1".to_string(), "tag2".to_string()];
-        let result = cache.put_with_tags("tagged_key", test_data.clone(), tags).await;
+        let result = cache
+            .put_with_tags("tagged_key", test_data.clone(), tags)
+            .await;
         assert!(result.is_ok());
 
         let tagged_keys = cache.get_by_tag("tag1").await;
@@ -2751,9 +2791,8 @@ mod metrics_tests {
     #[test]
     fn test_composite_metric_weighted_average() {
         let exact_match = Arc::new(ExactMatch::new()) as Arc<dyn Metric<SimpleInput, SimpleOutput>>;
-        let semantic_sim = Arc::new(
-            SemanticSimilarity::new().with_threshold(0.5)
-        ) as Arc<dyn Metric<SimpleInput, SimpleOutput>>;
+        let semantic_sim = Arc::new(SemanticSimilarity::new().with_threshold(0.5))
+            as Arc<dyn Metric<SimpleInput, SimpleOutput>>;
 
         let composite = CompositeMetric::new("Composite", "Combined metric")
             .add_metric(exact_match, 0.7)
@@ -2778,9 +2817,8 @@ mod metrics_tests {
     #[test]
     fn test_composite_metric_all_pass() {
         let exact_match = Arc::new(ExactMatch::new()) as Arc<dyn Metric<SimpleInput, SimpleOutput>>;
-        let f1_score = Arc::new(
-            F1Score::new().with_threshold(0.8)
-        ) as Arc<dyn Metric<SimpleInput, SimpleOutput>>;
+        let f1_score = Arc::new(F1Score::new().with_threshold(0.8))
+            as Arc<dyn Metric<SimpleInput, SimpleOutput>>;
 
         let composite = CompositeMetric::new("AllPass", "All must pass")
             .add_metric(exact_match, 1.0)
@@ -2808,7 +2846,7 @@ mod metrics_tests {
     fn test_composite_metric_any_pass() {
         let exact_match = Arc::new(ExactMatch::new()) as Arc<dyn Metric<SimpleInput, SimpleOutput>>;
         let semantic_sim = Arc::new(
-            SemanticSimilarity::new().with_threshold(0.9) // Very high threshold
+            SemanticSimilarity::new().with_threshold(0.9), // Very high threshold
         ) as Arc<dyn Metric<SimpleInput, SimpleOutput>>;
 
         let composite = CompositeMetric::new("AnyPass", "Any can pass")
@@ -2830,7 +2868,9 @@ mod metrics_tests {
     fn test_metric_validation() {
         // Test invalid threshold
         let metric = SemanticSimilarity::new().with_threshold(1.5);
-        assert!(<SemanticSimilarity as Metric<SimpleInput, SimpleOutput>>::validate(&metric).is_err());
+        assert!(
+            <SemanticSimilarity as Metric<SimpleInput, SimpleOutput>>::validate(&metric).is_err()
+        );
 
         let metric = F1Score::new().with_threshold(-0.1);
         assert!(<F1Score as Metric<SimpleInput, SimpleOutput>>::validate(&metric).is_err());
@@ -2840,26 +2880,39 @@ mod metrics_tests {
         assert!(<ExactMatch as Metric<SimpleInput, SimpleOutput>>::validate(&metric).is_ok());
 
         let metric = SemanticSimilarity::new().with_threshold(0.8);
-        assert!(<SemanticSimilarity as Metric<SimpleInput, SimpleOutput>>::validate(&metric).is_ok());
+        assert!(
+            <SemanticSimilarity as Metric<SimpleInput, SimpleOutput>>::validate(&metric).is_ok()
+        );
     }
 
     #[test]
     fn test_composite_metric_validation() {
         // Empty composite should fail
         let composite = CompositeMetric::<SimpleInput, SimpleOutput>::new("Empty", "No metrics");
-        assert!(<CompositeMetric<SimpleInput, SimpleOutput> as Metric<SimpleInput, SimpleOutput>>::validate(&composite).is_err());
+        assert!(<CompositeMetric<SimpleInput, SimpleOutput> as Metric<
+            SimpleInput,
+            SimpleOutput,
+        >>::validate(&composite)
+        .is_err());
 
         // Valid composite
         let exact_match = Arc::new(ExactMatch::new()) as Arc<dyn Metric<SimpleInput, SimpleOutput>>;
-        let composite = CompositeMetric::new("Valid", "Has metrics")
-            .add_metric(exact_match, 1.0);
-        assert!(<CompositeMetric<SimpleInput, SimpleOutput> as Metric<SimpleInput, SimpleOutput>>::validate(&composite).is_ok());
+        let composite = CompositeMetric::new("Valid", "Has metrics").add_metric(exact_match, 1.0);
+        assert!(<CompositeMetric<SimpleInput, SimpleOutput> as Metric<
+            SimpleInput,
+            SimpleOutput,
+        >>::validate(&composite)
+        .is_ok());
 
         // Negative weight should fail
         let exact_match = Arc::new(ExactMatch::new()) as Arc<dyn Metric<SimpleInput, SimpleOutput>>;
-        let composite = CompositeMetric::new("Invalid", "Negative weight")
-            .add_metric(exact_match, -1.0);
-        assert!(<CompositeMetric<SimpleInput, SimpleOutput> as Metric<SimpleInput, SimpleOutput>>::validate(&composite).is_err());
+        let composite =
+            CompositeMetric::new("Invalid", "Negative weight").add_metric(exact_match, -1.0);
+        assert!(<CompositeMetric<SimpleInput, SimpleOutput> as Metric<
+            SimpleInput,
+            SimpleOutput,
+        >>::validate(&composite)
+        .is_err());
     }
 
     #[test]
@@ -2872,7 +2925,10 @@ mod metrics_tests {
         assert_eq!(result.score, 0.85);
         assert!(result.passed);
         assert_eq!(result.confidence, 0.95);
-        assert_eq!(result.details.get("test_key").unwrap().as_str().unwrap(), "test_value");
+        assert_eq!(
+            result.details.get("test_key").unwrap().as_str().unwrap(),
+            "test_value"
+        );
     }
 
     #[test]
@@ -2940,31 +2996,52 @@ mod metrics_tests {
     #[test]
     fn test_metric_names_and_descriptions() {
         let exact_match = ExactMatch::new();
-        assert_eq!(<ExactMatch as Metric<SimpleInput, SimpleOutput>>::name(&exact_match), "ExactMatch");
-        assert!(!<ExactMatch as Metric<SimpleInput, SimpleOutput>>::description(&exact_match).is_empty());
+        assert_eq!(
+            <ExactMatch as Metric<SimpleInput, SimpleOutput>>::name(&exact_match),
+            "ExactMatch"
+        );
+        assert!(
+            !<ExactMatch as Metric<SimpleInput, SimpleOutput>>::description(&exact_match)
+                .is_empty()
+        );
 
         let semantic_sim = SemanticSimilarity::new();
-        assert_eq!(<SemanticSimilarity as Metric<SimpleInput, SimpleOutput>>::name(&semantic_sim), "SemanticSimilarity");
-        assert!(!<SemanticSimilarity as Metric<SimpleInput, SimpleOutput>>::description(&semantic_sim).is_empty());
+        assert_eq!(
+            <SemanticSimilarity as Metric<SimpleInput, SimpleOutput>>::name(&semantic_sim),
+            "SemanticSimilarity"
+        );
+        assert!(
+            !<SemanticSimilarity as Metric<SimpleInput, SimpleOutput>>::description(&semantic_sim)
+                .is_empty()
+        );
 
         let f1_score = F1Score::new();
-        assert_eq!(<F1Score as Metric<SimpleInput, SimpleOutput>>::name(&f1_score), "F1Score");
+        assert_eq!(
+            <F1Score as Metric<SimpleInput, SimpleOutput>>::name(&f1_score),
+            "F1Score"
+        );
         assert!(!<F1Score as Metric<SimpleInput, SimpleOutput>>::description(&f1_score).is_empty());
     }
 
     #[test]
     fn test_metric_score_ranges() {
         let exact_match = ExactMatch::new();
-        let (min, max) = <ExactMatch as Metric<SimpleInput, SimpleOutput>>::score_range(&exact_match);
+        let (min, max) =
+            <ExactMatch as Metric<SimpleInput, SimpleOutput>>::score_range(&exact_match);
         assert_eq!(min, 0.0);
         assert_eq!(max, 1.0);
         assert!(<ExactMatch as Metric<SimpleInput, SimpleOutput>>::higher_is_better(&exact_match));
 
         let semantic_sim = SemanticSimilarity::new();
-        let (min, max) = <SemanticSimilarity as Metric<SimpleInput, SimpleOutput>>::score_range(&semantic_sim);
+        let (min, max) =
+            <SemanticSimilarity as Metric<SimpleInput, SimpleOutput>>::score_range(&semantic_sim);
         assert_eq!(min, 0.0);
         assert_eq!(max, 1.0);
-        assert!(<SemanticSimilarity as Metric<SimpleInput, SimpleOutput>>::higher_is_better(&semantic_sim));
+        assert!(
+            <SemanticSimilarity as Metric<SimpleInput, SimpleOutput>>::higher_is_better(
+                &semantic_sim
+            )
+        );
     }
 }
 
@@ -2996,24 +3073,38 @@ mod evaluator_tests {
         let mut examples = ExampleSet::new();
 
         examples.add_example(Example::new(
-            SimpleInput { text: "input1".to_string() },
-            SimpleOutput { result: "output1".to_string() },
+            SimpleInput {
+                text: "input1".to_string(),
+            },
+            SimpleOutput {
+                result: "output1".to_string(),
+            },
         ));
 
         examples.add_example(Example::new(
-            SimpleInput { text: "input2".to_string() },
-            SimpleOutput { result: "output2".to_string() },
+            SimpleInput {
+                text: "input2".to_string(),
+            },
+            SimpleOutput {
+                result: "output2".to_string(),
+            },
         ));
 
         examples.add_example(Example::new(
-            SimpleInput { text: "input3".to_string() },
-            SimpleOutput { result: "output3".to_string() },
+            SimpleInput {
+                text: "input3".to_string(),
+            },
+            SimpleOutput {
+                result: "output3".to_string(),
+            },
         ));
 
         examples
     }
 
-    fn simple_predict_fn(input: &SimpleInput) -> std::pin::Pin<Box<dyn std::future::Future<Output = DspyResult<SimpleOutput>> + Send>> {
+    fn simple_predict_fn(
+        input: &SimpleInput,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = DspyResult<SimpleOutput>> + Send>> {
         let input_text = input.text.clone(); // Clone to avoid lifetime issues
         Box::pin(async move {
             // Simple prediction function that sometimes matches exactly
@@ -3057,16 +3148,18 @@ mod evaluator_tests {
     #[tokio::test]
     async fn test_evaluator_basic_evaluation() {
         let exact_match = Arc::new(ExactMatch::new()) as Arc<dyn Metric<SimpleInput, SimpleOutput>>;
-        let semantic_sim = Arc::new(
-            SemanticSimilarity::new().with_threshold(0.5)
-        ) as Arc<dyn Metric<SimpleInput, SimpleOutput>>;
+        let semantic_sim = Arc::new(SemanticSimilarity::new().with_threshold(0.5))
+            as Arc<dyn Metric<SimpleInput, SimpleOutput>>;
 
         let mut evaluator = Evaluator::new()
             .add_metric(exact_match)
             .add_metric(semantic_sim);
 
         let examples = create_test_examples();
-        let result = evaluator.evaluate(&examples, simple_predict_fn).await.unwrap();
+        let result = evaluator
+            .evaluate(&examples, simple_predict_fn)
+            .await
+            .unwrap();
 
         // Check overall stats
         assert_eq!(result.overall_stats.total_examples, 3);
@@ -3095,7 +3188,10 @@ mod evaluator_tests {
         let mut evaluator = Evaluator::with_config(config).add_metric(exact_match);
 
         let examples = create_test_examples();
-        let result = evaluator.evaluate(&examples, simple_predict_fn).await.unwrap();
+        let result = evaluator
+            .evaluate(&examples, simple_predict_fn)
+            .await
+            .unwrap();
 
         // Should have detailed results
         assert!(result.detailed_results.is_some());
@@ -3121,7 +3217,10 @@ mod evaluator_tests {
         let mut evaluator = Evaluator::with_config(config).add_metric(exact_match);
 
         let examples = create_test_examples(); // Has 3 examples
-        let result = evaluator.evaluate(&examples, simple_predict_fn).await.unwrap();
+        let result = evaluator
+            .evaluate(&examples, simple_predict_fn)
+            .await
+            .unwrap();
 
         // Should only evaluate 2 examples
         assert_eq!(result.overall_stats.total_examples, 2);
@@ -3141,7 +3240,10 @@ mod evaluator_tests {
         let mut evaluator = Evaluator::with_config(config).add_metric(exact_match);
 
         let examples = create_test_examples();
-        let result = evaluator.evaluate(&examples, simple_predict_fn).await.unwrap();
+        let result = evaluator
+            .evaluate(&examples, simple_predict_fn)
+            .await
+            .unwrap();
 
         // Should still evaluate all examples
         assert_eq!(result.overall_stats.total_examples, 3);
@@ -3158,7 +3260,10 @@ mod evaluator_tests {
         assert_eq!(evaluator.stats().total_examples, 0);
 
         let examples = create_test_examples();
-        let _result = evaluator.evaluate(&examples, simple_predict_fn).await.unwrap();
+        let _result = evaluator
+            .evaluate(&examples, simple_predict_fn)
+            .await
+            .unwrap();
 
         // Updated stats
         assert_eq!(evaluator.stats().total_evaluations, 1);
@@ -3188,7 +3293,10 @@ mod evaluator_tests {
         let mut evaluator = Evaluator::new().add_metric(exact_match);
 
         let examples = create_test_examples();
-        let result = evaluator.evaluate(&examples, simple_predict_fn).await.unwrap();
+        let result = evaluator
+            .evaluate(&examples, simple_predict_fn)
+            .await
+            .unwrap();
 
         // Test display formatting
         let display_string = format!("{}", result);
@@ -3203,7 +3311,10 @@ mod evaluator_tests {
         let mut evaluator = Evaluator::new().add_metric(exact_match);
 
         let examples = create_test_examples();
-        let result = evaluator.evaluate(&examples, simple_predict_fn).await.unwrap();
+        let result = evaluator
+            .evaluate(&examples, simple_predict_fn)
+            .await
+            .unwrap();
 
         let summary = &result.metric_results["ExactMatch"];
 
@@ -3224,12 +3335,17 @@ mod evaluator_tests {
         let mut evaluator = Evaluator::new().add_metric(exact_match);
 
         let examples = create_test_examples();
-        let result = evaluator.evaluate(&examples, simple_predict_fn).await.unwrap();
+        let result = evaluator
+            .evaluate(&examples, simple_predict_fn)
+            .await
+            .unwrap();
 
         // Check metadata
         assert!(result.metadata.start_time <= result.metadata.end_time);
         assert_eq!(result.metadata.evaluator_version, "1.0.0");
-        assert!(!result.metadata.config.compute_detailed_stats || result.detailed_results.is_some());
+        assert!(
+            !result.metadata.config.compute_detailed_stats || result.detailed_results.is_some()
+        );
     }
 }
 
@@ -3262,8 +3378,12 @@ mod advanced_optimizer_tests {
 
         for i in 0..20 {
             examples.add_example(Example::new(
-                SimpleInput { text: format!("input_{}", i) },
-                SimpleOutput { result: format!("output_{}", i) },
+                SimpleInput {
+                    text: format!("input_{}", i),
+                },
+                SimpleOutput {
+                    result: format!("output_{}", i),
+                },
             ));
         }
 
@@ -3333,7 +3453,8 @@ mod advanced_optimizer_tests {
             min_lr: 1e-5,
         };
 
-        let optimizer = BootstrapFinetuneOptimizer::<SimpleInput, SimpleOutput>::new(config.clone());
+        let optimizer =
+            BootstrapFinetuneOptimizer::<SimpleInput, SimpleOutput>::new(config.clone());
         assert_eq!(optimizer.config().learning_rate, 1e-3);
         assert_eq!(optimizer.config().num_epochs, 5);
         assert_eq!(optimizer.config().batch_size, 4);
@@ -3618,8 +3739,8 @@ mod advanced_optimizer_tests {
 mod dspy_integration_tests {
     use super::*;
     use crate::agent::dspy_integration::*;
-    use crate::dspy::tool_integration::*;
     use crate::anthropic::AnthropicClient;
+    use crate::dspy::tool_integration::*;
     use crate::security::{SecurityContext, SecurityManager};
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -3630,7 +3751,10 @@ mod dspy_integration_tests {
             user_id: "test_user".to_string(),
             session_id: "test_session".to_string(),
             roles: vec!["user".to_string()],
-            permissions: vec!["dspy_modules:create".to_string(), "dspy_modules:execute".to_string()],
+            permissions: vec![
+                "dspy_modules:create".to_string(),
+                "dspy_modules:execute".to_string(),
+            ],
             ip_address: Some("127.0.0.1".to_string()),
             user_agent: Some("test_agent".to_string()),
             timestamp: SystemTime::now(),
@@ -3647,7 +3771,8 @@ mod dspy_integration_tests {
             temperature: 0.7,
             timeout_seconds: 30,
             max_retries: 3,
-        }).unwrap()
+        })
+        .unwrap()
     }
 
     #[test]
@@ -3678,9 +3803,18 @@ mod dspy_integration_tests {
         let extension = DspyAgentExtension::new(config, client, None);
 
         let stats = extension.get_registry_stats().await;
-        assert_eq!(stats.get("total_modules").unwrap(), &serde_json::Value::Number(0.into()));
-        assert_eq!(stats.get("compiled_modules").unwrap(), &serde_json::Value::Number(0.into()));
-        assert_eq!(stats.get("total_usage_count").unwrap(), &serde_json::Value::Number(0.into()));
+        assert_eq!(
+            stats.get("total_modules").unwrap(),
+            &serde_json::Value::Number(0.into())
+        );
+        assert_eq!(
+            stats.get("compiled_modules").unwrap(),
+            &serde_json::Value::Number(0.into())
+        );
+        assert_eq!(
+            stats.get("total_usage_count").unwrap(),
+            &serde_json::Value::Number(0.into())
+        );
     }
 
     #[tokio::test]
@@ -3741,8 +3875,14 @@ mod dspy_integration_tests {
         assert!(registry.list_metadata().is_empty());
 
         let stats = registry.stats();
-        assert_eq!(stats.get("total_tools").unwrap(), &serde_json::Value::Number(0.into()));
-        assert_eq!(stats.get("total_executions").unwrap(), &serde_json::Value::Number(0.into()));
+        assert_eq!(
+            stats.get("total_tools").unwrap(),
+            &serde_json::Value::Number(0.into())
+        );
+        assert_eq!(
+            stats.get("total_executions").unwrap(),
+            &serde_json::Value::Number(0.into())
+        );
     }
 
     #[test]
@@ -3772,7 +3912,10 @@ mod dspy_integration_tests {
         };
 
         assert_eq!(metadata.name, "test_tool");
-        assert_eq!(metadata.description, Some("Test tool description".to_string()));
+        assert_eq!(
+            metadata.description,
+            Some("Test tool description".to_string())
+        );
         assert_eq!(metadata.module_id, "test_module_123");
         assert_eq!(metadata.metrics.execution_count, 0);
     }
@@ -3793,8 +3936,14 @@ mod dspy_integration_tests {
 
         // Verify initial values
         assert_eq!(stats["total_modules"], serde_json::Value::Number(0.into()));
-        assert_eq!(stats["compiled_modules"], serde_json::Value::Number(0.into()));
-        assert_eq!(stats["total_usage_count"], serde_json::Value::Number(0.into()));
+        assert_eq!(
+            stats["compiled_modules"],
+            serde_json::Value::Number(0.into())
+        );
+        assert_eq!(
+            stats["total_usage_count"],
+            serde_json::Value::Number(0.into())
+        );
     }
 
     #[tokio::test]
@@ -3805,7 +3954,9 @@ mod dspy_integration_tests {
         let context = create_test_security_context();
 
         // Removing non-existent module should succeed (idempotent)
-        let result = extension.remove_module("nonexistent_module", Some(&context)).await;
+        let result = extension
+            .remove_module("nonexistent_module", Some(&context))
+            .await;
         assert!(result.is_ok());
     }
 
@@ -3892,7 +4043,10 @@ mod dspy_integration_tests {
         // Test deserialization
         let deserialized: ToolMetrics = serde_json::from_str(&serialized).unwrap();
         assert_eq!(deserialized.execution_count, metrics.execution_count);
-        assert_eq!(deserialized.successful_executions, metrics.successful_executions);
+        assert_eq!(
+            deserialized.successful_executions,
+            metrics.successful_executions
+        );
         assert_eq!(deserialized.failed_executions, metrics.failed_executions);
         assert!((deserialized.success_rate - metrics.success_rate).abs() < 0.001);
     }
@@ -3966,8 +4120,14 @@ mod dspy_integration_tests {
         // In a real scenario, metadata would be added when registering tools
 
         let stats = registry.stats();
-        assert_eq!(stats.get("total_tools").unwrap(), &serde_json::Value::Number(0.into())); // No tools registered
-        assert_eq!(stats.get("total_executions").unwrap(), &serde_json::Value::Number(0.into())); // No executions
+        assert_eq!(
+            stats.get("total_tools").unwrap(),
+            &serde_json::Value::Number(0.into())
+        ); // No tools registered
+        assert_eq!(
+            stats.get("total_executions").unwrap(),
+            &serde_json::Value::Number(0.into())
+        ); // No executions
 
         // Average success rate should be 0.0 for empty registry
         let avg_success_rate = stats.get("average_success_rate").unwrap().as_f64().unwrap();
@@ -3978,31 +4138,33 @@ mod dspy_integration_tests {
 #[cfg(test)]
 mod specialized_modules_tests {
     use super::*;
-    use crate::dspy::modules::{
-        ChainOfThought, ChainOfThoughtConfig, ProgramOfThought, ProgramOfThoughtConfig,
-        RAG, RAGConfig, RAGResult, ReAct, ReActConfig, ReActStep, SelfImproving,
-        SelfImprovingConfig, ImprovementMetrics, ReasoningMetrics, ReasoningModule,
-        SpecializedModuleConfig, SpecializedModuleRegistry,
-        ReActAction, RetrievalStrategy, RetrievedDocument, ProgrammingLanguage,
-        SecurityRestrictions, CodeExecutionResult, ImprovementStrategy, FeedbackSettings,
-        FeedbackEntry, FeedbackType, ImprovementRecord, utils,
-    };
-    use crate::dspy::modules::ReasoningStep as ModuleReasoningStep;
     use crate::anthropic::AnthropicClient;
+    use crate::dspy::modules::ReasoningStep as ModuleReasoningStep;
+    use crate::dspy::modules::{
+        utils, ChainOfThought, ChainOfThoughtConfig, CodeExecutionResult, FeedbackEntry,
+        FeedbackSettings, FeedbackType, ImprovementMetrics, ImprovementRecord, ImprovementStrategy,
+        ProgramOfThought, ProgramOfThoughtConfig, ProgrammingLanguage, RAGConfig, RAGResult, ReAct,
+        ReActAction, ReActConfig, ReActStep, ReasoningMetrics, ReasoningModule, RetrievalStrategy,
+        RetrievedDocument, SecurityRestrictions, SelfImproving, SelfImprovingConfig,
+        SpecializedModuleConfig, SpecializedModuleRegistry, RAG,
+    };
     use crate::memory::MemoryManager;
     use std::sync::Arc;
     use tokio::sync::{Mutex, RwLock};
 
     fn create_test_anthropic_client() -> Arc<AnthropicClient> {
-        Arc::new(AnthropicClient::new(crate::config::AnthropicConfig {
-            api_key: "test_key".to_string(),
-            model: "claude-3-sonnet-20240229".to_string(),
-            base_url: "https://api.anthropic.com".to_string(),
-            max_tokens: 1000,
-            temperature: 0.7,
-            timeout_seconds: 30,
-            max_retries: 3,
-        }).unwrap())
+        Arc::new(
+            AnthropicClient::new(crate::config::AnthropicConfig {
+                api_key: "test_key".to_string(),
+                model: "claude-3-sonnet-20240229".to_string(),
+                base_url: "https://api.anthropic.com".to_string(),
+                max_tokens: 1000,
+                temperature: 0.7,
+                timeout_seconds: 30,
+                max_retries: 3,
+            })
+            .unwrap(),
+        )
     }
 
     fn create_test_signature() -> Signature<String, String> {
@@ -4078,7 +4240,10 @@ mod specialized_modules_tests {
         assert!(registry.find_modules_by_capability("reasoning").is_empty());
 
         let stats = registry.get_statistics();
-        assert_eq!(stats.get("total_modules").unwrap(), &serde_json::Value::Number(0.into()));
+        assert_eq!(
+            stats.get("total_modules").unwrap(),
+            &serde_json::Value::Number(0.into())
+        );
 
         // Test clearing empty registry
         registry.clear();
@@ -4165,7 +4330,10 @@ mod specialized_modules_tests {
         assert_eq!(config.max_context_length, 4000);
         assert!(config.enable_reranking);
         assert!(!config.enable_query_expansion);
-        assert!(matches!(config.retrieval_strategy, RetrievalStrategy::Semantic));
+        assert!(matches!(
+            config.retrieval_strategy,
+            RetrievalStrategy::Semantic
+        ));
     }
 
     #[test]
@@ -4250,7 +4418,9 @@ mod specialized_modules_tests {
         assert!(restrictions.disallow_subprocess);
         assert_eq!(restrictions.max_memory_mb, 100);
         assert!(!restrictions.blacklisted_functions.is_empty());
-        assert!(restrictions.blacklisted_functions.contains(&"exec".to_string()));
+        assert!(restrictions
+            .blacklisted_functions
+            .contains(&"exec".to_string()));
     }
 
     #[test]
@@ -4289,7 +4459,10 @@ mod specialized_modules_tests {
         assert_eq!(config.max_improvement_iterations, 5);
         assert_eq!(config.learning_rate, 0.1);
         assert!(config.auto_improve);
-        assert!(matches!(config.improvement_strategy, ImprovementStrategy::GradualOptimization));
+        assert!(matches!(
+            config.improvement_strategy,
+            ImprovementStrategy::GradualOptimization
+        ));
     }
 
     #[test]
@@ -4461,17 +4634,15 @@ mod specialized_modules_tests {
         assert!(!utils::validate_reasoning_chain(&[]));
 
         // Test chain with empty content
-        let empty_content_steps = vec![
-            ModuleReasoningStep {
-                step_number: 1,
-                step_type: "reasoning".to_string(),
-                input: "".to_string(), // Empty input
-                output: "valid output".to_string(),
-                confidence: 0.8,
-                execution_time_ms: 100.0,
-                metadata: std::collections::HashMap::new(),
-            },
-        ];
+        let empty_content_steps = vec![ModuleReasoningStep {
+            step_number: 1,
+            step_type: "reasoning".to_string(),
+            input: "".to_string(), // Empty input
+            output: "valid output".to_string(),
+            confidence: 0.8,
+            execution_time_ms: 100.0,
+            metadata: std::collections::HashMap::new(),
+        }];
 
         assert!(!utils::validate_reasoning_chain(&empty_content_steps));
     }
@@ -4509,5 +4680,4 @@ mod specialized_modules_tests {
         assert_eq!(deserialized.max_steps, config.max_steps);
         assert_eq!(deserialized.temperature, config.temperature);
     }
-
 }

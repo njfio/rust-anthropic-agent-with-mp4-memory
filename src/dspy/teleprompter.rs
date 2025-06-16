@@ -304,10 +304,7 @@ impl Teleprompter {
             improvement,
             best_iteration + 1,
             optimization_time,
-            self.best_examples
-                .as_ref()
-                .map(|e| e.len())
-                .unwrap_or(0),
+            self.best_examples.as_ref().map(|e| e.len()).unwrap_or(0),
             self.optimizer.metrics().clone(),
         );
 

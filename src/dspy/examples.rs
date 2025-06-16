@@ -266,8 +266,16 @@ impl<I, O> ExampleSet<I, O> {
             validated_count: validated,
             high_quality_count: high_quality,
             average_quality: avg_quality,
-            min_quality: if min_quality.is_finite() { min_quality } else { 0.0 },
-            max_quality: if max_quality.is_finite() { max_quality } else { 0.0 },
+            min_quality: if min_quality.is_finite() {
+                min_quality
+            } else {
+                0.0
+            },
+            max_quality: if max_quality.is_finite() {
+                max_quality
+            } else {
+                0.0
+            },
         };
     }
 

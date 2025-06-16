@@ -284,7 +284,7 @@ where
         Fut: std::future::Future<Output = DspyResult<O>> + Send,
     {
         let start_time = chrono::Utc::now();
-        
+
         // Validate before starting
         self.validate()?;
 
@@ -338,7 +338,10 @@ where
         // Evaluate each example
         for (eval_index, &example_index) in example_indices.iter().enumerate() {
             let example = examples.examples().get(example_index).ok_or_else(|| {
-                DspyError::evaluation("evaluation", &format!("Example index {} out of bounds", example_index))
+                DspyError::evaluation(
+                    "evaluation",
+                    &format!("Example index {} out of bounds", example_index),
+                )
             })?;
             let eval_start = std::time::Instant::now();
 
@@ -367,7 +370,12 @@ where
                 let metric_result = match metric.evaluate(example, &prediction) {
                     Ok(result) => result,
                     Err(e) => {
-                        warn!("Metric {} failed for example {}: {}", metric.name(), example_index, e);
+                        warn!(
+                            "Metric {} failed for example {}: {}",
+                            metric.name(),
+                            example_index,
+                            e
+                        );
                         if self.config.fail_fast {
                             return Err(e);
                         }
@@ -444,24 +452,28 @@ where
         };
 
         // Compute significance tests if enabled
-        let significance_tests = if self.config.enable_significance_testing && self.metrics.len() > 1 {
-            Some(self.compute_significance_tests(&all_metric_scores)?)
-        } else {
-            None
-        };
+        let significance_tests =
+            if self.config.enable_significance_testing && self.metrics.len() > 1 {
+                Some(self.compute_significance_tests(&all_metric_scores)?)
+            } else {
+                None
+            };
 
         // Update internal statistics
         self.stats.total_evaluations += 1;
         self.stats.total_examples += total_examples;
         self.stats.failed_evaluations += total_examples - successful_evaluations;
         self.stats.success_rate = if self.stats.total_examples > 0 {
-            (self.stats.total_examples - self.stats.failed_evaluations) as f64 / self.stats.total_examples as f64
+            (self.stats.total_examples - self.stats.failed_evaluations) as f64
+                / self.stats.total_examples as f64
         } else {
             1.0
         };
 
         // Update average evaluation time
-        let total_time_sum = self.stats.avg_evaluation_time_ms * (self.stats.total_evaluations - 1) as f64 + total_time_ms;
+        let total_time_sum = self.stats.avg_evaluation_time_ms
+            * (self.stats.total_evaluations - 1) as f64
+            + total_time_ms;
         self.stats.avg_evaluation_time_ms = total_time_sum / self.stats.total_evaluations as f64;
 
         let metadata = EvaluationMetadata {
@@ -495,7 +507,7 @@ where
         if scores.is_empty() {
             return Err(DspyError::evaluation(
                 metric_name,
-                &format!("No scores available for metric {}", metric_name)
+                &format!("No scores available for metric {}", metric_name),
             ));
         }
 
@@ -571,10 +583,10 @@ where
         if df >= 30 {
             // Use normal approximation for large df
             match alpha {
-                a if a <= 0.005 => 2.576,  // 99% confidence
-                a if a <= 0.01 => 2.326,   // 98% confidence
-                a if a <= 0.025 => 1.96,   // 95% confidence
-                a if a <= 0.05 => 1.645,   // 90% confidence
+                a if a <= 0.005 => 2.576, // 99% confidence
+                a if a <= 0.01 => 2.326,  // 98% confidence
+                a if a <= 0.025 => 1.96,  // 95% confidence
+                a if a <= 0.05 => 1.645,  // 90% confidence
                 _ => 1.0,
             }
         } else {
@@ -635,11 +647,15 @@ where
     }
 
     /// Compute paired t-test between two sets of scores
-    fn compute_paired_t_test(&self, scores1: &[f64], scores2: &[f64]) -> DspyResult<PairwiseComparison> {
+    fn compute_paired_t_test(
+        &self,
+        scores1: &[f64],
+        scores2: &[f64],
+    ) -> DspyResult<PairwiseComparison> {
         if scores1.len() != scores2.len() || scores1.is_empty() {
             return Err(DspyError::evaluation(
                 "t_test",
-                "Cannot perform t-test on mismatched or empty score sets"
+                "Cannot perform t-test on mismatched or empty score sets",
             ));
         }
 
@@ -669,8 +685,10 @@ where
         let is_significant = p_value < (1.0 - self.config.significance_confidence);
 
         // Cohen's d effect size
-        let pooled_std = ((scores1.iter().map(|s| s.powi(2)).sum::<f64>() +
-                          scores2.iter().map(|s| s.powi(2)).sum::<f64>()) / (2.0 * n)).sqrt();
+        let pooled_std = ((scores1.iter().map(|s| s.powi(2)).sum::<f64>()
+            + scores2.iter().map(|s| s.powi(2)).sum::<f64>())
+            / (2.0 * n))
+            .sqrt();
         let effect_size = if pooled_std > 0.0 {
             mean_diff / pooled_std
         } else {
@@ -692,18 +710,28 @@ where
         // Very simplified approximation - in practice use proper statistical library
         if df >= 30 {
             // Normal approximation
-            if t_abs >= 2.576 { 0.01 }
-            else if t_abs >= 1.96 { 0.05 }
-            else if t_abs >= 1.645 { 0.10 }
-            else { 0.20 }
+            if t_abs >= 2.576 {
+                0.01
+            } else if t_abs >= 1.96 {
+                0.05
+            } else if t_abs >= 1.645 {
+                0.10
+            } else {
+                0.20
+            }
         } else {
             // Rough adjustment for smaller df
             let adjustment = 1.0 + 1.0 / df as f64;
             let adjusted_t = t_abs / adjustment;
-            if adjusted_t >= 2.5 { 0.01 }
-            else if adjusted_t >= 1.8 { 0.05 }
-            else if adjusted_t >= 1.4 { 0.10 }
-            else { 0.20 }
+            if adjusted_t >= 2.5 {
+                0.01
+            } else if adjusted_t >= 1.8 {
+                0.05
+            } else if adjusted_t >= 1.4 {
+                0.10
+            } else {
+                0.20
+            }
         }
     }
 
@@ -714,7 +742,7 @@ where
         if groups.len() < 2 {
             return Err(DspyError::evaluation(
                 "ANOVA",
-                "ANOVA requires at least 2 groups"
+                "ANOVA requires at least 2 groups",
             ));
         }
 
@@ -723,7 +751,7 @@ where
         if !groups.iter().all(|g| g.len() == group_size) {
             return Err(DspyError::evaluation(
                 "ANOVA",
-                "ANOVA requires all groups to have the same size"
+                "ANOVA requires all groups to have the same size",
             ));
         }
 
@@ -737,16 +765,15 @@ where
             .map(|group| group.iter().sum::<f64>() / group.len() as f64)
             .collect();
 
-        let overall_mean = groups
-            .iter()
-            .flat_map(|group| group.iter())
-            .sum::<f64>() / total_n as f64;
+        let overall_mean =
+            groups.iter().flat_map(|group| group.iter()).sum::<f64>() / total_n as f64;
 
         // Calculate sum of squares
-        let ss_between = n as f64 * group_means
-            .iter()
-            .map(|mean| (mean - overall_mean).powi(2))
-            .sum::<f64>();
+        let ss_between = n as f64
+            * group_means
+                .iter()
+                .map(|mean| (mean - overall_mean).powi(2))
+                .sum::<f64>();
 
         let ss_within = groups
             .iter()
@@ -773,10 +800,15 @@ where
         };
 
         // Simplified p-value calculation
-        let p_value = if f_statistic >= 4.0 { 0.01 }
-        else if f_statistic >= 3.0 { 0.05 }
-        else if f_statistic >= 2.0 { 0.10 }
-        else { 0.20 };
+        let p_value = if f_statistic >= 4.0 {
+            0.01
+        } else if f_statistic >= 3.0 {
+            0.05
+        } else if f_statistic >= 2.0 {
+            0.10
+        } else {
+            0.20
+        };
 
         let is_significant = p_value < (1.0 - self.config.significance_confidence);
 
@@ -805,13 +837,23 @@ impl fmt::Display for EvaluationResult {
         writeln!(f, "==================")?;
         writeln!(f, "Total Examples: {}", self.overall_stats.total_examples)?;
         writeln!(f, "Total Time: {:.1}ms", self.overall_stats.total_time_ms)?;
-        writeln!(f, "Success Rate: {:.1}%", self.overall_stats.overall_success_rate * 100.0)?;
+        writeln!(
+            f,
+            "Success Rate: {:.1}%",
+            self.overall_stats.overall_success_rate * 100.0
+        )?;
         writeln!(f)?;
 
         writeln!(f, "Metric Results:")?;
         for (name, summary) in &self.metric_results {
-            writeln!(f, "  {}: {:.3} ± {:.3} (pass rate: {:.1}%)",
-                name, summary.mean_score, summary.std_dev, summary.pass_rate * 100.0)?;
+            writeln!(
+                f,
+                "  {}: {:.3} ± {:.3} (pass rate: {:.1}%)",
+                name,
+                summary.mean_score,
+                summary.std_dev,
+                summary.pass_rate * 100.0
+            )?;
         }
 
         if let Some(ref sig_tests) = self.significance_tests {
@@ -819,10 +861,18 @@ impl fmt::Display for EvaluationResult {
             writeln!(f, "Statistical Significance:")?;
             for (metric1, comparisons) in &sig_tests.pairwise_comparisons {
                 for (metric2, comparison) in comparisons {
-                    writeln!(f, "  {} vs {}: {} (p={:.3})",
-                        metric1, metric2,
-                        if comparison.is_significant { "significant" } else { "not significant" },
-                        comparison.p_value)?;
+                    writeln!(
+                        f,
+                        "  {} vs {}: {} (p={:.3})",
+                        metric1,
+                        metric2,
+                        if comparison.is_significant {
+                            "significant"
+                        } else {
+                            "not significant"
+                        },
+                        comparison.p_value
+                    )?;
                 }
             }
         }

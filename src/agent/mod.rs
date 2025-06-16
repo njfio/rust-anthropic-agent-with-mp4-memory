@@ -1284,10 +1284,16 @@ impl Agent {
         I: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + Sync + Clone + 'static,
         O: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + Sync + Clone + 'static,
     {
-        let extension = self.dspy_extension.as_ref()
-            .ok_or_else(|| crate::dspy::error::DspyError::configuration("dspy_integration", "DSPy integration not enabled. Call enable_dspy_integration() first."))?;
+        let extension = self.dspy_extension.as_ref().ok_or_else(|| {
+            crate::dspy::error::DspyError::configuration(
+                "dspy_integration",
+                "DSPy integration not enabled. Call enable_dspy_integration() first.",
+            )
+        })?;
 
-        extension.create_predict_module(signature, config, self.security_context.as_ref()).await
+        extension
+            .create_predict_module(signature, config, self.security_context.as_ref())
+            .await
     }
 
     /// Use a compiled DSPy module for a specific task
@@ -1300,10 +1306,16 @@ impl Agent {
         I: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + Sync + 'static,
         O: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + Sync + 'static,
     {
-        let extension = self.dspy_extension.as_ref()
-            .ok_or_else(|| crate::dspy::error::DspyError::configuration("dspy_integration", "DSPy integration not enabled. Call enable_dspy_integration() first."))?;
+        let extension = self.dspy_extension.as_ref().ok_or_else(|| {
+            crate::dspy::error::DspyError::configuration(
+                "dspy_integration",
+                "DSPy integration not enabled. Call enable_dspy_integration() first.",
+            )
+        })?;
 
-        extension.use_module(module, input, self.security_context.as_ref()).await
+        extension
+            .use_module(module, input, self.security_context.as_ref())
+            .await
     }
 
     /// Optimize a DSPy module using examples
@@ -1317,15 +1329,25 @@ impl Agent {
         I: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + Sync + Clone + 'static,
         O: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + Sync + Clone + 'static,
     {
-        let extension = self.dspy_extension.as_ref()
-            .ok_or_else(|| crate::dspy::error::DspyError::configuration("dspy_integration", "DSPy integration not enabled. Call enable_dspy_integration() first."))?;
+        let extension = self.dspy_extension.as_ref().ok_or_else(|| {
+            crate::dspy::error::DspyError::configuration(
+                "dspy_integration",
+                "DSPy integration not enabled. Call enable_dspy_integration() first.",
+            )
+        })?;
 
-        extension.optimize_module(module, examples, strategy, self.security_context.as_ref()).await
+        extension
+            .optimize_module(module, examples, strategy, self.security_context.as_ref())
+            .await
     }
 
     /// Get DSPy module registry statistics
-    pub async fn get_dspy_registry_stats(&self) -> Result<std::collections::HashMap<String, serde_json::Value>> {
-        let extension = self.dspy_extension.as_ref()
+    pub async fn get_dspy_registry_stats(
+        &self,
+    ) -> Result<std::collections::HashMap<String, serde_json::Value>> {
+        let extension = self
+            .dspy_extension
+            .as_ref()
             .ok_or_else(|| AgentError::invalid_input("DSPy integration not enabled"))?;
 
         Ok(extension.get_registry_stats().await)
@@ -1333,7 +1355,9 @@ impl Agent {
 
     /// List all registered DSPy modules
     pub async fn list_dspy_modules(&self) -> Result<Vec<DspyModuleMetadata>> {
-        let extension = self.dspy_extension.as_ref()
+        let extension = self
+            .dspy_extension
+            .as_ref()
             .ok_or_else(|| AgentError::invalid_input("DSPy integration not enabled"))?;
 
         Ok(extension.list_modules().await)
@@ -1341,10 +1365,16 @@ impl Agent {
 
     /// Remove a DSPy module from the registry
     pub async fn remove_dspy_module(&self, module_id: &str) -> DspyResult<()> {
-        let extension = self.dspy_extension.as_ref()
-            .ok_or_else(|| crate::dspy::error::DspyError::configuration("dspy_integration", "DSPy integration not enabled. Call enable_dspy_integration() first."))?;
+        let extension = self.dspy_extension.as_ref().ok_or_else(|| {
+            crate::dspy::error::DspyError::configuration(
+                "dspy_integration",
+                "DSPy integration not enabled. Call enable_dspy_integration() first.",
+            )
+        })?;
 
-        extension.remove_module(module_id, self.security_context.as_ref()).await
+        extension
+            .remove_module(module_id, self.security_context.as_ref())
+            .await
     }
 
     /// Request human input during agent execution

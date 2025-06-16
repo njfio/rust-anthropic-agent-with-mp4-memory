@@ -181,10 +181,7 @@ impl DspyCliError {
     }
 
     /// Create a network error with retry information
-    pub fn network_error(
-        message: impl Into<String>,
-        retry_after: Option<Duration>,
-    ) -> Self {
+    pub fn network_error(message: impl Into<String>, retry_after: Option<Duration>) -> Self {
         Self::Network {
             message: message.into(),
             error_code: None,
@@ -235,9 +232,18 @@ impl DspyCliError {
     pub fn with_suggestion(mut self, suggestion: impl Into<String>) -> Self {
         let suggestion = suggestion.into();
         match &mut self {
-            Self::Config { suggestion: ref mut s, .. } => *s = Some(suggestion),
-            Self::Resource { suggestion: ref mut s, .. } => *s = Some(suggestion),
-            Self::Timeout { suggestion: ref mut s, .. } => *s = Some(suggestion),
+            Self::Config {
+                suggestion: ref mut s,
+                ..
+            } => *s = Some(suggestion),
+            Self::Resource {
+                suggestion: ref mut s,
+                ..
+            } => *s = Some(suggestion),
+            Self::Timeout {
+                suggestion: ref mut s,
+                ..
+            } => *s = Some(suggestion),
             _ => {} // Other error types don't support suggestions
         }
         self
@@ -246,7 +252,12 @@ impl DspyCliError {
     /// Get user-friendly error message with suggestions
     pub fn user_message(&self) -> String {
         match self {
-            Self::Config { message, suggestion, config_path, .. } => {
+            Self::Config {
+                message,
+                suggestion,
+                config_path,
+                ..
+            } => {
                 let mut msg = format!("Configuration Error: {}", message);
                 if let Some(path) = config_path {
                     msg.push_str(&format!("\nFile: {}", path.display()));
@@ -256,7 +267,13 @@ impl DspyCliError {
                 }
                 msg
             }
-            Self::Validation { field, message, expected, actual, suggestions } => {
+            Self::Validation {
+                field,
+                message,
+                expected,
+                actual,
+                suggestions,
+            } => {
                 let mut msg = format!("Validation Error in '{}': {}", field, message);
                 if let (Some(expected), Some(actual)) = (expected, actual) {
                     msg.push_str(&format!("\nExpected: {}\nActual: {}", expected, actual));
@@ -269,7 +286,13 @@ impl DspyCliError {
                 }
                 msg
             }
-            Self::Execution { operation, message, stage, retry_possible, .. } => {
+            Self::Execution {
+                operation,
+                message,
+                stage,
+                retry_possible,
+                ..
+            } => {
                 let mut msg = format!("Execution Error in '{}': {}", operation, message);
                 if let Some(stage) = stage {
                     msg.push_str(&format!("\nStage: {}", stage));
@@ -279,7 +302,12 @@ impl DspyCliError {
                 }
                 msg
             }
-            Self::Network { message, retry_after, endpoint, .. } => {
+            Self::Network {
+                message,
+                retry_after,
+                endpoint,
+                ..
+            } => {
                 let mut msg = format!("Network Error: {}", message);
                 if let Some(endpoint) = endpoint {
                     msg.push_str(&format!("\nEndpoint: {}", endpoint));
@@ -289,7 +317,13 @@ impl DspyCliError {
                 }
                 msg
             }
-            Self::Resource { resource, message, current_usage, limit, suggestion } => {
+            Self::Resource {
+                resource,
+                message,
+                current_usage,
+                limit,
+                suggestion,
+            } => {
                 let mut msg = format!("Resource Error ({}): {}", resource, message);
                 if let (Some(usage), Some(limit)) = (current_usage, limit) {
                     msg.push_str(&format!("\nUsage: {} / {}", usage, limit));
@@ -299,7 +333,12 @@ impl DspyCliError {
                 }
                 msg
             }
-            Self::Permission { message, path, required_permission, .. } => {
+            Self::Permission {
+                message,
+                path,
+                required_permission,
+                ..
+            } => {
                 let mut msg = format!("Permission Error: {}", message);
                 if let Some(path) = path {
                     msg.push_str(&format!("\nPath: {}", path.display()));
@@ -309,14 +348,25 @@ impl DspyCliError {
                 }
                 msg
             }
-            Self::Timeout { operation, duration, suggestion } => {
-                let mut msg = format!("Timeout Error: '{}' timed out after {:?}", operation, duration);
+            Self::Timeout {
+                operation,
+                duration,
+                suggestion,
+            } => {
+                let mut msg = format!(
+                    "Timeout Error: '{}' timed out after {:?}",
+                    operation, duration
+                );
                 if let Some(suggestion) = suggestion {
                     msg.push_str(&format!("\nSuggestion: {}", suggestion));
                 }
                 msg
             }
-            Self::UserCancelled { operation, partial_completion, cleanup_required } => {
+            Self::UserCancelled {
+                operation,
+                partial_completion,
+                cleanup_required,
+            } => {
                 let mut msg = format!("Operation Cancelled: '{}'", operation);
                 if *partial_completion {
                     msg.push_str("\nPartial completion detected");
@@ -326,7 +376,13 @@ impl DspyCliError {
                 }
                 msg
             }
-            Self::Dependency { dependency, message, version_required, version_found, install_suggestion } => {
+            Self::Dependency {
+                dependency,
+                message,
+                version_required,
+                version_found,
+                install_suggestion,
+            } => {
                 let mut msg = format!("Dependency Error ({}): {}", dependency, message);
                 if let (Some(required), Some(found)) = (version_required, version_found) {
                     msg.push_str(&format!("\nRequired: {}\nFound: {}", required, found));
@@ -336,8 +392,13 @@ impl DspyCliError {
                 }
                 msg
             }
-            Self::Internal { message, error_id, .. } => {
-                format!("Internal Error: {}\nError ID: {}\nPlease report this issue", message, error_id)
+            Self::Internal {
+                message, error_id, ..
+            } => {
+                format!(
+                    "Internal Error: {}\nError ID: {}\nPlease report this issue",
+                    message, error_id
+                )
             }
         }
     }
@@ -525,7 +586,7 @@ mod tests {
     fn test_error_context() {
         let error = DspyCliError::execution_error("test_op", "test message", true)
             .with_context("key", "value");
-        
+
         if let DspyCliError::Execution { context, .. } = error {
             assert_eq!(context.get("key"), Some(&"value".to_string()));
         } else {
@@ -540,7 +601,7 @@ mod tests {
             "test message",
             vec!["suggestion 1".to_string(), "suggestion 2".to_string()],
         );
-        
+
         let message = error.user_message();
         assert!(message.contains("Validation Error"));
         assert!(message.contains("test_field"));

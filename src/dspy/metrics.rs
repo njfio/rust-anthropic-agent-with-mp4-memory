@@ -504,7 +504,11 @@ impl F1Score {
     }
 
     /// Calculate precision, recall, and F1 score
-    fn calculate_f1(&self, expected_tokens: &[String], predicted_tokens: &[String]) -> (f64, f64, f64) {
+    fn calculate_f1(
+        &self,
+        expected_tokens: &[String],
+        predicted_tokens: &[String],
+    ) -> (f64, f64, f64) {
         let expected_set: std::collections::HashSet<_> = expected_tokens.iter().collect();
         let predicted_set: std::collections::HashSet<_> = predicted_tokens.iter().collect();
 
@@ -688,23 +692,31 @@ where
                 (weighted_score, all_passed)
             }
             CombinationStrategy::Minimum => {
-                let min_score = results.iter().map(|r| r.score).fold(f64::INFINITY, f64::min);
+                let min_score = results
+                    .iter()
+                    .map(|r| r.score)
+                    .fold(f64::INFINITY, f64::min);
                 let all_passed = results.iter().all(|r| r.passed);
                 (min_score, all_passed)
             }
             CombinationStrategy::Maximum => {
-                let max_score = results.iter().map(|r| r.score).fold(f64::NEG_INFINITY, f64::max);
+                let max_score = results
+                    .iter()
+                    .map(|r| r.score)
+                    .fold(f64::NEG_INFINITY, f64::max);
                 let any_passed = results.iter().any(|r| r.passed);
                 (max_score, any_passed)
             }
             CombinationStrategy::AllPass => {
                 let all_passed = results.iter().all(|r| r.passed);
-                let avg_score: f64 = results.iter().map(|r| r.score).sum::<f64>() / results.len() as f64;
+                let avg_score: f64 =
+                    results.iter().map(|r| r.score).sum::<f64>() / results.len() as f64;
                 (avg_score, all_passed)
             }
             CombinationStrategy::AnyPass => {
                 let any_passed = results.iter().any(|r| r.passed);
-                let avg_score: f64 = results.iter().map(|r| r.score).sum::<f64>() / results.len() as f64;
+                let avg_score: f64 =
+                    results.iter().map(|r| r.score).sum::<f64>() / results.len() as f64;
                 (avg_score, any_passed)
             }
         };

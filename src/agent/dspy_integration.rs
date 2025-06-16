@@ -7,12 +7,12 @@ use crate::agent::Agent;
 use crate::anthropic::AnthropicClient;
 use crate::dspy::{
     error::{DspyError, DspyResult},
+    examples::{Example, ExampleSet},
     module::Module,
+    optimization::{OptimizationMetrics, OptimizationStrategy, Optimizer},
     predictor::{Predict, PredictConfig},
     signature::Signature,
     teleprompter::{Teleprompter, TeleprompterConfig},
-    examples::{Example, ExampleSet},
-    optimization::{OptimizationMetrics, OptimizationStrategy, Optimizer},
 };
 use crate::security::{SecurityContext, SecurityEvent, SecurityManager};
 use crate::utils::error::{AgentError, Result};
@@ -177,12 +177,17 @@ impl DspyAgentExtension {
     {
         // Security validation
         if self.config.enable_security_validation {
-            self.validate_module_creation_security(security_context).await?;
+            self.validate_module_creation_security(security_context)
+                .await?;
         }
 
         // Create the predict module
         let predict_config = config.unwrap_or_default();
-        let predict_module = Predict::with_config(signature, Arc::new(self.anthropic_client.clone()), predict_config);
+        let predict_module = Predict::with_config(
+            signature,
+            Arc::new(self.anthropic_client.clone()),
+            predict_config,
+        );
 
         // Register the module
         let module_id = predict_module.id().to_string();
@@ -202,7 +207,8 @@ impl DspyAgentExtension {
 
         // Audit logging
         if self.config.enable_audit_logging {
-            self.log_module_creation(&module_id, "Predict", security_context).await;
+            self.log_module_creation(&module_id, "Predict", security_context)
+                .await;
         }
 
         info!("Created DSPy Predict module: {}", module_id);
@@ -222,7 +228,8 @@ impl DspyAgentExtension {
     {
         // Security validation
         if self.config.enable_security_validation {
-            self.validate_module_usage_security(module.id(), security_context).await?;
+            self.validate_module_usage_security(module.id(), security_context)
+                .await?;
         }
 
         // Input validation
@@ -237,11 +244,13 @@ impl DspyAgentExtension {
         module.validate_output(&result).await?;
 
         // Update usage statistics
-        self.update_module_usage_stats(module.id(), execution_time).await;
+        self.update_module_usage_stats(module.id(), execution_time)
+            .await;
 
         // Audit logging
         if self.config.enable_audit_logging {
-            self.log_module_usage(module.id(), execution_time, security_context).await;
+            self.log_module_usage(module.id(), execution_time, security_context)
+                .await;
         }
 
         debug!(
@@ -267,11 +276,13 @@ impl DspyAgentExtension {
     {
         // Security validation
         if self.config.enable_security_validation {
-            self.validate_module_optimization_security(module.id(), security_context).await?;
+            self.validate_module_optimization_security(module.id(), security_context)
+                .await?;
         }
 
         // Use provided strategy or default
-        let optimization_strategy = strategy.unwrap_or_else(|| self.config.default_optimization_strategy.clone());
+        let optimization_strategy =
+            strategy.unwrap_or_else(|| self.config.default_optimization_strategy.clone());
 
         // Create teleprompter
         let teleprompter_config = TeleprompterConfig {
@@ -295,11 +306,17 @@ impl DspyAgentExtension {
         let optimization_result = teleprompter.optimize(module, examples).await?;
 
         // Update module metadata
-        self.update_module_optimization_metrics(module.id(), optimization_result.metrics.clone()).await;
+        self.update_module_optimization_metrics(module.id(), optimization_result.metrics.clone())
+            .await;
 
         // Audit logging
         if self.config.enable_audit_logging {
-            self.log_module_optimization(module.id(), &optimization_result.metrics, security_context).await;
+            self.log_module_optimization(
+                module.id(),
+                &optimization_result.metrics,
+                security_context,
+            )
+            .await;
         }
 
         info!(
@@ -316,20 +333,32 @@ impl DspyAgentExtension {
         let registry = self.registry.read().await;
         let mut stats = HashMap::new();
 
-        stats.insert("total_modules".to_string(), serde_json::Value::Number(registry.metadata.len().into()));
-        
+        stats.insert(
+            "total_modules".to_string(),
+            serde_json::Value::Number(registry.metadata.len().into()),
+        );
+
         let compiled_count = registry.metadata.values().filter(|m| m.is_compiled).count();
-        stats.insert("compiled_modules".to_string(), serde_json::Value::Number(compiled_count.into()));
+        stats.insert(
+            "compiled_modules".to_string(),
+            serde_json::Value::Number(compiled_count.into()),
+        );
 
         let total_usage: u64 = registry.metadata.values().map(|m| m.usage_count).sum();
-        stats.insert("total_usage_count".to_string(), serde_json::Value::Number(total_usage.into()));
+        stats.insert(
+            "total_usage_count".to_string(),
+            serde_json::Value::Number(total_usage.into()),
+        );
 
         // Module types distribution
         let mut type_counts = HashMap::new();
         for metadata in registry.metadata.values() {
             *type_counts.entry(&metadata.module_type).or_insert(0) += 1;
         }
-        stats.insert("module_types".to_string(), serde_json::to_value(type_counts).unwrap_or_default());
+        stats.insert(
+            "module_types".to_string(),
+            serde_json::to_value(type_counts).unwrap_or_default(),
+        );
 
         stats
     }
@@ -341,10 +370,15 @@ impl DspyAgentExtension {
     }
 
     /// Remove a module from the registry
-    pub async fn remove_module(&self, module_id: &str, security_context: Option<&SecurityContext>) -> DspyResult<()> {
+    pub async fn remove_module(
+        &self,
+        module_id: &str,
+        security_context: Option<&SecurityContext>,
+    ) -> DspyResult<()> {
         // Security validation
         if self.config.enable_security_validation {
-            self.validate_module_removal_security(module_id, security_context).await?;
+            self.validate_module_removal_security(module_id, security_context)
+                .await?;
         }
 
         let mut registry = self.registry.write().await;
@@ -362,7 +396,10 @@ impl DspyAgentExtension {
     }
 
     /// Security validation for module creation
-    async fn validate_module_creation_security(&self, security_context: Option<&SecurityContext>) -> DspyResult<()> {
+    async fn validate_module_creation_security(
+        &self,
+        security_context: Option<&SecurityContext>,
+    ) -> DspyResult<()> {
         if let Some(security_manager) = &self.security_manager {
             if let Some(context) = security_context {
                 // Check permission for module creation
@@ -372,7 +409,10 @@ impl DspyAgentExtension {
                     .map_err(|e| DspyError::configuration("security", &e.to_string()))?;
 
                 if !has_permission {
-                    return Err(DspyError::configuration("security", "Module creation not authorized"));
+                    return Err(DspyError::configuration(
+                        "security",
+                        "Module creation not authorized",
+                    ));
                 }
 
                 // Log the security event
@@ -383,7 +423,9 @@ impl DspyAgentExtension {
                     sensitive: false,
                 };
 
-                security_manager.log_security_event(event).await
+                security_manager
+                    .log_security_event(event)
+                    .await
                     .map_err(|e| DspyError::configuration("audit", &e.to_string()))?;
             }
         }
@@ -391,7 +433,11 @@ impl DspyAgentExtension {
     }
 
     /// Security validation for module usage
-    async fn validate_module_usage_security(&self, module_id: &str, security_context: Option<&SecurityContext>) -> DspyResult<()> {
+    async fn validate_module_usage_security(
+        &self,
+        module_id: &str,
+        security_context: Option<&SecurityContext>,
+    ) -> DspyResult<()> {
         if let Some(security_manager) = &self.security_manager {
             if let Some(context) = security_context {
                 // Check permission for module usage
@@ -402,7 +448,10 @@ impl DspyAgentExtension {
                     .map_err(|e| DspyError::configuration("security", &e.to_string()))?;
 
                 if !has_permission {
-                    return Err(DspyError::configuration("security", "Module usage not authorized"));
+                    return Err(DspyError::configuration(
+                        "security",
+                        "Module usage not authorized",
+                    ));
                 }
 
                 // Log the security event
@@ -413,7 +462,9 @@ impl DspyAgentExtension {
                     sensitive: false,
                 };
 
-                security_manager.log_security_event(event).await
+                security_manager
+                    .log_security_event(event)
+                    .await
                     .map_err(|e| DspyError::configuration("audit", &e.to_string()))?;
             }
         }
@@ -421,7 +472,11 @@ impl DspyAgentExtension {
     }
 
     /// Security validation for module optimization
-    async fn validate_module_optimization_security(&self, module_id: &str, security_context: Option<&SecurityContext>) -> DspyResult<()> {
+    async fn validate_module_optimization_security(
+        &self,
+        module_id: &str,
+        security_context: Option<&SecurityContext>,
+    ) -> DspyResult<()> {
         if let Some(security_manager) = &self.security_manager {
             if let Some(context) = security_context {
                 // Check permission for module optimization
@@ -432,7 +487,10 @@ impl DspyAgentExtension {
                     .map_err(|e| DspyError::configuration("security", &e.to_string()))?;
 
                 if !has_permission {
-                    return Err(DspyError::configuration("security", "Module optimization not authorized"));
+                    return Err(DspyError::configuration(
+                        "security",
+                        "Module optimization not authorized",
+                    ));
                 }
 
                 // Log the security event
@@ -443,7 +501,9 @@ impl DspyAgentExtension {
                     sensitive: true, // Optimization is considered sensitive
                 };
 
-                security_manager.log_security_event(event).await
+                security_manager
+                    .log_security_event(event)
+                    .await
                     .map_err(|e| DspyError::configuration("audit", &e.to_string()))?;
             }
         }
@@ -451,7 +511,11 @@ impl DspyAgentExtension {
     }
 
     /// Security validation for module removal
-    async fn validate_module_removal_security(&self, module_id: &str, security_context: Option<&SecurityContext>) -> DspyResult<()> {
+    async fn validate_module_removal_security(
+        &self,
+        module_id: &str,
+        security_context: Option<&SecurityContext>,
+    ) -> DspyResult<()> {
         if let Some(security_manager) = &self.security_manager {
             if let Some(context) = security_context {
                 // Check permission for module removal
@@ -462,7 +526,10 @@ impl DspyAgentExtension {
                     .map_err(|e| DspyError::configuration("security", &e.to_string()))?;
 
                 if !has_permission {
-                    return Err(DspyError::configuration("security", "Module removal not authorized"));
+                    return Err(DspyError::configuration(
+                        "security",
+                        "Module removal not authorized",
+                    ));
                 }
 
                 // Log the security event
@@ -473,7 +540,9 @@ impl DspyAgentExtension {
                     sensitive: true, // Deletion is considered sensitive
                 };
 
-                security_manager.log_security_event(event).await
+                security_manager
+                    .log_security_event(event)
+                    .await
                     .map_err(|e| DspyError::configuration("audit", &e.to_string()))?;
             }
         }
@@ -481,7 +550,11 @@ impl DspyAgentExtension {
     }
 
     /// Update module usage statistics
-    async fn update_module_usage_stats(&self, module_id: &str, execution_time: std::time::Duration) {
+    async fn update_module_usage_stats(
+        &self,
+        module_id: &str,
+        execution_time: std::time::Duration,
+    ) {
         let mut registry = self.registry.write().await;
         if let Some(metadata) = registry.metadata.get_mut(module_id) {
             metadata.usage_count += 1;
@@ -490,7 +563,11 @@ impl DspyAgentExtension {
     }
 
     /// Update module optimization metrics
-    async fn update_module_optimization_metrics(&self, module_id: &str, metrics: OptimizationMetrics) {
+    async fn update_module_optimization_metrics(
+        &self,
+        module_id: &str,
+        metrics: OptimizationMetrics,
+    ) {
         let mut registry = self.registry.write().await;
         if let Some(metadata) = registry.metadata.get_mut(module_id) {
             metadata.is_compiled = true;
@@ -499,7 +576,12 @@ impl DspyAgentExtension {
     }
 
     /// Log module creation for audit
-    async fn log_module_creation(&self, module_id: &str, module_type: &str, security_context: Option<&SecurityContext>) {
+    async fn log_module_creation(
+        &self,
+        module_id: &str,
+        module_type: &str,
+        security_context: Option<&SecurityContext>,
+    ) {
         info!(
             "AUDIT: DSPy module created - ID: {}, Type: {}, User: {:?}",
             module_id,
@@ -509,7 +591,12 @@ impl DspyAgentExtension {
     }
 
     /// Log module usage for audit
-    async fn log_module_usage(&self, module_id: &str, execution_time: std::time::Duration, security_context: Option<&SecurityContext>) {
+    async fn log_module_usage(
+        &self,
+        module_id: &str,
+        execution_time: std::time::Duration,
+        security_context: Option<&SecurityContext>,
+    ) {
         info!(
             "AUDIT: DSPy module used - ID: {}, Duration: {:.2}ms, User: {:?}",
             module_id,
@@ -519,7 +606,12 @@ impl DspyAgentExtension {
     }
 
     /// Log module optimization for audit
-    async fn log_module_optimization(&self, module_id: &str, metrics: &OptimizationMetrics, security_context: Option<&SecurityContext>) {
+    async fn log_module_optimization(
+        &self,
+        module_id: &str,
+        metrics: &OptimizationMetrics,
+        security_context: Option<&SecurityContext>,
+    ) {
         info!(
             "AUDIT: DSPy module optimized - ID: {}, Score: {:.3}, User: {:?}",
             module_id,
@@ -529,7 +621,11 @@ impl DspyAgentExtension {
     }
 
     /// Log module removal for audit
-    async fn log_module_removal(&self, module_id: &str, security_context: Option<&SecurityContext>) {
+    async fn log_module_removal(
+        &self,
+        module_id: &str,
+        security_context: Option<&SecurityContext>,
+    ) {
         info!(
             "AUDIT: DSPy module removed - ID: {}, User: {:?}",
             module_id,

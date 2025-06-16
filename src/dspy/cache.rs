@@ -53,7 +53,7 @@ impl Default for CacheConfig {
     fn default() -> Self {
         Self {
             max_size_bytes: 1024 * 1024 * 1024, // 1GB
-            ttl_seconds: 86400,                  // 24 hours
+            ttl_seconds: 86400,                 // 24 hours
             persistent: true,
             cache_dir: PathBuf::from("./dspy_cache"),
             enable_compression: true,
@@ -197,7 +197,8 @@ where
             let mut stats = self.stats.write().await;
 
             // Check if we need to evict entries
-            self.maybe_evict(&mut storage, &mut stats, size_bytes).await?;
+            self.maybe_evict(&mut storage, &mut stats, size_bytes)
+                .await?;
 
             // Insert the new entry
             let is_new = !storage.contains_key(key);
@@ -403,7 +404,10 @@ where
         }
 
         if evicted_count > 0 {
-            debug!("Evicted {} cache entries (freed {} bytes)", evicted_count, freed_space);
+            debug!(
+                "Evicted {} cache entries (freed {} bytes)",
+                evicted_count, freed_space
+            );
         }
 
         Ok(())
@@ -412,21 +416,23 @@ where
     /// Load entry from persistent storage
     async fn load_from_disk(&self, key: &str) -> DspyResult<Option<T>> {
         let file_path = self.get_cache_file_path(key);
-        
+
         if !file_path.exists() {
             return Ok(None);
         }
 
         match fs::read_to_string(&file_path) {
-            Ok(content) => {
-                match serde_json::from_str::<T>(&content) {
-                    Ok(data) => Ok(Some(data)),
-                    Err(e) => {
-                        warn!("Failed to deserialize cache file {}: {}", file_path.display(), e);
-                        Ok(None)
-                    }
+            Ok(content) => match serde_json::from_str::<T>(&content) {
+                Ok(data) => Ok(Some(data)),
+                Err(e) => {
+                    warn!(
+                        "Failed to deserialize cache file {}: {}",
+                        file_path.display(),
+                        e
+                    );
+                    Ok(None)
                 }
-            }
+            },
             Err(e) => {
                 warn!("Failed to read cache file {}: {}", file_path.display(), e);
                 Ok(None)
@@ -437,15 +443,19 @@ where
     /// Save entry to persistent storage
     async fn save_to_disk(&self, key: &str, data: &T) -> DspyResult<()> {
         let file_path = self.get_cache_file_path(key);
-        
+
         if let Some(parent) = file_path.parent() {
             if let Err(e) = fs::create_dir_all(parent) {
-                return Err(DspyError::cache("disk_write", &format!("Failed to create directory: {}", e)));
+                return Err(DspyError::cache(
+                    "disk_write",
+                    &format!("Failed to create directory: {}", e),
+                ));
             }
         }
 
-        let content = serde_json::to_string(data)
-            .map_err(|e| DspyError::cache("serialization", &format!("Failed to serialize: {}", e)))?;
+        let content = serde_json::to_string(data).map_err(|e| {
+            DspyError::cache("serialization", &format!("Failed to serialize: {}", e))
+        })?;
 
         fs::write(&file_path, content)
             .map_err(|e| DspyError::cache("disk_write", &format!("Failed to write file: {}", e)))?;
