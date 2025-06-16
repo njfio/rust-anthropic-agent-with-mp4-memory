@@ -1,10 +1,10 @@
 // GDPR Compliance Module for Enterprise AI Agent System
 // Implements comprehensive data protection and privacy compliance features
 
-pub mod data_retention;
-pub mod data_export;
-pub mod privacy_controls;
 pub mod consent_management;
+pub mod data_export;
+pub mod data_retention;
+pub mod privacy_controls;
 
 #[cfg(test)]
 mod tests;
@@ -153,7 +153,7 @@ impl GdprComplianceManager {
     pub async fn process_request(&mut self, request_id: &str) -> Result<ComplianceRequest> {
         // This would typically involve complex business logic
         // For now, we'll implement the basic structure
-        
+
         let mut request = self.get_request(request_id).await?;
         request.status = ComplianceRequestStatus::Processing;
 
@@ -179,7 +179,7 @@ impl GdprComplianceManager {
         }
 
         request.status = ComplianceRequestStatus::Completed;
-        
+
         tracing::info!(
             "GDPR compliance request {} completed for subject {}",
             request.id,
@@ -193,12 +193,16 @@ impl GdprComplianceManager {
     async fn validate_request(&self, request: &ComplianceRequest) -> Result<()> {
         // Validate subject ID format
         if request.subject_id.is_empty() {
-            return Err(AgentError::validation("Subject ID cannot be empty".to_string()));
+            return Err(AgentError::validation(
+                "Subject ID cannot be empty".to_string(),
+            ));
         }
 
         // Validate request details
         if request.details.is_empty() {
-            return Err(AgentError::validation("Request details cannot be empty".to_string()));
+            return Err(AgentError::validation(
+                "Request details cannot be empty".to_string(),
+            ));
         }
 
         // Additional validation logic would go here
@@ -214,91 +218,117 @@ impl GdprComplianceManager {
 
     /// Handle data access request
     async fn handle_access_request(&mut self, request: &mut ComplianceRequest) -> Result<()> {
-        tracing::info!("Processing access request for subject {}", request.subject_id);
-        
+        tracing::info!(
+            "Processing access request for subject {}",
+            request.subject_id
+        );
+
         // Generate data export for the subject
-        let export_data = self.export_handler
+        let export_data = self
+            .export_handler
             .export_subject_data(&request.subject_id)
             .await?;
-        
+
         // Store export data reference in request
         request.details = format!("Data export generated: {} records", export_data.len());
-        
+
         Ok(())
     }
 
     /// Handle data erasure request (right to be forgotten)
     async fn handle_erasure_request(&mut self, request: &mut ComplianceRequest) -> Result<()> {
-        tracing::info!("Processing erasure request for subject {}", request.subject_id);
-        
+        tracing::info!(
+            "Processing erasure request for subject {}",
+            request.subject_id
+        );
+
         // Check if erasure is legally permissible
         if !self.can_erase_data(&request.subject_id).await? {
             request.status = ComplianceRequestStatus::Rejected(
-                "Data cannot be erased due to legal obligations".to_string()
+                "Data cannot be erased due to legal obligations".to_string(),
             );
             return Ok(());
         }
 
         // Perform data erasure
         self.erase_subject_data(&request.subject_id).await?;
-        
+
         request.details = "Personal data has been erased".to_string();
-        
+
         Ok(())
     }
 
     /// Handle data portability request
     async fn handle_portability_request(&mut self, request: &mut ComplianceRequest) -> Result<()> {
-        tracing::info!("Processing portability request for subject {}", request.subject_id);
-        
+        tracing::info!(
+            "Processing portability request for subject {}",
+            request.subject_id
+        );
+
         // Export data in machine-readable format
-        let portable_data = self.export_handler
+        let portable_data = self
+            .export_handler
             .export_portable_data(&request.subject_id)
             .await?;
-        
-        request.details = format!("Portable data package created: {} bytes", portable_data.len());
-        
+
+        request.details = format!(
+            "Portable data package created: {} bytes",
+            portable_data.len()
+        );
+
         Ok(())
     }
 
     /// Handle data rectification request
-    async fn handle_rectification_request(&mut self, request: &mut ComplianceRequest) -> Result<()> {
-        tracing::info!("Processing rectification request for subject {}", request.subject_id);
-        
+    async fn handle_rectification_request(
+        &mut self,
+        request: &mut ComplianceRequest,
+    ) -> Result<()> {
+        tracing::info!(
+            "Processing rectification request for subject {}",
+            request.subject_id
+        );
+
         // This would involve updating incorrect data
         // Implementation depends on specific data structures
-        
+
         request.details = "Data rectification completed".to_string();
-        
+
         Ok(())
     }
 
     /// Handle processing restriction request
     async fn handle_restriction_request(&mut self, request: &mut ComplianceRequest) -> Result<()> {
-        tracing::info!("Processing restriction request for subject {}", request.subject_id);
-        
+        tracing::info!(
+            "Processing restriction request for subject {}",
+            request.subject_id
+        );
+
         // Mark data for restricted processing
         self.restrict_data_processing(&request.subject_id).await?;
-        
+
         request.details = "Data processing has been restricted".to_string();
-        
+
         Ok(())
     }
 
     /// Handle objection to processing request
     async fn handle_objection_request(&mut self, request: &mut ComplianceRequest) -> Result<()> {
-        tracing::info!("Processing objection request for subject {}", request.subject_id);
-        
+        tracing::info!(
+            "Processing objection request for subject {}",
+            request.subject_id
+        );
+
         // Evaluate objection and stop processing if required
         if self.should_stop_processing(&request.subject_id).await? {
             self.stop_data_processing(&request.subject_id).await?;
             request.details = "Data processing has been stopped".to_string();
         } else {
             request.status = ComplianceRequestStatus::Rejected(
-                "Objection overridden by legitimate interests".to_string()
+                "Objection overridden by legitimate interests".to_string(),
             );
         }
-        
+
         Ok(())
     }
 
@@ -312,23 +342,23 @@ impl GdprComplianceManager {
     /// Erase all data for a subject
     async fn erase_subject_data(&mut self, subject_id: &str) -> Result<()> {
         tracing::warn!("Erasing all data for subject: {}", subject_id);
-        
+
         // This would involve:
         // 1. Removing from memory systems
         // 2. Removing from conversation history
         // 3. Removing from audit logs (where legally permissible)
         // 4. Removing from any cached data
-        
+
         Ok(())
     }
 
     /// Restrict data processing for a subject
     async fn restrict_data_processing(&mut self, subject_id: &str) -> Result<()> {
         tracing::info!("Restricting data processing for subject: {}", subject_id);
-        
+
         // Mark data as restricted in all systems
         // This would prevent further processing while retaining the data
-        
+
         Ok(())
     }
 
@@ -342,9 +372,9 @@ impl GdprComplianceManager {
     /// Stop data processing for a subject
     async fn stop_data_processing(&mut self, subject_id: &str) -> Result<()> {
         tracing::info!("Stopping data processing for subject: {}", subject_id);
-        
+
         // Stop all automated processing while retaining data
-        
+
         Ok(())
     }
 

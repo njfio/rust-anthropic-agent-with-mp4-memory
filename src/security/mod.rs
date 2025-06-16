@@ -609,22 +609,34 @@ impl SecurityManager {
         action: &str,
     ) -> Result<bool> {
         let authz_service = self.authz_service.read().await;
-        authz_service.check_permission(context, resource, action).await
+        authz_service
+            .check_permission(context, resource, action)
+            .await
     }
 
     /// Get authorization service (for advanced operations)
-    pub async fn get_authorization_service(&self) -> tokio::sync::RwLockReadGuard<'_, Box<dyn authorization::AuthorizationService>> {
+    pub async fn get_authorization_service(
+        &self,
+    ) -> tokio::sync::RwLockReadGuard<'_, Box<dyn authorization::AuthorizationService>> {
         self.authz_service.read().await
     }
 
     /// Encrypt sensitive data using the encryption service
-    pub async fn encrypt_data(&self, data: &[u8], key_id: &str) -> Result<encryption::EncryptedData> {
+    pub async fn encrypt_data(
+        &self,
+        data: &[u8],
+        key_id: &str,
+    ) -> Result<encryption::EncryptedData> {
         let encryption_service = self.encryption_service.read().await;
         encryption_service.encrypt(data, key_id).await
     }
 
     /// Decrypt sensitive data using the encryption service
-    pub async fn decrypt_data(&self, encrypted_data: &encryption::EncryptedData, key_id: &str) -> Result<Vec<u8>> {
+    pub async fn decrypt_data(
+        &self,
+        encrypted_data: &encryption::EncryptedData,
+        key_id: &str,
+    ) -> Result<Vec<u8>> {
         let encryption_service = self.encryption_service.read().await;
         encryption_service.decrypt(encrypted_data, key_id).await
     }
@@ -638,11 +650,17 @@ impl SecurityManager {
     /// Decrypt a string using the encryption service
     pub async fn decrypt_string(&self, encrypted_data: &str, key_id: &str) -> Result<String> {
         let encryption_service = self.encryption_service.read().await;
-        encryption_service.decrypt_string(encrypted_data, key_id).await
+        encryption_service
+            .decrypt_string(encrypted_data, key_id)
+            .await
     }
 
     /// Generate an encryption key
-    pub async fn generate_encryption_key(&self, key_id: &str, algorithm: EncryptionAlgorithm) -> Result<()> {
+    pub async fn generate_encryption_key(
+        &self,
+        key_id: &str,
+        algorithm: EncryptionAlgorithm,
+    ) -> Result<()> {
         let encryption_service = self.encryption_service.read().await;
         encryption_service.generate_key(key_id, algorithm).await
     }
@@ -654,15 +672,26 @@ impl SecurityManager {
     }
 
     /// Evaluate a security policy
-    pub async fn evaluate_policy(&self, policy_name: &str, context: &SecurityContext) -> Result<policy::PolicyDecision> {
+    pub async fn evaluate_policy(
+        &self,
+        policy_name: &str,
+        context: &SecurityContext,
+    ) -> Result<policy::PolicyDecision> {
         let policy_engine = self.policy_engine.read().await;
         policy_engine.evaluate_policy(policy_name, context).await
     }
 
     /// Evaluate all applicable policies for a resource and action
-    pub async fn evaluate_all_policies(&self, context: &SecurityContext, resource: &str, action: &str) -> Result<policy::PolicyDecision> {
+    pub async fn evaluate_all_policies(
+        &self,
+        context: &SecurityContext,
+        resource: &str,
+        action: &str,
+    ) -> Result<policy::PolicyDecision> {
         let policy_engine = self.policy_engine.read().await;
-        policy_engine.evaluate_all_policies(context, resource, action).await
+        policy_engine
+            .evaluate_all_policies(context, resource, action)
+            .await
     }
 
     /// Add a security policy
@@ -687,37 +716,55 @@ impl SecurityManager {
     pub async fn create_authorization_policy(&self, policy: authorization::Policy) -> Result<()> {
         let authz_service = self.authz_service.read().await;
         // Downcast to RbacAuthorizationService to access policy methods
-        if let Some(rbac_service) = authz_service.as_any().downcast_ref::<authorization::RbacAuthorizationService>() {
+        if let Some(rbac_service) = authz_service
+            .as_any()
+            .downcast_ref::<authorization::RbacAuthorizationService>()
+        {
             rbac_service.create_policy(policy).await
         } else {
-            Err(AgentError::validation("Authorization service does not support policies".to_string()))
+            Err(AgentError::validation(
+                "Authorization service does not support policies".to_string(),
+            ))
         }
     }
 
     /// Update an authorization policy in the RBAC system
     pub async fn update_authorization_policy(&self, policy: authorization::Policy) -> Result<()> {
         let authz_service = self.authz_service.read().await;
-        if let Some(rbac_service) = authz_service.as_any().downcast_ref::<authorization::RbacAuthorizationService>() {
+        if let Some(rbac_service) = authz_service
+            .as_any()
+            .downcast_ref::<authorization::RbacAuthorizationService>()
+        {
             rbac_service.update_policy(policy).await
         } else {
-            Err(AgentError::validation("Authorization service does not support policies".to_string()))
+            Err(AgentError::validation(
+                "Authorization service does not support policies".to_string(),
+            ))
         }
     }
 
     /// Delete an authorization policy from the RBAC system
     pub async fn delete_authorization_policy(&self, policy_name: &str) -> Result<()> {
         let authz_service = self.authz_service.read().await;
-        if let Some(rbac_service) = authz_service.as_any().downcast_ref::<authorization::RbacAuthorizationService>() {
+        if let Some(rbac_service) = authz_service
+            .as_any()
+            .downcast_ref::<authorization::RbacAuthorizationService>()
+        {
             rbac_service.delete_policy(policy_name).await
         } else {
-            Err(AgentError::validation("Authorization service does not support policies".to_string()))
+            Err(AgentError::validation(
+                "Authorization service does not support policies".to_string(),
+            ))
         }
     }
 
     /// Check if an authorization policy exists
     pub async fn authorization_policy_exists(&self, policy_name: &str) -> Result<bool> {
         let authz_service = self.authz_service.read().await;
-        if let Some(rbac_service) = authz_service.as_any().downcast_ref::<authorization::RbacAuthorizationService>() {
+        if let Some(rbac_service) = authz_service
+            .as_any()
+            .downcast_ref::<authorization::RbacAuthorizationService>()
+        {
             rbac_service.policy_exists(policy_name).await
         } else {
             Ok(false)
@@ -727,7 +774,10 @@ impl SecurityManager {
     /// Get all authorization policies
     pub async fn get_all_authorization_policies(&self) -> Result<Vec<authorization::Policy>> {
         let authz_service = self.authz_service.read().await;
-        if let Some(rbac_service) = authz_service.as_any().downcast_ref::<authorization::RbacAuthorizationService>() {
+        if let Some(rbac_service) = authz_service
+            .as_any()
+            .downcast_ref::<authorization::RbacAuthorizationService>()
+        {
             rbac_service.get_all_policies().await
         } else {
             Ok(Vec::new())
@@ -742,13 +792,22 @@ impl SecurityManager {
         action: &str,
     ) -> Result<authorization::AuthorizationDecision> {
         let authz_service = self.authz_service.read().await;
-        authz_service.get_authorization_decision(context, resource, action).await
+        authz_service
+            .get_authorization_decision(context, resource, action)
+            .await
     }
 
     /// Get policies applicable to a specific resource and action
-    pub async fn get_applicable_authorization_policies(&self, resource: &str, action: &str) -> Result<Vec<authorization::Policy>> {
+    pub async fn get_applicable_authorization_policies(
+        &self,
+        resource: &str,
+        action: &str,
+    ) -> Result<Vec<authorization::Policy>> {
         let authz_service = self.authz_service.read().await;
-        if let Some(rbac_service) = authz_service.as_any().downcast_ref::<authorization::RbacAuthorizationService>() {
+        if let Some(rbac_service) = authz_service
+            .as_any()
+            .downcast_ref::<authorization::RbacAuthorizationService>()
+        {
             rbac_service.get_applicable_policies(resource, action).await
         } else {
             Ok(Vec::new())
@@ -764,7 +823,12 @@ impl SecurityManager {
     }
 
     /// Validate input with custom configuration
-    pub async fn validate_input_with_config(&self, input: &str, input_type: &str, strict_mode: bool) -> Result<()> {
+    pub async fn validate_input_with_config(
+        &self,
+        input: &str,
+        input_type: &str,
+        strict_mode: bool,
+    ) -> Result<()> {
         use crate::utils::validation::ValidationService;
 
         let validator = ValidationService::with_config(strict_mode);
@@ -780,7 +844,10 @@ impl SecurityManager {
     }
 
     /// Validate multiple inputs in batch
-    pub async fn validate_batch_inputs(&self, inputs: &[(String, String)]) -> Result<Vec<crate::utils::validation::ValidationResult>> {
+    pub async fn validate_batch_inputs(
+        &self,
+        inputs: &[(String, String)],
+    ) -> Result<Vec<crate::utils::validation::ValidationResult>> {
         use crate::utils::validation::ValidationService;
 
         let validator = ValidationService::new();
@@ -828,7 +895,8 @@ impl SecurityManager {
 
         // Use both standard file content validation and comprehensive validation
         validation::validate_file_content(content)?;
-        self.validate_input_comprehensive(content, "file_content").await
+        self.validate_input_comprehensive(content, "file_content")
+            .await
     }
 }
 

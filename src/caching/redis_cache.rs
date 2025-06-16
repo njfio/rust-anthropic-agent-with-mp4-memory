@@ -186,7 +186,12 @@ impl RedisCache {
         let pool_config = deadpool_redis::Config::from_url(&self.config.redis_url);
         let pool = pool_config
             .create_pool(Some(deadpool_redis::Runtime::Tokio1))
-            .map_err(|e| AgentError::tool("redis_cache", &format!("Failed to create Redis pool: {}", e)))?;
+            .map_err(|e| {
+                AgentError::tool(
+                    "redis_cache",
+                    &format!("Failed to create Redis pool: {}", e),
+                )
+            })?;
 
         // Test connection
         match pool.get().await {
@@ -195,10 +200,12 @@ impl RedisCache {
                 let _: String = redis::cmd("PING")
                     .query_async(&mut conn)
                     .await
-                    .map_err(|e| AgentError::tool("redis_cache", &format!("Redis ping failed: {}", e)))?;
+                    .map_err(|e| {
+                        AgentError::tool("redis_cache", &format!("Redis ping failed: {}", e))
+                    })?;
 
                 self.pool = Some(pool);
-                
+
                 // Update health status
                 {
                     let mut health = self.health.write().await;
@@ -214,8 +221,11 @@ impl RedisCache {
                 let mut health = self.health.write().await;
                 health.connection_status = ConnectionStatus::Error;
                 health.consecutive_errors += 1;
-                
-                Err(AgentError::tool("redis_cache", &format!("Redis connection failed: {}", e)))
+
+                Err(AgentError::tool(
+                    "redis_cache",
+                    &format!("Redis connection failed: {}", e),
+                ))
             }
         }
     }
@@ -256,13 +266,18 @@ impl RedisCache {
 
                     if attempt < self.config.retry_attempts {
                         tokio::time::sleep(Duration::from_millis(self.config.retry_delay)).await;
-                        warn!("Redis operation failed, retrying (attempt {}/{})", attempt + 1, self.config.retry_attempts);
+                        warn!(
+                            "Redis operation failed, retrying (attempt {}/{})",
+                            attempt + 1,
+                            self.config.retry_attempts
+                        );
                     }
                 }
             }
         }
 
-        Err(last_error.unwrap_or_else(|| AgentError::tool("redis_cache", "All retry attempts failed")))
+        Err(last_error
+            .unwrap_or_else(|| AgentError::tool("redis_cache", "All retry attempts failed")))
     }
 
     /// Update operation statistics
@@ -270,13 +285,13 @@ impl RedisCache {
         let mut stats = self.stats.write().await;
         stats.operations += 1;
         stats.last_operation = Some(Utc::now());
-        
+
         if hit {
             stats.hits += 1;
         } else {
             stats.misses += 1;
         }
-        
+
         // Update average response time
         let response_time_ms = duration.as_millis() as f64;
         stats.avg_response_time = (stats.avg_response_time + response_time_ms) / 2.0;
@@ -285,21 +300,22 @@ impl RedisCache {
     /// Perform health check ping
     pub async fn ping(&self) -> Result<()> {
         if let Some(pool) = &self.pool {
-            let mut conn = pool.get().await
-                .map_err(|e| AgentError::tool("redis_cache", &format!("Failed to get connection: {}", e)))?;
-            
+            let mut conn = pool.get().await.map_err(|e| {
+                AgentError::tool("redis_cache", &format!("Failed to get connection: {}", e))
+            })?;
+
             let _: String = redis::cmd("PING")
                 .query_async(&mut conn)
                 .await
                 .map_err(|e| AgentError::tool("redis_cache", &format!("Ping failed: {}", e)))?;
-            
+
             // Update health status
             {
                 let mut health = self.health.write().await;
                 health.last_ping = Some(Utc::now());
                 health.connection_status = ConnectionStatus::Connected;
             }
-            
+
             Ok(())
         } else {
             Err(AgentError::tool("redis_cache", "Redis not connected"))
@@ -309,26 +325,34 @@ impl RedisCache {
     /// Get Redis server information
     pub async fn get_server_info(&self) -> Result<RedisServerInfo> {
         if let Some(pool) = &self.pool {
-            let mut conn = pool.get().await
-                .map_err(|e| AgentError::tool("redis_cache", &format!("Failed to get connection: {}", e)))?;
-            
+            let mut conn = pool.get().await.map_err(|e| {
+                AgentError::tool("redis_cache", &format!("Failed to get connection: {}", e))
+            })?;
+
             let info: String = redis::cmd("INFO")
                 .arg("server")
                 .query_async(&mut conn)
                 .await
-                .map_err(|e| AgentError::tool("redis_cache", &format!("INFO command failed: {}", e)))?;
-            
+                .map_err(|e| {
+                    AgentError::tool("redis_cache", &format!("INFO command failed: {}", e))
+                })?;
+
             // Parse basic info (simplified)
-            let version = info.lines()
+            let version = info
+                .lines()
                 .find(|line| line.starts_with("redis_version:"))
                 .and_then(|line| line.split(':').nth(1))
                 .unwrap_or("unknown")
                 .to_string();
-            
+
             Ok(RedisServerInfo {
                 version,
-                mode: if self.config.cluster_mode { "cluster".to_string() } else { "standalone".to_string() },
-                used_memory: 0, // Would need to parse from INFO memory
+                mode: if self.config.cluster_mode {
+                    "cluster".to_string()
+                } else {
+                    "standalone".to_string()
+                },
+                used_memory: 0,       // Would need to parse from INFO memory
                 connected_clients: 0, // Would need to parse from INFO clients
             })
         } else {
@@ -350,34 +374,46 @@ impl CacheTier for RedisCache {
     async fn get(&self, key: &str) -> Result<Option<CacheEntry>> {
         let start_time = Instant::now();
         let full_key = self.get_full_key(key);
-        
+
         if let Some(pool) = &self.pool {
-            let result = self.execute_with_retry(|| {
-                let pool = pool.clone();
-                let full_key = full_key.clone();
-                
-                Box::pin(async move {
-                    let mut conn = pool.get().await
-                        .map_err(|e| AgentError::tool("redis_cache", &format!("Failed to get connection: {}", e)))?;
-                    
-                    let data: Option<Vec<u8>> = redis::cmd("GET")
-                        .arg(&full_key)
-                        .query_async(&mut conn)
-                        .await
-                        .map_err(|e| AgentError::tool("redis_cache", &format!("GET command failed: {}", e)))?;
-                    
-                    Ok(data)
+            let result = self
+                .execute_with_retry(|| {
+                    let pool = pool.clone();
+                    let full_key = full_key.clone();
+
+                    Box::pin(async move {
+                        let mut conn = pool.get().await.map_err(|e| {
+                            AgentError::tool(
+                                "redis_cache",
+                                &format!("Failed to get connection: {}", e),
+                            )
+                        })?;
+
+                        let data: Option<Vec<u8>> = redis::cmd("GET")
+                            .arg(&full_key)
+                            .query_async(&mut conn)
+                            .await
+                            .map_err(|e| {
+                                AgentError::tool(
+                                    "redis_cache",
+                                    &format!("GET command failed: {}", e),
+                                )
+                            })?;
+
+                        Ok(data)
+                    })
                 })
-            }).await?;
-            
+                .await?;
+
             let duration = start_time.elapsed();
-            
+
             match result {
                 Some(data) => {
                     // Deserialize cache entry
-                    let entry: CacheEntry = serde_json::from_slice(&data)
-                        .map_err(|e| AgentError::tool("redis_cache", &format!("Deserialization failed: {}", e)))?;
-                    
+                    let entry: CacheEntry = serde_json::from_slice(&data).map_err(|e| {
+                        AgentError::tool("redis_cache", &format!("Deserialization failed: {}", e))
+                    })?;
+
                     self.update_stats(duration, true).await;
                     Ok(Some(entry))
                 }
@@ -394,12 +430,13 @@ impl CacheTier for RedisCache {
     async fn set(&self, key: &str, entry: CacheEntry) -> Result<()> {
         let start_time = Instant::now();
         let full_key = self.get_full_key(key);
-        
+
         if let Some(pool) = &self.pool {
             // Serialize entry
-            let data = serde_json::to_vec(&entry)
-                .map_err(|e| AgentError::tool("redis_cache", &format!("Serialization failed: {}", e)))?;
-            
+            let data = serde_json::to_vec(&entry).map_err(|e| {
+                AgentError::tool("redis_cache", &format!("Serialization failed: {}", e))
+            })?;
+
             self.execute_with_retry(|| {
                 let pool = pool.clone();
                 let full_key = full_key.clone();
@@ -407,8 +444,9 @@ impl CacheTier for RedisCache {
                 let ttl = entry.ttl;
 
                 Box::pin(async move {
-                    let mut conn = pool.get().await
-                        .map_err(|e| AgentError::tool("redis_cache", &format!("Failed to get connection: {}", e)))?;
+                    let mut conn = pool.get().await.map_err(|e| {
+                        AgentError::tool("redis_cache", &format!("Failed to get connection: {}", e))
+                    })?;
 
                     if let Some(ttl_seconds) = ttl {
                         let _: () = redis::cmd("SETEX")
@@ -417,23 +455,34 @@ impl CacheTier for RedisCache {
                             .arg(&data)
                             .query_async(&mut conn)
                             .await
-                            .map_err(|e| AgentError::tool("redis_cache", &format!("SETEX command failed: {}", e)))?;
+                            .map_err(|e| {
+                                AgentError::tool(
+                                    "redis_cache",
+                                    &format!("SETEX command failed: {}", e),
+                                )
+                            })?;
                     } else {
                         let _: () = redis::cmd("SET")
                             .arg(&full_key)
                             .arg(&data)
                             .query_async(&mut conn)
                             .await
-                            .map_err(|e| AgentError::tool("redis_cache", &format!("SET command failed: {}", e)))?;
+                            .map_err(|e| {
+                                AgentError::tool(
+                                    "redis_cache",
+                                    &format!("SET command failed: {}", e),
+                                )
+                            })?;
                     }
 
                     Ok::<(), AgentError>(())
                 })
-            }).await?;
-            
+            })
+            .await?;
+
             let duration = start_time.elapsed();
             self.update_stats(duration, false).await; // Set operations don't count as hits
-            
+
             debug!("Set Redis cache entry: {} (TTL: {:?})", key, entry.ttl);
             Ok(())
         } else {
@@ -443,26 +492,37 @@ impl CacheTier for RedisCache {
 
     async fn delete(&self, key: &str) -> Result<bool> {
         let full_key = self.get_full_key(key);
-        
+
         if let Some(pool) = &self.pool {
-            let result = self.execute_with_retry(|| {
-                let pool = pool.clone();
-                let full_key = full_key.clone();
-                
-                Box::pin(async move {
-                    let mut conn = pool.get().await
-                        .map_err(|e| AgentError::tool("redis_cache", &format!("Failed to get connection: {}", e)))?;
-                    
-                    let deleted: u32 = redis::cmd("DEL")
-                        .arg(&full_key)
-                        .query_async(&mut conn)
-                        .await
-                        .map_err(|e| AgentError::tool("redis_cache", &format!("DEL command failed: {}", e)))?;
-                    
-                    Ok(deleted > 0)
+            let result = self
+                .execute_with_retry(|| {
+                    let pool = pool.clone();
+                    let full_key = full_key.clone();
+
+                    Box::pin(async move {
+                        let mut conn = pool.get().await.map_err(|e| {
+                            AgentError::tool(
+                                "redis_cache",
+                                &format!("Failed to get connection: {}", e),
+                            )
+                        })?;
+
+                        let deleted: u32 = redis::cmd("DEL")
+                            .arg(&full_key)
+                            .query_async(&mut conn)
+                            .await
+                            .map_err(|e| {
+                                AgentError::tool(
+                                    "redis_cache",
+                                    &format!("DEL command failed: {}", e),
+                                )
+                            })?;
+
+                        Ok(deleted > 0)
+                    })
                 })
-            }).await?;
-            
+                .await?;
+
             Ok(result)
         } else {
             Err(AgentError::tool("redis_cache", "Redis not connected"))
@@ -471,26 +531,37 @@ impl CacheTier for RedisCache {
 
     async fn exists(&self, key: &str) -> Result<bool> {
         let full_key = self.get_full_key(key);
-        
+
         if let Some(pool) = &self.pool {
-            let result = self.execute_with_retry(|| {
-                let pool = pool.clone();
-                let full_key = full_key.clone();
-                
-                Box::pin(async move {
-                    let mut conn = pool.get().await
-                        .map_err(|e| AgentError::tool("redis_cache", &format!("Failed to get connection: {}", e)))?;
-                    
-                    let exists: bool = redis::cmd("EXISTS")
-                        .arg(&full_key)
-                        .query_async(&mut conn)
-                        .await
-                        .map_err(|e| AgentError::tool("redis_cache", &format!("EXISTS command failed: {}", e)))?;
-                    
-                    Ok(exists)
+            let result = self
+                .execute_with_retry(|| {
+                    let pool = pool.clone();
+                    let full_key = full_key.clone();
+
+                    Box::pin(async move {
+                        let mut conn = pool.get().await.map_err(|e| {
+                            AgentError::tool(
+                                "redis_cache",
+                                &format!("Failed to get connection: {}", e),
+                            )
+                        })?;
+
+                        let exists: bool = redis::cmd("EXISTS")
+                            .arg(&full_key)
+                            .query_async(&mut conn)
+                            .await
+                            .map_err(|e| {
+                                AgentError::tool(
+                                    "redis_cache",
+                                    &format!("EXISTS command failed: {}", e),
+                                )
+                            })?;
+
+                        Ok(exists)
+                    })
                 })
-            }).await?;
-            
+                .await?;
+
             Ok(result)
         } else {
             Err(AgentError::tool("redis_cache", "Redis not connected"))
@@ -499,9 +570,9 @@ impl CacheTier for RedisCache {
 
     async fn stats(&self) -> Result<TierStats> {
         let stats = self.stats.read().await;
-        
+
         Ok(TierStats {
-            entry_count: 0, // Redis doesn't easily provide this without scanning
+            entry_count: 0,  // Redis doesn't easily provide this without scanning
             memory_usage: 0, // Would need INFO memory command
             hits: stats.hits,
             misses: stats.misses,
@@ -516,18 +587,26 @@ impl CacheTier for RedisCache {
                 let pool = pool.clone();
 
                 Box::pin(async move {
-                    let mut conn = pool.get().await
-                        .map_err(|e| AgentError::tool("redis_cache", &format!("Failed to get connection: {}", e)))?;
+                    let mut conn = pool.get().await.map_err(|e| {
+                        AgentError::tool("redis_cache", &format!("Failed to get connection: {}", e))
+                    })?;
 
-                    let _: String = redis::cmd("FLUSHDB")
-                        .query_async(&mut conn)
-                        .await
-                        .map_err(|e| AgentError::tool("redis_cache", &format!("FLUSHDB command failed: {}", e)))?;
+                    let _: String =
+                        redis::cmd("FLUSHDB")
+                            .query_async(&mut conn)
+                            .await
+                            .map_err(|e| {
+                                AgentError::tool(
+                                    "redis_cache",
+                                    &format!("FLUSHDB command failed: {}", e),
+                                )
+                            })?;
 
                     Ok::<(), AgentError>(())
                 })
-            }).await?;
-            
+            })
+            .await?;
+
             info!("Cleared Redis cache: {}", self.name);
             Ok(())
         } else {
@@ -538,26 +617,37 @@ impl CacheTier for RedisCache {
     async fn health_check(&self) -> Result<TierHealth> {
         let health = self.health.read().await;
         let stats = self.stats.read().await;
-        
+
         // Determine health score based on error rate and connection status
         let error_rate = if stats.operations > 0 {
             stats.errors as f64 / stats.operations as f64
         } else {
             0.0
         };
-        
+
         let health_score = match health.connection_status {
             ConnectionStatus::Connected => {
-                if error_rate < 0.01 { 100 } // Less than 1% error rate
-                else if error_rate < 0.05 { 80 } // Less than 5% error rate
-                else if error_rate < 0.1 { 60 } // Less than 10% error rate
-                else { 30 }
+                if error_rate < 0.01 {
+                    100
+                }
+                // Less than 1% error rate
+                else if error_rate < 0.05 {
+                    80
+                }
+                // Less than 5% error rate
+                else if error_rate < 0.1 {
+                    60
+                }
+                // Less than 10% error rate
+                else {
+                    30
+                }
             }
             ConnectionStatus::Reconnecting => 50,
             ConnectionStatus::Disconnected => 20,
             ConnectionStatus::Error => 0,
         };
-        
+
         Ok(TierHealth {
             is_healthy: health_score > 50,
             health_score: health_score as u8,

@@ -47,7 +47,10 @@ pub struct CsvFileExporter {
 impl CsvFileExporter {
     /// Create a new CSV file exporter
     pub fn new(config: ExporterConfig) -> Self {
-        let file_path = config.endpoint.clone().unwrap_or_else(|| "/tmp/metrics.csv".to_string());
+        let file_path = config
+            .endpoint
+            .clone()
+            .unwrap_or_else(|| "/tmp/metrics.csv".to_string());
         Self {
             config,
             stats: Arc::new(RwLock::new(ExportStats::default())),
@@ -104,8 +107,10 @@ impl CsvFileExporter {
                 super::MetricValue::Histogram(_) => "histogram".to_string(),
                 super::MetricValue::Summary(_) => "summary".to_string(),
             };
-            csv.push_str(&format!("{},{},{},{:?}\n",
-                metric.name, value_str, metric.timestamp, metric.metric_type));
+            csv.push_str(&format!(
+                "{},{},{},{:?}\n",
+                metric.name, value_str, metric.timestamp, metric.metric_type
+            ));
         }
         csv
     }
@@ -208,7 +213,10 @@ impl PrometheusExporter {
 
         // Group metrics by name
         for metric in metrics {
-            grouped_metrics.entry(metric.name.clone()).or_insert_with(Vec::new).push(metric);
+            grouped_metrics
+                .entry(metric.name.clone())
+                .or_insert_with(Vec::new)
+                .push(metric);
         }
 
         // Convert each group to Prometheus format
@@ -266,7 +274,8 @@ impl PrometheusExporter {
                 let labels_str = if sample.labels.is_empty() {
                     String::new()
                 } else {
-                    let labels: Vec<String> = sample.labels
+                    let labels: Vec<String> = sample
+                        .labels
                         .iter()
                         .map(|(k, v)| format!("{}=\"{}\"", k, v))
                         .collect();
@@ -351,15 +360,21 @@ impl MetricsExporter for JsonFileExporter {
         let start_time = Instant::now();
 
         // Serialize metrics to JSON
-        let json_data = serde_json::to_string_pretty(metrics)
-            .map_err(|e| AgentError::tool("json_exporter", &format!("JSON serialization failed: {}", e)))?;
+        let json_data = serde_json::to_string_pretty(metrics).map_err(|e| {
+            AgentError::tool(
+                "json_exporter",
+                &format!("JSON serialization failed: {}", e),
+            )
+        })?;
 
         // Write to file
-        let mut file = File::create(&self.file_path)
-            .map_err(|e| AgentError::tool("json_exporter", &format!("Failed to create file: {}", e)))?;
+        let mut file = File::create(&self.file_path).map_err(|e| {
+            AgentError::tool("json_exporter", &format!("Failed to create file: {}", e))
+        })?;
 
-        file.write_all(json_data.as_bytes())
-            .map_err(|e| AgentError::tool("json_exporter", &format!("Failed to write file: {}", e)))?;
+        file.write_all(json_data.as_bytes()).map_err(|e| {
+            AgentError::tool("json_exporter", &format!("Failed to write file: {}", e))
+        })?;
 
         // Update export statistics
         let export_time = start_time.elapsed();
@@ -372,15 +387,20 @@ impl MetricsExporter for JsonFileExporter {
             stats.total_metrics_exported += metrics.len() as u64;
         }
 
-        debug!("Exported {} metrics to JSON file: {}", metrics.len(), self.file_path);
+        debug!(
+            "Exported {} metrics to JSON file: {}",
+            metrics.len(),
+            self.file_path
+        );
         Ok(())
     }
 
     async fn health_check(&self) -> Result<ExporterHealth> {
         let stats = self.stats.read().await;
-        
+
         // Check if file path is writable
-        let path_healthy = Path::new(&self.file_path).parent()
+        let path_healthy = Path::new(&self.file_path)
+            .parent()
             .map(|p| p.exists())
             .unwrap_or(false);
 
@@ -410,15 +430,14 @@ impl ConsoleExporter {
     /// Format metrics for console output
     fn format_metrics(&self, metrics: &[Metric]) -> String {
         match self.format {
-            ConsoleFormat::Json => {
-                serde_json::to_string_pretty(metrics).unwrap_or_else(|_| "JSON serialization failed".to_string())
-            }
+            ConsoleFormat::Json => serde_json::to_string_pretty(metrics)
+                .unwrap_or_else(|_| "JSON serialization failed".to_string()),
             ConsoleFormat::Table => {
                 let mut output = String::new();
                 output.push_str("┌─────────────────────────────────────────────────────────────────────────────────┐\n");
                 output.push_str("│                                    METRICS                                     │\n");
                 output.push_str("├─────────────────────────────────────────────────────────────────────────────────┤\n");
-                
+
                 for metric in metrics {
                     let value_str = match &metric.value {
                         MetricValue::Counter(v) => format!("{}", v),
@@ -426,14 +445,15 @@ impl ConsoleExporter {
                         MetricValue::Histogram(h) => format!("sum={:.2}, count={}", h.sum, h.count),
                         MetricValue::Summary(s) => format!("sum={:.2}, count={}", s.sum, s.count),
                     };
-                    
-                    output.push_str(&format!("│ {:<30} │ {:<20} │ {:<25} │\n", 
-                        metric.name, 
+
+                    output.push_str(&format!(
+                        "│ {:<30} │ {:<20} │ {:<25} │\n",
+                        metric.name,
                         format!("{:?}", metric.metric_type),
                         value_str
                     ));
                 }
-                
+
                 output.push_str("└─────────────────────────────────────────────────────────────────────────────────┘\n");
                 output
             }
@@ -446,8 +466,13 @@ impl ConsoleExporter {
                         MetricValue::Histogram(h) => format!("sum={:.2}, count={}", h.sum, h.count),
                         MetricValue::Summary(s) => format!("sum={:.2}, count={}", s.sum, s.count),
                     };
-                    
-                    output.push_str(&format!("{}: {} ({})\n", metric.name, value_str, format!("{:?}", metric.metric_type)));
+
+                    output.push_str(&format!(
+                        "{}: {} ({})\n",
+                        metric.name,
+                        value_str,
+                        format!("{:?}", metric.metric_type)
+                    ));
                 }
                 output
             }
@@ -525,21 +550,30 @@ impl MetricsExporter for HttpExporter {
         let start_time = Instant::now();
 
         // Serialize metrics to JSON
-        let json_data = serde_json::to_string(metrics)
-            .map_err(|e| AgentError::tool("http_exporter", &format!("JSON serialization failed: {}", e)))?;
+        let json_data = serde_json::to_string(metrics).map_err(|e| {
+            AgentError::tool(
+                "http_exporter",
+                &format!("JSON serialization failed: {}", e),
+            )
+        })?;
 
         // Send HTTP POST request
-        let response = self.client
+        let response = self
+            .client
             .post(&self.endpoint_url)
             .header("Content-Type", "application/json")
             .body(json_data)
             .send()
             .await
-            .map_err(|e| AgentError::tool("http_exporter", &format!("HTTP request failed: {}", e)))?;
+            .map_err(|e| {
+                AgentError::tool("http_exporter", &format!("HTTP request failed: {}", e))
+            })?;
 
         if !response.status().is_success() {
-            return Err(AgentError::tool("http_exporter", 
-                &format!("HTTP request failed with status: {}", response.status())));
+            return Err(AgentError::tool(
+                "http_exporter",
+                &format!("HTTP request failed with status: {}", response.status()),
+            ));
         }
 
         // Update export statistics
@@ -553,15 +587,20 @@ impl MetricsExporter for HttpExporter {
             stats.total_metrics_exported += metrics.len() as u64;
         }
 
-        debug!("Exported {} metrics to HTTP endpoint: {}", metrics.len(), self.endpoint_url);
+        debug!(
+            "Exported {} metrics to HTTP endpoint: {}",
+            metrics.len(),
+            self.endpoint_url
+        );
         Ok(())
     }
 
     async fn health_check(&self) -> Result<ExporterHealth> {
         let stats = self.stats.read().await;
-        
+
         // Test endpoint connectivity
-        let endpoint_healthy = self.client
+        let endpoint_healthy = self
+            .client
             .head(&self.endpoint_url)
             .send()
             .await

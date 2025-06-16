@@ -1,9 +1,7 @@
 // Metrics Collectors for Performance Monitoring
 // Provides specialized collectors for different types of metrics
 
-use super::{
-    CollectorConfig, CollectorHealth, Metric, MetricType, MetricValue, MetricsCollector,
-};
+use super::{CollectorConfig, CollectorHealth, Metric, MetricType, MetricValue, MetricsCollector};
 use crate::utils::error::{AgentError, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -252,15 +250,23 @@ impl ApplicationMetricsCollector {
     }
 
     /// Record an application metric
-    pub async fn record_metric(&self, name: &str, value: f64, labels: HashMap<String, String>) -> Result<()> {
+    pub async fn record_metric(
+        &self,
+        name: &str,
+        value: f64,
+        labels: HashMap<String, String>,
+    ) -> Result<()> {
         let mut metrics = self.metrics.write().await;
-        metrics.insert(name.to_string(), ApplicationMetric {
-            name: name.to_string(),
-            value,
-            labels,
-            last_updated: Utc::now(),
-            description: None,
-        });
+        metrics.insert(
+            name.to_string(),
+            ApplicationMetric {
+                name: name.to_string(),
+                value,
+                labels,
+                last_updated: Utc::now(),
+                description: None,
+            },
+        );
         Ok(())
     }
 
@@ -299,7 +305,8 @@ impl MetricsCollector for ApplicationMetricsCollector {
             stats.total_collections += 1;
             stats.successful_collections += 1;
             stats.last_collection = Some(Utc::now());
-            stats.avg_collection_time = (stats.avg_collection_time + collection_time.as_millis() as f64) / 2.0;
+            stats.avg_collection_time =
+                (stats.avg_collection_time + collection_time.as_millis() as f64) / 2.0;
         }
 
         debug!("Collected {} application metrics", collected_metrics.len());
@@ -336,12 +343,17 @@ impl HttpMetricsCollector {
     }
 
     /// Record an HTTP request
-    pub async fn record_request(&self, endpoint: &str, status_code: u16, response_time: f64) -> Result<()> {
+    pub async fn record_request(
+        &self,
+        endpoint: &str,
+        status_code: u16,
+        response_time: f64,
+    ) -> Result<()> {
         let mut metrics = self.metrics.write().await;
-        
+
         // Update total requests
         metrics.total_requests += 1;
-        
+
         // Update status code counters
         match status_code {
             200..=299 => metrics.successful_requests += 1,
@@ -349,10 +361,10 @@ impl HttpMetricsCollector {
             500..=599 => metrics.server_errors += 1,
             _ => {}
         }
-        
+
         // Update response time
         metrics.avg_response_time = (metrics.avg_response_time + response_time) / 2.0;
-        
+
         // Update error rate
         let total_errors = metrics.client_errors + metrics.server_errors;
         metrics.error_rate = if metrics.total_requests > 0 {
@@ -360,23 +372,27 @@ impl HttpMetricsCollector {
         } else {
             0.0
         };
-        
+
         // Update endpoint metrics
-        let endpoint_metrics = metrics.requests_by_endpoint.entry(endpoint.to_string()).or_insert(EndpointMetrics {
-            total_requests: 0,
-            avg_response_time: 0.0,
-            error_count: 0,
-            last_request: Utc::now(),
-        });
-        
+        let endpoint_metrics = metrics
+            .requests_by_endpoint
+            .entry(endpoint.to_string())
+            .or_insert(EndpointMetrics {
+                total_requests: 0,
+                avg_response_time: 0.0,
+                error_count: 0,
+                last_request: Utc::now(),
+            });
+
         endpoint_metrics.total_requests += 1;
-        endpoint_metrics.avg_response_time = (endpoint_metrics.avg_response_time + response_time) / 2.0;
+        endpoint_metrics.avg_response_time =
+            (endpoint_metrics.avg_response_time + response_time) / 2.0;
         endpoint_metrics.last_request = Utc::now();
-        
+
         if status_code >= 400 {
             endpoint_metrics.error_count += 1;
         }
-        
+
         metrics.last_updated = Utc::now();
         Ok(())
     }
@@ -398,7 +414,7 @@ impl MetricsCollector for HttpMetricsCollector {
         let mut collected_metrics = Vec::new();
 
         let metrics = self.metrics.read().await;
-        
+
         // Total requests metric
         collected_metrics.push(Metric {
             name: "http_requests_total".to_string(),
@@ -446,7 +462,8 @@ impl MetricsCollector for HttpMetricsCollector {
             stats.total_collections += 1;
             stats.successful_collections += 1;
             stats.last_collection = Some(Utc::now());
-            stats.avg_collection_time = (stats.avg_collection_time + collection_time.as_millis() as f64) / 2.0;
+            stats.avg_collection_time =
+                (stats.avg_collection_time + collection_time.as_millis() as f64) / 2.0;
         }
 
         debug!("Collected {} HTTP metrics", collected_metrics.len());
@@ -495,7 +512,10 @@ impl CustomMetricsCollector {
         if metrics.remove(name).is_some() {
             Ok(())
         } else {
-            Err(AgentError::validation(format!("Metric not found: {}", name)))
+            Err(AgentError::validation(format!(
+                "Metric not found: {}",
+                name
+            )))
         }
     }
 
@@ -534,7 +554,8 @@ impl MetricsCollector for CustomMetricsCollector {
             stats.total_collections += 1;
             stats.successful_collections += 1;
             stats.last_collection = Some(Utc::now());
-            stats.avg_collection_time = (stats.avg_collection_time + collection_time.as_millis() as f64) / 2.0;
+            stats.avg_collection_time =
+                (stats.avg_collection_time + collection_time.as_millis() as f64) / 2.0;
         }
 
         debug!("Collected {} custom metrics", collected_metrics.len());

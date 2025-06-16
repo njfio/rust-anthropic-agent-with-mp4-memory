@@ -6,13 +6,14 @@ use crate::anthropic::models::{ChatRequest, ChatResponse};
 use crate::config::AnthropicConfig;
 use crate::utils::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 use crate::utils::error::{AgentError, Result};
+use std::sync::Arc;
 
 /// HTTP client for the Anthropic API
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AnthropicClient {
     client: Client,
     config: AnthropicConfig,
-    circuit_breaker: CircuitBreaker,
+    circuit_breaker: Arc<CircuitBreaker>,
 }
 
 impl AnthropicClient {
@@ -34,7 +35,7 @@ impl AnthropicClient {
             success_threshold: 3,
             failure_window: Duration::from_secs(300),
         };
-        let circuit_breaker = CircuitBreaker::new(circuit_config);
+        let circuit_breaker = Arc::new(CircuitBreaker::new(circuit_config));
 
         Ok(Self {
             client,

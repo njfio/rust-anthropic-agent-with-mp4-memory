@@ -545,8 +545,12 @@ mod tests {
         assert!(stats.strict_mode);
         assert_eq!(stats.custom_patterns_count, 0);
         assert_eq!(stats.available_constants.len(), 7);
-        assert!(stats.available_constants.contains(&"SAFE_COMMAND_CHARS".to_string()));
-        assert!(stats.available_constants.contains(&"SAFE_URL_CHARS".to_string()));
+        assert!(stats
+            .available_constants
+            .contains(&"SAFE_COMMAND_CHARS".to_string()));
+        assert!(stats
+            .available_constants
+            .contains(&"SAFE_URL_CHARS".to_string()));
     }
 
     #[test]
@@ -568,9 +572,15 @@ mod tests {
         assert_eq!(stats.custom_patterns_count, 2);
 
         // Test custom pattern detection (use a valid input type)
-        assert!(service.validate_comprehensive_input("normal_text", "path").is_ok());
-        assert!(service.validate_comprehensive_input("text_with_forbidden_word", "path").is_err());
-        assert!(service.validate_comprehensive_input("text_with_BLOCKED_TERM", "path").is_err()); // case insensitive
+        assert!(service
+            .validate_comprehensive_input("normal_text", "path")
+            .is_ok());
+        assert!(service
+            .validate_comprehensive_input("text_with_forbidden_word", "path")
+            .is_err());
+        assert!(service
+            .validate_comprehensive_input("text_with_BLOCKED_TERM", "path")
+            .is_err()); // case insensitive
     }
 
     #[test]
@@ -578,19 +588,37 @@ mod tests {
         let service = ValidationService::new();
 
         // Test path validation
-        assert!(service.validate_comprehensive_input("src/main.rs", "path").is_ok());
-        assert!(service.validate_comprehensive_input("docs/README.md", "path").is_ok());
-        assert!(service.validate_comprehensive_input("path with spaces", "path").is_err());
+        assert!(service
+            .validate_comprehensive_input("src/main.rs", "path")
+            .is_ok());
+        assert!(service
+            .validate_comprehensive_input("docs/README.md", "path")
+            .is_ok());
+        assert!(service
+            .validate_comprehensive_input("path with spaces", "path")
+            .is_err());
 
         // Test command validation
-        assert!(service.validate_comprehensive_input("ls -la", "command").is_ok());
-        assert!(service.validate_comprehensive_input("echo hello", "command").is_ok());
-        assert!(service.validate_comprehensive_input("ls | grep", "command").is_err());
+        assert!(service
+            .validate_comprehensive_input("ls -la", "command")
+            .is_ok());
+        assert!(service
+            .validate_comprehensive_input("echo hello", "command")
+            .is_ok());
+        assert!(service
+            .validate_comprehensive_input("ls | grep", "command")
+            .is_err());
 
         // Test URL validation
-        assert!(service.validate_comprehensive_input("https://example.com/path?param=value", "url").is_ok());
-        assert!(service.validate_comprehensive_input("http://test.com#section", "url").is_ok());
-        assert!(service.validate_comprehensive_input("https://site.com/path with spaces", "url").is_err());
+        assert!(service
+            .validate_comprehensive_input("https://example.com/path?param=value", "url")
+            .is_ok());
+        assert!(service
+            .validate_comprehensive_input("http://test.com#section", "url")
+            .is_ok());
+        assert!(service
+            .validate_comprehensive_input("https://site.com/path with spaces", "url")
+            .is_err());
     }
 
     #[test]
@@ -667,7 +695,9 @@ mod tests {
         let input_with_invalid_chars = "test@example";
 
         // Strict mode should reject invalid characters
-        assert!(strict_service.validate_comprehensive_input(input_with_invalid_chars, "path").is_err());
+        assert!(strict_service
+            .validate_comprehensive_input(input_with_invalid_chars, "path")
+            .is_err());
 
         // Lenient mode should still check security patterns but not character whitelist
         // Note: This will still fail due to security patterns, but for different reasons
@@ -675,7 +705,9 @@ mod tests {
         // The input should pass character validation but may fail on security patterns
         // Let's test with a safer input
         let safe_input = "test_example";
-        assert!(lenient_service.validate_comprehensive_input(safe_input, "path").is_ok());
+        assert!(lenient_service
+            .validate_comprehensive_input(safe_input, "path")
+            .is_ok());
     }
 
     #[test]
@@ -696,8 +728,11 @@ mod tests {
         ];
 
         for constant in expected_constants {
-            assert!(stats.available_constants.contains(&constant.to_string()),
-                "Missing constant: {}", constant);
+            assert!(
+                stats.available_constants.contains(&constant.to_string()),
+                "Missing constant: {}",
+                constant
+            );
         }
     }
 }
@@ -996,9 +1031,7 @@ impl ValidationService {
             _ => SAFE_PATH_CHARS.chars().collect(),
         };
 
-        input.chars()
-            .filter(|ch| safe_chars.contains(ch))
-            .collect()
+        input.chars().filter(|ch| safe_chars.contains(ch)).collect()
     }
 
     /// Get validation statistics

@@ -203,7 +203,10 @@ pub enum ReportPeriod {
     Last24Hours,
     LastWeek,
     LastMonth,
-    Custom { start: DateTime<Utc>, end: DateTime<Utc> },
+    Custom {
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    },
 }
 
 /// Report summary
@@ -377,7 +380,7 @@ impl CacheMetricsCollector {
     /// Record a cache operation
     pub async fn record_operation(&self, operation_type: &str, duration: Duration, success: bool) {
         let mut metrics = self.metrics.write().await;
-        
+
         // Update operation stats
         match operation_type {
             "get" => metrics.operation_stats.get_operations += 1,
@@ -387,16 +390,16 @@ impl CacheMetricsCollector {
             "invalidate" => metrics.operation_stats.invalidation_operations += 1,
             _ => {}
         }
-        
+
         if !success {
             metrics.operation_stats.failed_operations += 1;
         }
-        
+
         // Update average operation time
         let duration_ms = duration.as_millis() as f64;
-        metrics.operation_stats.avg_operation_time = 
+        metrics.operation_stats.avg_operation_time =
             (metrics.operation_stats.avg_operation_time + duration_ms) / 2.0;
-        
+
         metrics.overall_stats.total_operations += 1;
         metrics.last_updated = Utc::now();
     }
@@ -404,41 +407,45 @@ impl CacheMetricsCollector {
     /// Record a cache hit or miss
     pub async fn record_hit_miss(&self, tier_name: &str, hit: bool) {
         let mut metrics = self.metrics.write().await;
-        
+
         // Update overall stats
         if hit {
             metrics.overall_stats.total_hits += 1;
         } else {
             metrics.overall_stats.total_misses += 1;
         }
-        
+
         // Calculate hit ratio
         let total_requests = metrics.overall_stats.total_hits + metrics.overall_stats.total_misses;
         if total_requests > 0 {
-            metrics.overall_stats.hit_ratio = 
+            metrics.overall_stats.hit_ratio =
                 metrics.overall_stats.total_hits as f64 / total_requests as f64 * 100.0;
         }
-        
+
         // Update tier stats
-        let tier_stats = metrics.tier_stats.entry(tier_name.to_string()).or_insert(TierMetricsData {
-            tier_name: tier_name.to_string(),
-            tier_level: 0,
-            hits: 0,
-            misses: 0,
-            hit_ratio: 0.0,
-            entry_count: 0,
-            memory_usage: 0,
-            avg_response_time: 0.0,
-            error_count: 0,
-            health_score: 100,
-        });
-        
+        let tier_stats =
+            metrics
+                .tier_stats
+                .entry(tier_name.to_string())
+                .or_insert(TierMetricsData {
+                    tier_name: tier_name.to_string(),
+                    tier_level: 0,
+                    hits: 0,
+                    misses: 0,
+                    hit_ratio: 0.0,
+                    entry_count: 0,
+                    memory_usage: 0,
+                    avg_response_time: 0.0,
+                    error_count: 0,
+                    health_score: 100,
+                });
+
         if hit {
             tier_stats.hits += 1;
         } else {
             tier_stats.misses += 1;
         }
-        
+
         // Calculate tier hit ratio
         let tier_total = tier_stats.hits + tier_stats.misses;
         if tier_total > 0 {
@@ -447,9 +454,15 @@ impl CacheMetricsCollector {
     }
 
     /// Update tier statistics
-    pub async fn update_tier_stats(&self, tier_name: &str, entry_count: u64, memory_usage: u64, avg_response_time: f64) {
+    pub async fn update_tier_stats(
+        &self,
+        tier_name: &str,
+        entry_count: u64,
+        memory_usage: u64,
+        avg_response_time: f64,
+    ) {
         let mut metrics = self.metrics.write().await;
-        
+
         if let Some(tier_stats) = metrics.tier_stats.get_mut(tier_name) {
             tier_stats.entry_count = entry_count;
             tier_stats.memory_usage = memory_usage;
@@ -460,31 +473,33 @@ impl CacheMetricsCollector {
     /// Calculate performance metrics
     pub async fn calculate_performance_metrics(&self) {
         let mut metrics = self.metrics.write().await;
-        
+
         // Calculate throughput (operations per second)
         let uptime = self.start_time.elapsed().as_secs() as f64;
         if uptime > 0.0 {
-            metrics.performance_metrics.throughput = 
+            metrics.performance_metrics.throughput =
                 metrics.overall_stats.total_operations as f64 / uptime;
         }
-        
+
         // Calculate memory efficiency
         if metrics.overall_stats.total_memory_usage > 0 {
-            metrics.performance_metrics.memory_efficiency = 
-                metrics.overall_stats.hit_ratio / (metrics.overall_stats.total_memory_usage as f64 / 1_000_000.0);
+            metrics.performance_metrics.memory_efficiency = metrics.overall_stats.hit_ratio
+                / (metrics.overall_stats.total_memory_usage as f64 / 1_000_000.0);
         }
-        
+
         // Calculate effectiveness score
         let hit_ratio_score = (metrics.overall_stats.hit_ratio / 100.0 * 40.0) as u8;
-        let throughput_score = (metrics.performance_metrics.throughput.min(1000.0) / 1000.0 * 30.0) as u8;
+        let throughput_score =
+            (metrics.performance_metrics.throughput.min(1000.0) / 1000.0 * 30.0) as u8;
         let latency_score = if metrics.operation_stats.avg_operation_time > 0.0 {
             ((100.0 - metrics.operation_stats.avg_operation_time.min(100.0)) / 100.0 * 30.0) as u8
         } else {
             30
         };
-        
-        metrics.performance_metrics.effectiveness_score = hit_ratio_score + throughput_score + latency_score;
-        
+
+        metrics.performance_metrics.effectiveness_score =
+            hit_ratio_score + throughput_score + latency_score;
+
         // Update uptime
         metrics.overall_stats.uptime_seconds = uptime as u64;
     }
@@ -494,29 +509,50 @@ impl CacheMetricsCollector {
         let metrics = self.metrics.read().await;
         let mut history = self.history.write().await;
         let now = Utc::now();
-        
+
         // Add current metrics to history
-        history.hit_ratio_history.push_back((now, metrics.overall_stats.hit_ratio));
-        history.throughput_history.push_back((now, metrics.performance_metrics.throughput));
-        history.latency_history.push_back((now, metrics.operation_stats.avg_operation_time));
-        history.memory_usage_history.push_back((now, metrics.overall_stats.total_memory_usage));
-        
+        history
+            .hit_ratio_history
+            .push_back((now, metrics.overall_stats.hit_ratio));
+        history
+            .throughput_history
+            .push_back((now, metrics.performance_metrics.throughput));
+        history
+            .latency_history
+            .push_back((now, metrics.operation_stats.avg_operation_time));
+        history
+            .memory_usage_history
+            .push_back((now, metrics.overall_stats.total_memory_usage));
+
         // Calculate error rate
         let error_rate = if metrics.overall_stats.total_operations > 0 {
-            metrics.operation_stats.failed_operations as f64 / metrics.overall_stats.total_operations as f64 * 100.0
+            metrics.operation_stats.failed_operations as f64
+                / metrics.overall_stats.total_operations as f64
+                * 100.0
         } else {
             0.0
         };
         history.error_rate_history.push_back((now, error_rate));
-        
+
         // Trim history to retention period
-        let retention_cutoff = now - chrono::Duration::hours(self.config.history_retention_hours as i64);
-        
-        history.hit_ratio_history.retain(|(timestamp, _)| *timestamp > retention_cutoff);
-        history.throughput_history.retain(|(timestamp, _)| *timestamp > retention_cutoff);
-        history.latency_history.retain(|(timestamp, _)| *timestamp > retention_cutoff);
-        history.memory_usage_history.retain(|(timestamp, _)| *timestamp > retention_cutoff);
-        history.error_rate_history.retain(|(timestamp, _)| *timestamp > retention_cutoff);
+        let retention_cutoff =
+            now - chrono::Duration::hours(self.config.history_retention_hours as i64);
+
+        history
+            .hit_ratio_history
+            .retain(|(timestamp, _)| *timestamp > retention_cutoff);
+        history
+            .throughput_history
+            .retain(|(timestamp, _)| *timestamp > retention_cutoff);
+        history
+            .latency_history
+            .retain(|(timestamp, _)| *timestamp > retention_cutoff);
+        history
+            .memory_usage_history
+            .retain(|(timestamp, _)| *timestamp > retention_cutoff);
+        history
+            .error_rate_history
+            .retain(|(timestamp, _)| *timestamp > retention_cutoff);
     }
 
     /// Get current metrics
@@ -533,22 +569,27 @@ impl CacheMetricsCollector {
     pub async fn generate_report(&self, period: ReportPeriod) -> PerformanceReport {
         let metrics = self.get_metrics().await;
         let history = self.get_history().await;
-        
+
         // Calculate summary
         let summary = ReportSummary {
             avg_hit_ratio: metrics.overall_stats.hit_ratio,
-            peak_throughput: history.throughput_history.iter()
+            peak_throughput: history
+                .throughput_history
+                .iter()
                 .map(|(_, throughput)| *throughput)
                 .fold(0.0, f64::max),
             avg_latency: metrics.operation_stats.avg_operation_time,
             total_cost_savings: metrics.performance_metrics.cost_savings_ratio * 100.0,
             efficiency_score: metrics.performance_metrics.effectiveness_score,
         };
-        
+
         // Analyze tiers
-        let tier_analysis: Vec<TierAnalysis> = metrics.tier_stats.values()
+        let tier_analysis: Vec<TierAnalysis> = metrics
+            .tier_stats
+            .values()
             .map(|tier| {
-                let performance_score = ((tier.hit_ratio + (100.0 - tier.avg_response_time.min(100.0))) / 2.0) as u8;
+                let performance_score =
+                    ((tier.hit_ratio + (100.0 - tier.avg_response_time.min(100.0))) / 2.0) as u8;
                 let utilization = if tier.memory_usage > 0 { 75.0 } else { 0.0 }; // Simplified
                 let effectiveness = match performance_score {
                     90..=100 => EffectivenessRating::Excellent,
@@ -557,7 +598,7 @@ impl CacheMetricsCollector {
                     50..=69 => EffectivenessRating::Poor,
                     _ => EffectivenessRating::Critical,
                 };
-                
+
                 TierAnalysis {
                     tier_name: tier.tier_name.clone(),
                     performance_score,
@@ -567,7 +608,7 @@ impl CacheMetricsCollector {
                 }
             })
             .collect();
-        
+
         // Calculate trends (simplified)
         let trends = PerformanceTrends {
             hit_ratio_trend: TrendDirection::Stable,
@@ -575,16 +616,19 @@ impl CacheMetricsCollector {
             throughput_trend: TrendDirection::Stable,
             memory_usage_trend: TrendDirection::Stable,
         };
-        
+
         // Generate recommendations
         let mut recommendations = Vec::new();
         if metrics.overall_stats.hit_ratio < 80.0 {
-            recommendations.push("Consider increasing cache TTL or adjusting eviction policies".to_string());
+            recommendations
+                .push("Consider increasing cache TTL or adjusting eviction policies".to_string());
         }
         if metrics.operation_stats.avg_operation_time > 50.0 {
-            recommendations.push("High latency detected - consider optimizing cache tier configuration".to_string());
+            recommendations.push(
+                "High latency detected - consider optimizing cache tier configuration".to_string(),
+            );
         }
-        
+
         PerformanceReport {
             generated_at: Utc::now(),
             period,
@@ -598,18 +642,17 @@ impl CacheMetricsCollector {
     /// Start metrics collection background task
     pub async fn start_collection_task(&self) -> tokio::task::JoinHandle<()> {
         let collector = Arc::new(self.clone());
-        
+
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(
-                Duration::from_secs(collector.config.collection_interval)
-            );
-            
+            let mut interval =
+                tokio::time::interval(Duration::from_secs(collector.config.collection_interval));
+
             loop {
                 interval.tick().await;
-                
+
                 collector.calculate_performance_metrics().await;
                 collector.add_to_history().await;
-                
+
                 debug!("Cache metrics updated");
             }
         })

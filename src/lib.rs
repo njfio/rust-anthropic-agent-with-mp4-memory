@@ -42,6 +42,7 @@ pub mod caching;
 pub mod cli;
 pub mod compliance;
 pub mod config;
+pub mod dspy;
 pub mod memory;
 pub mod monitoring;
 pub mod plugins;
@@ -59,6 +60,9 @@ pub use tools::{Tool, ToolRegistry, ToolResult};
 
 // Re-export memory types
 pub use memory::{MemoryEntry, MemoryManager, MemoryStats, SearchResult};
+
+// Re-export DSPy types
+pub use dspy::{DspyConfig, DspyRegistry, Field, FieldType, Module, Signature};
 
 /// Initialize the agent system with default logging
 pub async fn init() -> Result<()> {

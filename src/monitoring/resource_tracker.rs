@@ -295,7 +295,7 @@ impl ResourceTracker {
     /// Get resource health status
     pub async fn get_health(&self) -> Result<ResourceHealth> {
         let stats = self.stats.read().await;
-        
+
         let cpu_healthy = stats.cpu_usage < 90.0;
         let memory_healthy = stats.memory_usage < 90.0;
         let disk_healthy = stats.disk_usage.values().all(|d| d.usage_percentage < 95.0);
@@ -464,14 +464,17 @@ impl ResourceTracker {
                     0.0
                 };
 
-                stats.disk_usage.insert(mount_point.clone(), DiskUsage {
-                    total_space,
-                    used_space,
-                    available_space,
-                    usage_percentage,
-                    mount_point,
-                    file_system: String::from_utf8_lossy(disk.file_system()).to_string(),
-                });
+                stats.disk_usage.insert(
+                    mount_point.clone(),
+                    DiskUsage {
+                        total_space,
+                        used_space,
+                        available_space,
+                        usage_percentage,
+                        mount_point,
+                        file_system: String::from_utf8_lossy(disk.file_system()).to_string(),
+                    },
+                );
             }
         }
 
@@ -479,15 +482,18 @@ impl ResourceTracker {
         if self.config.enable_network_monitoring {
             stats.network_stats.clear();
             for (interface_name, data) in system.networks() {
-                stats.network_stats.insert(interface_name.clone(), NetworkStats {
-                    bytes_received: data.received(),
-                    bytes_transmitted: data.transmitted(),
-                    packets_received: data.packets_received(),
-                    packets_transmitted: data.packets_transmitted(),
-                    errors_received: data.errors_on_received(),
-                    errors_transmitted: data.errors_on_transmitted(),
-                    interface_name: interface_name.clone(),
-                });
+                stats.network_stats.insert(
+                    interface_name.clone(),
+                    NetworkStats {
+                        bytes_received: data.received(),
+                        bytes_transmitted: data.transmitted(),
+                        packets_received: data.packets_received(),
+                        packets_transmitted: data.packets_transmitted(),
+                        errors_received: data.errors_on_received(),
+                        errors_transmitted: data.errors_on_transmitted(),
+                        interface_name: interface_name.clone(),
+                    },
+                );
             }
         }
 
@@ -501,11 +507,10 @@ impl ResourceTracker {
 
     /// Check network health by performing connectivity tests
     async fn check_network_health(&self) -> Result<bool> {
-
         // Test connectivity to common DNS servers and services
         let test_endpoints = vec![
-            ("8.8.8.8", 53),     // Google DNS
-            ("1.1.1.1", 53),     // Cloudflare DNS
+            ("8.8.8.8", 53),        // Google DNS
+            ("1.1.1.1", 53),        // Cloudflare DNS
             ("208.67.222.222", 53), // OpenDNS
         ];
 
@@ -608,7 +613,7 @@ impl ResourceTracker {
             let mut interval_timer = tokio::time::interval(interval);
             loop {
                 interval_timer.tick().await;
-                
+
                 if let Err(e) = tracker.update_stats().await {
                     error!("Failed to update resource statistics: {}", e);
                 }
@@ -637,7 +642,6 @@ impl Clone for ResourceTracker {
 mod tests {
     use super::*;
 
-
     #[tokio::test]
     async fn test_network_health_check() {
         let tracker = ResourceTracker::new();
@@ -662,7 +666,9 @@ mod tests {
         assert!(result.is_ok());
 
         // Test connection to an invalid host
-        let result = tracker.test_tcp_connection("invalid.host.example", 80).await;
+        let result = tracker
+            .test_tcp_connection("invalid.host.example", 80)
+            .await;
         assert!(result.is_ok()); // Should return Ok(false), not an error
         assert!(!result.unwrap()); // Should be false for invalid host
     }
@@ -701,7 +707,10 @@ mod tests {
         assert!(health.last_update.is_some());
 
         // Overall health should be consistent with individual components
-        let expected_health = health.cpu_healthy && health.memory_healthy && health.disk_healthy && health.network_healthy;
+        let expected_health = health.cpu_healthy
+            && health.memory_healthy
+            && health.disk_healthy
+            && health.network_healthy;
         assert_eq!(health.is_healthy, expected_health);
     }
 

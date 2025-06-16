@@ -1,18 +1,20 @@
 # Rust MemVid Agent
 
-An AI agent system in Rust with Anthropic Claude integration, synaptic memory, and comprehensive audio processing capabilities.
+An AI agent system in Rust with Anthropic Claude integration, rust-synaptic memory, and audio processing capabilities.
 
 ## Features
 
 ### Core Agent System
+
 - **Anthropic Claude Integration**: Claude API integration with tool calling support
-- **Synaptic Memory System**: JSON-based persistent memory using rust-synaptic library
-- **Async/Await Architecture**: Full async operations using tokio runtime
+- **Rust-Synaptic Memory**: JSON-based persistent memory using rust-synaptic library
+- **Async/Await Architecture**: Tokio-based async runtime
 - **Tool Framework**: Extensible tool system with built-in tools
 - **Configuration Management**: TOML-based configuration with environment variable support
-- **Error Handling**: Comprehensive error types and recovery mechanisms
+- **Error Handling**: Structured error types and recovery mechanisms
 
 ### Audio Processing System
+
 - **Multi-Format Support**: WAV, MP3, FLAC, OGG, AAC, M4A codec support via symphonia
 - **Audio I/O**: Cross-platform audio input/output with CPAL
 - **Audio Effects**: Noise reduction, normalization, filtering, and fade effects
@@ -22,19 +24,22 @@ An AI agent system in Rust with Anthropic Claude integration, synaptic memory, a
 - **Audio Analysis**: RMS, peak detection, and dynamic range analysis
 
 ### Monitoring System
-- **Performance Monitoring**: Comprehensive metrics collection and export
+
+- **Performance Monitoring**: Metrics collection and export
 - **Resource Tracking**: Memory, CPU, and system resource monitoring
 - **Alert Management**: Configurable thresholds and alert notifications
 - **Metrics Export**: Prometheus, console, and CSV export formats
 - **Health Checks**: Component health monitoring and status reporting
 
 ### Caching System
+
 - **Multi-Backend Support**: Memory, Redis, and file-based caching
 - **Cache Strategies**: Write-through, cache-aside, read-through patterns
 - **Invalidation Policies**: TTL, LRU, and custom invalidation strategies
 - **Performance Metrics**: Cache hit rates and performance tracking
 
 ### Security Features
+
 - **Input Validation**: Path traversal and command injection prevention
 - **Rate Limiting**: Per-tool and global rate limiting with configurable windows
 - **Audit Logging**: Structured JSON logging with rotation and severity levels
@@ -43,23 +48,24 @@ An AI agent system in Rust with Anthropic Claude integration, synaptic memory, a
 - **Encryption**: Ring-based encryption for sensitive data
 
 ### Built-in Tools
+
 - **File Operations**: Local file reading, writing, and management with security validation
 - **HTTP Client**: HTTP requests with authentication and error handling
 - **WebSocket Client**: Real-time WebSocket communication
-- **Memory Tools**: Synaptic memory operations and search capabilities
+- **Memory Tools**: Rust-synaptic memory operations and search capabilities
 - **Code Analysis**: Code parsing and analysis capabilities
 - **UUID Generator**: UUID generation for unique identifiers
 - **Audio Processing**: Audio encoding, decoding, and effects processing
 
 ## Test Coverage
 
-The codebase includes comprehensive test coverage with 487 tests:
+The codebase includes test coverage with 781 tests:
 
-- **Monitoring System**: 32 integration tests covering complete monitoring pipeline
+- **Monitoring System**: 32 integration tests covering monitoring pipeline
 - **Audio Processing**: 34 tests covering audio functionality and codecs
 - **Security Features**: Input validation, rate limiting, and audit logging tests
 - **Tool System**: Built-in tools with error handling and validation scenarios
-- **Memory Management**: JSON storage, search, and synaptic memory functionality
+- **Memory Management**: JSON storage, search, and rust-synaptic memory functionality
 - **Caching System**: Multi-backend caching with performance metrics
 - **Agent Core**: Conversation management and tool coordination tests
 
@@ -189,7 +195,7 @@ max_history_length = 50
 ## Testing
 
 ```bash
-# Run all tests (487 tests)
+# Run all tests
 cargo test --lib
 
 # Run monitoring integration tests
@@ -216,10 +222,10 @@ System architecture:
 
 - **Agent Core**: Manages conversations and coordinates tool usage
 - **Tool System**: Extensible framework for adding new capabilities
-- **Synaptic Memory**: JSON-based persistent storage with search using rust-synaptic
+- **Rust-Synaptic Memory**: JSON-based persistent storage with search using rust-synaptic
 - **Anthropic Client**: HTTP client with retry logic and error handling
 - **Audio Processing**: Multi-format audio codec and effects system
-- **Monitoring System**: Comprehensive metrics collection and export
+- **Monitoring System**: Metrics collection and export
 - **Caching Layer**: Multi-backend caching with performance optimization
 - **Security Layer**: Input validation, rate limiting, and audit logging
 

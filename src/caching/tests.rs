@@ -1,8 +1,11 @@
 // Basic Cache Manager Tests
 // Testing core cache functionality in small chunks
 
-use super::{CacheConfig, CacheEntry, CacheManager, CacheMetadata, CompressionType, ConnectionStatus, CacheTier, CacheResult};
-use crate::caching::memory_cache::{MemoryCache, MemoryCacheConfig, EvictionPolicy};
+use super::{
+    CacheConfig, CacheEntry, CacheManager, CacheMetadata, CacheResult, CacheTier, CompressionType,
+    ConnectionStatus,
+};
+use crate::caching::memory_cache::{EvictionPolicy, MemoryCache, MemoryCacheConfig};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio;
@@ -478,9 +481,15 @@ async fn test_cache_metrics_record_operations() {
     let collector = CacheMetricsCollector::with_defaults();
 
     // Record some operations
-    collector.record_operation("get", Duration::from_millis(10), true).await;
-    collector.record_operation("set", Duration::from_millis(5), true).await;
-    collector.record_operation("get", Duration::from_millis(15), false).await;
+    collector
+        .record_operation("get", Duration::from_millis(10), true)
+        .await;
+    collector
+        .record_operation("set", Duration::from_millis(5), true)
+        .await;
+    collector
+        .record_operation("get", Duration::from_millis(15), false)
+        .await;
 
     let metrics = collector.get_metrics().await;
     assert_eq!(metrics.operation_stats.get_operations, 2);
@@ -565,10 +574,14 @@ async fn test_cache_manager_with_memory_tier() {
     let test_data = TestData::new(1, "integration_test", 99.9);
 
     // Test set operation
-    manager.set("integration_key", &test_data, Some(3600)).await.unwrap();
+    manager
+        .set("integration_key", &test_data, Some(3600))
+        .await
+        .unwrap();
 
     // Test get operation
-    let result: crate::caching::CacheResult<TestData> = manager.get("integration_key").await.unwrap();
+    let result: crate::caching::CacheResult<TestData> =
+        manager.get("integration_key").await.unwrap();
     assert!(result.hit);
     assert!(result.value.is_some());
     assert_eq!(result.value.unwrap(), test_data);
@@ -593,9 +606,13 @@ async fn test_cache_manager_metrics_integration() {
     let test_data = TestData::new(1, "metrics_test", 42.0);
 
     // Perform operations to generate metrics
-    manager.set("metrics_key", &test_data, Some(3600)).await.unwrap();
+    manager
+        .set("metrics_key", &test_data, Some(3600))
+        .await
+        .unwrap();
     let _result: crate::caching::CacheResult<TestData> = manager.get("metrics_key").await.unwrap();
-    let _miss_result: crate::caching::CacheResult<TestData> = manager.get("missing_key").await.unwrap();
+    let _miss_result: crate::caching::CacheResult<TestData> =
+        manager.get("missing_key").await.unwrap();
 
     let metrics = manager.get_metrics().await;
     assert!(metrics.hits > 0);
@@ -626,7 +643,10 @@ async fn test_cache_manager_clear_all() {
     manager.add_tier(memory_cache).await.unwrap();
 
     let test_data = TestData::new(1, "clear_test", 123.0);
-    manager.set("clear_key", &test_data, Some(3600)).await.unwrap();
+    manager
+        .set("clear_key", &test_data, Some(3600))
+        .await
+        .unwrap();
 
     assert!(manager.exists("clear_key").await.unwrap());
 
@@ -662,7 +682,9 @@ async fn test_strategy_management() {
     let mut manager = CacheManager::with_defaults();
 
     // Add a strategy
-    let source = Arc::new(crate::caching::strategies::MemoryDataSource::new("test".to_string()));
+    let source = Arc::new(crate::caching::strategies::MemoryDataSource::new(
+        "test".to_string(),
+    ));
     let strategy = Arc::new(crate::caching::strategies::CacheAsideStrategy::new(
         "test_strategy".to_string(),
         source,
@@ -709,7 +731,10 @@ async fn test_strategy_aware_operations() {
 
     // Test strategy-aware set
     let test_value = TestData::new(1, "strategy_test", 42.0);
-    manager.set_with_strategy("test_key", &test_value, Some(3600)).await.unwrap();
+    manager
+        .set_with_strategy("test_key", &test_value, Some(3600))
+        .await
+        .unwrap();
 
     // Verify value was cached
     let result: CacheResult<TestData> = manager.get("test_key").await.unwrap();

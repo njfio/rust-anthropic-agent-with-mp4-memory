@@ -233,7 +233,12 @@ impl CacheStrategy for ReadThroughStrategy {
 
 impl WriteBehindStrategy {
     /// Create a new write-behind strategy
-    pub fn new(name: String, data_source: Arc<dyn DataSource>, batch_size: usize, flush_interval: Duration) -> Self {
+    pub fn new(
+        name: String,
+        data_source: Arc<dyn DataSource>,
+        batch_size: usize,
+        flush_interval: Duration,
+    ) -> Self {
         Self {
             name: name.clone(),
             config: StrategyConfig {
@@ -277,14 +282,23 @@ impl WriteBehindStrategy {
                 for operation in operations {
                     match operation.operation_type {
                         WriteOperationType::Insert | WriteOperationType::Update => {
-                            if let Err(e) = data_source.save_bytes(&operation.key, &operation.data).await {
-                                warn!("Failed to flush write operation for key {}: {}", operation.key, e);
+                            if let Err(e) = data_source
+                                .save_bytes(&operation.key, &operation.data)
+                                .await
+                            {
+                                warn!(
+                                    "Failed to flush write operation for key {}: {}",
+                                    operation.key, e
+                                );
                                 // Could implement retry logic here
                             }
                         }
                         WriteOperationType::Delete => {
                             if let Err(e) = data_source.delete(&operation.key).await {
-                                warn!("Failed to flush delete operation for key {}: {}", operation.key, e);
+                                warn!(
+                                    "Failed to flush delete operation for key {}: {}",
+                                    operation.key, e
+                                );
                             }
                         }
                     }
@@ -328,9 +342,11 @@ impl RefreshAheadStrategy {
     /// Check if entry should be refreshed
     async fn should_refresh(&self, key: &str, entry: &CacheEntry) -> bool {
         if let Some(ttl) = entry.ttl {
-            let age = Utc::now().signed_duration_since(entry.created_at).num_seconds() as u64;
+            let age = Utc::now()
+                .signed_duration_since(entry.created_at)
+                .num_seconds() as u64;
             let remaining_ratio = (ttl - age) as f64 / ttl as f64;
-            
+
             if remaining_ratio < self.refresh_threshold {
                 // Check if already refreshing
                 let background_refresh = self.background_refresh.read().await;
@@ -436,7 +452,8 @@ impl CircuitBreakerStrategy {
     async fn should_attempt_reset(&self) -> bool {
         let breaker = self.circuit_breaker.read().await;
         if let Some(last_failure) = breaker.last_failure_time {
-            Utc::now().signed_duration_since(last_failure) > chrono::Duration::from_std(breaker.recovery_timeout).unwrap()
+            Utc::now().signed_duration_since(last_failure)
+                > chrono::Duration::from_std(breaker.recovery_timeout).unwrap()
         } else {
             false
         }
@@ -445,13 +462,15 @@ impl CircuitBreakerStrategy {
     /// Record operation result
     async fn record_result(&self, success: bool) {
         let mut breaker = self.circuit_breaker.write().await;
-        
+
         if success {
             breaker.success_count += 1;
             breaker.failure_count = 0;
-            
+
             // Transition from half-open to closed if enough successes
-            if breaker.state == CircuitState::HalfOpen && breaker.success_count >= breaker.success_threshold {
+            if breaker.state == CircuitState::HalfOpen
+                && breaker.success_count >= breaker.success_threshold
+            {
                 breaker.state = CircuitState::Closed;
                 breaker.success_count = 0;
                 info!("Circuit breaker closed for strategy: {}", self.name);
@@ -460,7 +479,7 @@ impl CircuitBreakerStrategy {
             breaker.failure_count += 1;
             breaker.success_count = 0;
             breaker.last_failure_time = Some(Utc::now());
-            
+
             // Open circuit if failure threshold reached
             if breaker.failure_count >= breaker.failure_threshold {
                 breaker.state = CircuitState::Open;
@@ -506,7 +525,11 @@ impl DataSource for MemoryDataSource {
     async fn save_bytes(&self, key: &str, data: &[u8]) -> Result<()> {
         let mut storage = self.data.write().await;
         storage.insert(key.to_string(), data.to_vec());
-        debug!("Saved data to memory source {}: {} bytes", self.name, data.len());
+        debug!(
+            "Saved data to memory source {}: {} bytes",
+            self.name,
+            data.len()
+        );
         Ok(())
     }
 
@@ -566,11 +589,16 @@ impl DataSource for DatabaseDataSource {
     async fn load_bytes(&self, key: &str) -> Result<Option<Vec<u8>>> {
         let pool = self.pool.read().await;
         if pool.is_none() {
-            return Err(AgentError::validation("Database not initialized".to_string()));
+            return Err(AgentError::validation(
+                "Database not initialized".to_string(),
+            ));
         }
 
         // Simulate database query
-        debug!("Loading from database: {} WHERE {} = '{}'", self.table_name, self.key_column, key);
+        debug!(
+            "Loading from database: {} WHERE {} = '{}'",
+            self.table_name, self.key_column, key
+        );
 
         // In a real implementation, this would execute:
         // SELECT {value_column} FROM {table_name} WHERE {key_column} = ?
@@ -581,12 +609,16 @@ impl DataSource for DatabaseDataSource {
     async fn save_bytes(&self, key: &str, data: &[u8]) -> Result<()> {
         let pool = self.pool.read().await;
         if pool.is_none() {
-            return Err(AgentError::validation("Database not initialized".to_string()));
+            return Err(AgentError::validation(
+                "Database not initialized".to_string(),
+            ));
         }
 
         // Simulate database insert/update
-        debug!("Saving to database: {} SET {} = ? WHERE {} = '{}'",
-               self.table_name, self.value_column, self.key_column, key);
+        debug!(
+            "Saving to database: {} SET {} = ? WHERE {} = '{}'",
+            self.table_name, self.value_column, self.key_column, key
+        );
 
         // In a real implementation, this would execute:
         // INSERT INTO {table_name} ({key_column}, {value_column}) VALUES (?, ?)
@@ -598,11 +630,16 @@ impl DataSource for DatabaseDataSource {
     async fn delete(&self, key: &str) -> Result<bool> {
         let pool = self.pool.read().await;
         if pool.is_none() {
-            return Err(AgentError::validation("Database not initialized".to_string()));
+            return Err(AgentError::validation(
+                "Database not initialized".to_string(),
+            ));
         }
 
         // Simulate database delete
-        debug!("Deleting from database: {} WHERE {} = '{}'", self.table_name, self.key_column, key);
+        debug!(
+            "Deleting from database: {} WHERE {} = '{}'",
+            self.table_name, self.key_column, key
+        );
 
         // In a real implementation, this would execute:
         // DELETE FROM {table_name} WHERE {key_column} = ?
@@ -693,7 +730,7 @@ mod tests {
         let strategy = WriteBehindStrategy::new(
             "write_behind_test".to_string(),
             source,
-            10, // batch size
+            10,                         // batch size
             Duration::from_millis(100), // flush interval
         );
 
@@ -712,13 +749,16 @@ mod tests {
         let circuit_breaker = CircuitBreakerStrategy::new(
             "circuit_test".to_string(),
             inner_strategy,
-            3, // failure threshold
+            3,                      // failure threshold
             Duration::from_secs(5), // recovery timeout
-            2, // success threshold
+            2,                      // success threshold
         );
 
         assert_eq!(circuit_breaker.name(), "circuit_test");
-        assert_eq!(circuit_breaker.config().strategy_type, StrategyType::CircuitBreaker);
+        assert_eq!(
+            circuit_breaker.config().strategy_type,
+            StrategyType::CircuitBreaker
+        );
 
         // Test circuit breaker state
         let breaker_state = circuit_breaker.circuit_breaker.read().await;
@@ -735,9 +775,9 @@ mod tests {
         let circuit_breaker = CircuitBreakerStrategy::new(
             "circuit_test".to_string(),
             inner_strategy,
-            2, // failure threshold
+            2,                          // failure threshold
             Duration::from_millis(100), // recovery timeout
-            1, // success threshold
+            1,                          // success threshold
         );
 
         // Record failures

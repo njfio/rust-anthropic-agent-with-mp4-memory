@@ -107,10 +107,10 @@ impl DataRetentionManager {
     pub fn add_policy(&mut self, policy: RetentionPolicy) -> Result<()> {
         // Validate policy
         self.validate_policy(&policy)?;
-        
+
         tracing::info!("Adding retention policy: {}", policy.name);
         self.policies.insert(policy.name.clone(), policy);
-        
+
         Ok(())
     }
 
@@ -181,10 +181,12 @@ impl DataRetentionManager {
         subject_id: String,
     ) -> Result<()> {
         // Find applicable policy
-        let policy = self.policies.get(&category)
-            .ok_or_else(|| AgentError::validation(
-                format!("No retention policy found for category: {}", category)
-            ))?;
+        let policy = self.policies.get(&category).ok_or_else(|| {
+            AgentError::validation(format!(
+                "No retention policy found for category: {}",
+                category
+            ))
+        })?;
 
         let now = Utc::now();
         let deletion_date = now + Duration::days(policy.retention_days);
@@ -220,9 +222,10 @@ impl DataRetentionManager {
             record.hold_reason = Some(reason.clone());
             tracing::info!("Placed deletion hold on data {}: {}", data_id, reason);
         } else {
-            return Err(AgentError::validation(
-                format!("Data record not found: {}", data_id)
-            ));
+            return Err(AgentError::validation(format!(
+                "Data record not found: {}",
+                data_id
+            )));
         }
         Ok(())
     }
@@ -234,9 +237,10 @@ impl DataRetentionManager {
             record.hold_reason = None;
             tracing::info!("Removed deletion hold on data: {}", data_id);
         } else {
-            return Err(AgentError::validation(
-                format!("Data record not found: {}", data_id)
-            ));
+            return Err(AgentError::validation(format!(
+                "Data record not found: {}",
+                data_id
+            )));
         }
         Ok(())
     }
@@ -246,9 +250,7 @@ impl DataRetentionManager {
         let now = Utc::now();
         self.tracked_data
             .values()
-            .filter(|record| {
-                !record.deletion_hold && record.deletion_date <= now
-            })
+            .filter(|record| !record.deletion_hold && record.deletion_date <= now)
             .collect()
     }
 
@@ -257,9 +259,7 @@ impl DataRetentionManager {
         let threshold = Utc::now() + Duration::days(days_ahead);
         self.tracked_data
             .values()
-            .filter(|record| {
-                !record.deletion_hold && record.deletion_date <= threshold
-            })
+            .filter(|record| !record.deletion_hold && record.deletion_date <= threshold)
             .collect()
     }
 
@@ -299,7 +299,9 @@ impl DataRetentionManager {
     /// Generate retention report
     pub fn generate_retention_report(&self) -> RetentionReport {
         let total_items = self.tracked_data.len();
-        let items_on_hold = self.tracked_data.values()
+        let items_on_hold = self
+            .tracked_data
+            .values()
             .filter(|r| r.deletion_hold)
             .count();
         let items_due_deletion = self.get_items_due_for_deletion().len();
@@ -343,15 +345,21 @@ impl DataRetentionManager {
     /// Validate a retention policy
     fn validate_policy(&self, policy: &RetentionPolicy) -> Result<()> {
         if policy.name.is_empty() {
-            return Err(AgentError::validation("Policy name cannot be empty".to_string()));
+            return Err(AgentError::validation(
+                "Policy name cannot be empty".to_string(),
+            ));
         }
 
         if policy.retention_days <= 0 {
-            return Err(AgentError::validation("Retention days must be positive".to_string()));
+            return Err(AgentError::validation(
+                "Retention days must be positive".to_string(),
+            ));
         }
 
         if policy.grace_period_days < 0 {
-            return Err(AgentError::validation("Grace period cannot be negative".to_string()));
+            return Err(AgentError::validation(
+                "Grace period cannot be negative".to_string(),
+            ));
         }
 
         Ok(())

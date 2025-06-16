@@ -58,6 +58,29 @@ pub enum AgentError {
     #[error("Security error: {message}")]
     Security { message: String },
 
+    /// DSPy module errors
+    #[error("DSPy module error: {module_name}: {message}")]
+    DspyModule {
+        module_name: String,
+        message: String,
+    },
+
+    /// DSPy signature errors
+    #[error("DSPy signature error: {message}")]
+    DspySignature { message: String },
+
+    /// DSPy optimization errors
+    #[error("DSPy optimization error: {strategy}: {message}")]
+    DspyOptimization { strategy: String, message: String },
+
+    /// DSPy evaluation errors
+    #[error("DSPy evaluation error: {metric}: {message}")]
+    DspyEvaluation { metric: String, message: String },
+
+    /// DSPy compilation errors
+    #[error("DSPy compilation error: {phase}: {message}")]
+    DspyCompilation { phase: String, message: String },
+
     /// Generic errors
     #[error("Agent error: {0}")]
     Generic(#[from] anyhow::Error),
@@ -131,6 +154,45 @@ impl AgentError {
     /// Create a new security error
     pub fn security<S: Into<String>>(message: S) -> Self {
         Self::Security {
+            message: message.into(),
+        }
+    }
+
+    /// Create a new DSPy module error
+    pub fn dspy_module<S: Into<String>>(module_name: S, message: S) -> Self {
+        Self::DspyModule {
+            module_name: module_name.into(),
+            message: message.into(),
+        }
+    }
+
+    /// Create a new DSPy signature error
+    pub fn dspy_signature<S: Into<String>>(message: S) -> Self {
+        Self::DspySignature {
+            message: message.into(),
+        }
+    }
+
+    /// Create a new DSPy optimization error
+    pub fn dspy_optimization<S: Into<String>>(strategy: S, message: S) -> Self {
+        Self::DspyOptimization {
+            strategy: strategy.into(),
+            message: message.into(),
+        }
+    }
+
+    /// Create a new DSPy evaluation error
+    pub fn dspy_evaluation<S: Into<String>>(metric: S, message: S) -> Self {
+        Self::DspyEvaluation {
+            metric: metric.into(),
+            message: message.into(),
+        }
+    }
+
+    /// Create a new DSPy compilation error
+    pub fn dspy_compilation<S: Into<String>>(phase: S, message: S) -> Self {
+        Self::DspyCompilation {
+            phase: phase.into(),
             message: message.into(),
         }
     }

@@ -131,7 +131,10 @@ impl MetadataExtractor {
     }
 
     /// Extract metadata from audio data buffer using instance method
-    pub async fn extract_from_buffer(&self, audio_data: &super::codecs::AudioData) -> Result<AudioMetadata> {
+    pub async fn extract_from_buffer(
+        &self,
+        audio_data: &super::codecs::AudioData,
+    ) -> Result<AudioMetadata> {
         // Create metadata from audio data buffer
         let mut metadata = AudioMetadata::default();
 
@@ -142,16 +145,22 @@ impl MetadataExtractor {
         metadata.format = audio_data.format.clone();
 
         // Calculate additional technical metadata
-        let total_samples = audio_data.samples.len();
+        let _total_samples = audio_data.samples.len();
         let bits_per_sample = 16; // Default assumption
-        let byte_rate = audio_data.sample_rate as u32 * audio_data.channels as u32 * (bits_per_sample / 8);
+        let byte_rate =
+            audio_data.sample_rate as u32 * audio_data.channels as u32 * (bits_per_sample / 8);
         metadata.bitrate = Some(byte_rate);
 
         // Set extraction timestamp (using comment as a proxy for extraction info)
-        metadata.comment = Some(format!("Extracted from buffer at {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")));
+        metadata.comment = Some(format!(
+            "Extracted from buffer at {}",
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+        ));
 
-        debug!("Extracted metadata from audio buffer: {}s, {}Hz, {} channels",
-               audio_data.duration, audio_data.sample_rate, audio_data.channels);
+        debug!(
+            "Extracted metadata from audio buffer: {}s, {}Hz, {} channels",
+            audio_data.duration, audio_data.sample_rate, audio_data.channels
+        );
 
         Ok(metadata)
     }
@@ -172,15 +181,18 @@ impl MetadataExtractor {
             .and_then(|ext| ext.to_str())
             .ok_or_else(|| AgentError::invalid_input("Invalid file extension"))?;
 
-        let format = AudioFormat::from_extension(extension)
-            .ok_or_else(|| AgentError::invalid_input(format!("Unsupported format: {}", extension)))?;
+        let format = AudioFormat::from_extension(extension).ok_or_else(|| {
+            AgentError::invalid_input(format!("Unsupported format: {}", extension))
+        })?;
 
         // Extract metadata based on format
         match format {
             AudioFormat::Wav => Self::extract_wav_metadata(path, file_size),
-            AudioFormat::Mp3 | AudioFormat::Flac | AudioFormat::Ogg | AudioFormat::Aac | AudioFormat::M4a => {
-                Self::extract_metadata_with_symphonia(path, format, file_size)
-            }
+            AudioFormat::Mp3
+            | AudioFormat::Flac
+            | AudioFormat::Ogg
+            | AudioFormat::Aac
+            | AudioFormat::M4a => Self::extract_metadata_with_symphonia(path, format, file_size),
         }
     }
 
@@ -205,8 +217,10 @@ impl MetadataExtractor {
 
         // WAV files can have INFO chunks with metadata, but hound doesn't support them
         // For now, we'll just return the basic technical metadata
-        info!("Extracted WAV metadata: {}s, {}Hz, {} channels, {} bits", 
-              duration, spec.sample_rate, spec.channels, spec.bits_per_sample);
+        info!(
+            "Extracted WAV metadata: {}s, {}Hz, {} channels, {} bits",
+            duration, spec.sample_rate, spec.channels, spec.bits_per_sample
+        );
 
         Ok(metadata)
     }
@@ -242,7 +256,11 @@ impl MetadataExtractor {
         let mut metadata = AudioMetadata {
             format,
             sample_rate: track.codec_params.sample_rate.unwrap_or(44100),
-            channels: track.codec_params.channels.map(|c| c.count() as u16).unwrap_or(2),
+            channels: track
+                .codec_params
+                .channels
+                .map(|c| c.count() as u16)
+                .unwrap_or(2),
             bit_depth: track.codec_params.bits_per_sample.map(|b| b as u16),
             bitrate: None, // Bitrate not available in codec params
             file_size,
@@ -250,7 +268,9 @@ impl MetadataExtractor {
         };
 
         // Calculate duration if available
-        if let (Some(n_frames), Some(sample_rate)) = (track.codec_params.n_frames, track.codec_params.sample_rate) {
+        if let (Some(n_frames), Some(sample_rate)) =
+            (track.codec_params.n_frames, track.codec_params.sample_rate)
+        {
             metadata.duration_seconds = n_frames as f64 / sample_rate as f64;
         }
 
@@ -275,8 +295,10 @@ impl MetadataExtractor {
             }
         }
 
-        info!("Extracted metadata: {}s, {}Hz, {} channels", 
-              metadata.duration_seconds, metadata.sample_rate, metadata.channels);
+        info!(
+            "Extracted metadata: {}s, {}Hz, {} channels",
+            metadata.duration_seconds, metadata.sample_rate, metadata.channels
+        );
 
         Ok(metadata)
     }

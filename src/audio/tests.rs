@@ -4,13 +4,13 @@
 #[cfg(test)]
 mod tests {
     use crate::audio::{
-        AudioConfig, AudioFormat, AudioProcessor, AudioQuality, EffectsConfig,
-        SynthesisConfig, TranscriptionConfig,
         codecs::{AudioCodec, AudioData},
-        effects::{AudioEffects, create_voice_effects_processor, create_music_effects_processor},
-        metadata::{MetadataExtractor, AudioMetadata, create_metadata_extractor},
-        streaming::{AudioStreamManager, StreamingConfig, StreamSampleFormat},
+        effects::{create_music_effects_processor, create_voice_effects_processor, AudioEffects},
+        metadata::{create_metadata_extractor, AudioMetadata, MetadataExtractor},
+        streaming::{AudioStreamManager, StreamSampleFormat, StreamingConfig},
         tool::create_default_audio_tool,
+        AudioConfig, AudioFormat, AudioProcessor, AudioQuality, EffectsConfig, SynthesisConfig,
+        TranscriptionConfig,
     };
     use crate::tools::Tool;
     use serde_json::json;
@@ -136,7 +136,7 @@ mod tests {
     fn test_audio_data_mono_conversion() {
         let stereo_audio = create_test_audio();
         let mono_audio = stereo_audio.to_mono();
-        
+
         assert_eq!(mono_audio.channels, 1);
         assert_eq!(mono_audio.sample_rate, stereo_audio.sample_rate);
         assert_eq!(mono_audio.frames(), stereo_audio.frames());
@@ -147,7 +147,7 @@ mod tests {
     fn test_audio_data_resampling() {
         let audio = create_test_audio();
         let resampled = audio.resample(22050).unwrap();
-        
+
         assert_eq!(resampled.sample_rate, 22050);
         assert_eq!(resampled.channels, audio.channels);
         assert_eq!(resampled.frames(), 22050); // Half the original frames
@@ -157,8 +157,12 @@ mod tests {
     fn test_audio_data_normalization() {
         let audio = create_test_audio();
         let normalized = audio.normalize(0.8);
-        
-        let max_amplitude = normalized.samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+
+        let max_amplitude = normalized
+            .samples
+            .iter()
+            .map(|s| s.abs())
+            .fold(0.0f32, f32::max);
         assert!((max_amplitude - 0.8).abs() < 0.01);
     }
 
@@ -166,14 +170,15 @@ mod tests {
     fn test_wav_codec_encode_decode() {
         let original_audio = create_test_audio();
         let quality = AudioQuality::default();
-        
+
         // Encode to bytes
-        let wav_bytes = AudioCodec::encode_bytes(&original_audio, AudioFormat::Wav, &quality).unwrap();
+        let wav_bytes =
+            AudioCodec::encode_bytes(&original_audio, AudioFormat::Wav, &quality).unwrap();
         assert!(!wav_bytes.is_empty());
-        
+
         // Decode from bytes
         let decoded_audio = AudioCodec::decode_bytes(&wav_bytes, AudioFormat::Wav).unwrap();
-        
+
         assert_eq!(decoded_audio.sample_rate, original_audio.sample_rate);
         assert_eq!(decoded_audio.channels, original_audio.channels);
         assert_eq!(decoded_audio.format, AudioFormat::Wav);
@@ -208,11 +213,11 @@ mod tests {
     fn test_audio_effects_creation() {
         let config = EffectsConfig::default();
         let effects = AudioEffects::new(config);
-        
+
         // Test preset processors
         let voice_effects = create_voice_effects_processor();
         let music_effects = create_music_effects_processor();
-        
+
         // Verify they were created successfully (no panics)
         assert!(true);
     }
@@ -224,11 +229,15 @@ mod tests {
         let effects = AudioEffects::new(config);
 
         let gained_audio = effects.apply_gain(&audio, 6.0).unwrap(); // +6dB
-        
+
         // Check that gain was applied (samples should be roughly doubled)
         let original_max = audio.samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
-        let gained_max = gained_audio.samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
-        
+        let gained_max = gained_audio
+            .samples
+            .iter()
+            .map(|s| s.abs())
+            .fold(0.0f32, f32::max);
+
         assert!(gained_max > original_max * 1.5); // Should be roughly doubled
     }
 
@@ -239,7 +248,7 @@ mod tests {
         let effects = AudioEffects::new(config);
 
         let normalized_audio = effects.apply_normalization(&audio, -20.0).unwrap();
-        
+
         // Verify normalization was applied
         assert_eq!(normalized_audio.sample_rate, audio.sample_rate);
         assert_eq!(normalized_audio.channels, audio.channels);
@@ -253,11 +262,11 @@ mod tests {
         let effects = AudioEffects::new(config);
 
         let faded_audio = effects.apply_fade_in(&audio, 0.1).unwrap(); // 100ms fade
-        
+
         // Check that the beginning is quieter than the end
         let start_sample = faded_audio.samples[0].abs();
         let end_sample = faded_audio.samples[faded_audio.samples.len() - 1].abs();
-        
+
         assert!(start_sample < end_sample);
     }
 
@@ -268,18 +277,31 @@ mod tests {
         let effects = AudioEffects::new(config);
 
         let faded_audio = effects.apply_fade_out(&audio, 0.1).unwrap(); // 100ms fade
-        
+
         // Check that fade out was applied by comparing RMS levels
         let start_range_end = 1000.min(faded_audio.samples.len());
-        let start_rms = (faded_audio.samples[..start_range_end].iter()
-            .map(|s| s * s).sum::<f32>() / start_range_end as f32).sqrt();
+        let start_rms = (faded_audio.samples[..start_range_end]
+            .iter()
+            .map(|s| s * s)
+            .sum::<f32>()
+            / start_range_end as f32)
+            .sqrt();
 
         let end_range_start = faded_audio.samples.len().saturating_sub(1000);
-        let end_rms = (faded_audio.samples[end_range_start..].iter()
-            .map(|s| s * s).sum::<f32>() / (faded_audio.samples.len() - end_range_start) as f32).sqrt();
+        let end_rms = (faded_audio.samples[end_range_start..]
+            .iter()
+            .map(|s| s * s)
+            .sum::<f32>()
+            / (faded_audio.samples.len() - end_range_start) as f32)
+            .sqrt();
 
         // The fade out should make the end significantly quieter
-        assert!(end_rms < start_rms * 0.5, "End RMS: {}, Start RMS: {}", end_rms, start_rms);
+        assert!(
+            end_rms < start_rms * 0.5,
+            "End RMS: {}, Start RMS: {}",
+            end_rms,
+            start_rms
+        );
     }
 
     #[test]
@@ -288,14 +310,14 @@ mod tests {
         let mut samples = vec![0.0; 1000]; // Silence
         samples.extend(create_test_audio().samples); // Audio content
         samples.extend(vec![0.0; 1000]); // More silence
-        
+
         let audio_with_silence = AudioData::new(samples, 44100, 2, AudioFormat::Wav);
-        
+
         let config = EffectsConfig::default();
         let effects = AudioEffects::new(config);
 
         let trimmed_audio = effects.trim_silence(&audio_with_silence, 0.01).unwrap();
-        
+
         // Trimmed audio should be shorter
         assert!(trimmed_audio.samples.len() < audio_with_silence.samples.len());
     }
@@ -307,7 +329,7 @@ mod tests {
         let effects = AudioEffects::new(config);
 
         let analysis = effects.analyze_audio(&audio);
-        
+
         assert!(analysis.peak_amplitude > 0.0);
         assert!(analysis.rms_level > 0.0);
         assert!(analysis.peak_db > -100.0);
@@ -342,7 +364,7 @@ mod tests {
     async fn test_audio_stream_manager_creation() {
         let config = StreamingConfig::default();
         let result = AudioStreamManager::new(config);
-        
+
         assert!(result.is_ok());
         let manager = result.unwrap();
         assert!(!manager.is_input_active());
@@ -353,7 +375,7 @@ mod tests {
     async fn test_audio_stream_manager_device_listing() {
         let config = StreamingConfig::default();
         let manager = AudioStreamManager::new(config).unwrap();
-        
+
         // This might fail on systems without audio devices, so we'll just check it doesn't panic
         let result = manager.list_devices();
         // Don't assert on the result as it depends on system audio configuration
@@ -363,7 +385,7 @@ mod tests {
     async fn test_audio_stream_manager_latency_calculation() {
         let config = StreamingConfig::default();
         let manager = AudioStreamManager::new(config).unwrap();
-        
+
         let latency = manager.get_latency_ms().await;
         assert!(latency > 0.0);
         assert!(latency < 1000.0); // Should be reasonable
@@ -401,12 +423,12 @@ mod tests {
     fn test_metadata_validation() {
         let mut metadata = AudioMetadata::default();
         let issues = MetadataExtractor::validate_metadata(&metadata);
-        
+
         // Should have several validation issues for default metadata
         assert!(!issues.is_empty());
         assert!(issues.contains(&"Missing title".to_string()));
         assert!(issues.contains(&"Missing artist".to_string()));
-        
+
         // Fix some issues
         metadata.title = Some("Test Title".to_string());
         metadata.artist = Some("Test Artist".to_string());
@@ -415,7 +437,7 @@ mod tests {
         metadata.duration_seconds = 180.0;
         metadata.sample_rate = 44100;
         metadata.channels = 2;
-        
+
         let issues_after = MetadataExtractor::validate_metadata(&metadata);
         assert!(issues_after.is_empty());
     }
@@ -424,12 +446,12 @@ mod tests {
     fn test_metadata_completeness_check() {
         let mut metadata = AudioMetadata::default();
         assert!(!MetadataExtractor::has_complete_metadata(&metadata));
-        
+
         metadata.title = Some("Test Title".to_string());
         metadata.artist = Some("Test Artist".to_string());
         metadata.album = Some("Test Album".to_string());
         metadata.year = Some(2024);
-        
+
         assert!(MetadataExtractor::has_complete_metadata(&metadata));
     }
 
@@ -437,7 +459,7 @@ mod tests {
     async fn test_audio_processor_creation() {
         let config = AudioConfig::default();
         let processor = AudioProcessor::new(config);
-        
+
         let stats = processor.get_stats().await;
         assert_eq!(stats.files_processed, 0);
         assert_eq!(stats.total_processing_time, 0);
@@ -465,7 +487,7 @@ mod tests {
     async fn test_audio_tool_creation() {
         let result = create_default_audio_tool();
         assert!(result.is_ok());
-        
+
         let tool = result.unwrap();
         assert_eq!(tool.name(), "audio_processing");
         assert!(tool.description().is_some());
@@ -474,19 +496,19 @@ mod tests {
     #[tokio::test]
     async fn test_audio_tool_validation() {
         let tool = create_default_audio_tool().unwrap();
-        
+
         // Test valid input
         let valid_input = json!({
             "action": "statistics"
         });
         assert!(tool.validate_input(&valid_input).is_ok());
-        
+
         // Test invalid action
         let invalid_input = json!({
             "action": "invalid_action"
         });
         assert!(tool.validate_input(&invalid_input).is_err());
-        
+
         // Test missing required parameter
         let missing_param = json!({
             "action": "decode"
@@ -498,14 +520,14 @@ mod tests {
     #[tokio::test]
     async fn test_audio_tool_statistics() {
         let tool = create_default_audio_tool().unwrap();
-        
+
         let input = json!({
             "action": "statistics"
         });
-        
+
         let result = tool.execute(input).await;
         assert!(result.is_ok());
-        
+
         let tool_result = result.unwrap();
         assert!(!tool_result.is_error);
         assert!(tool_result.content.contains("statistics"));
@@ -515,9 +537,16 @@ mod tests {
     fn test_audio_tool_definition() {
         let tool = create_default_audio_tool().unwrap();
         let definition = tool.definition();
-        
+
         assert_eq!(definition.name, "audio_processing");
-        assert!(definition.description.unwrap_or_default().contains("audio processing"));
-        assert!(definition.input_schema.as_ref().map(|s| s.is_object()).unwrap_or(false));
+        assert!(definition
+            .description
+            .unwrap_or_default()
+            .contains("audio processing"));
+        assert!(definition
+            .input_schema
+            .as_ref()
+            .map(|s| s.is_object())
+            .unwrap_or(false));
     }
 }

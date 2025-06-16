@@ -1,4 +1,5 @@
 pub mod conversation;
+pub mod dspy_integration;
 pub mod memory_manager;
 pub mod tool_orchestrator;
 
@@ -12,12 +13,23 @@ use uuid::Uuid;
 
 use crate::anthropic::{AnthropicClient, ChatMessage, ChatRequest, MessageRole};
 use crate::config::AgentConfig;
+use crate::dspy::{
+    error::DspyResult,
+    examples::{Example, ExampleSet},
+    module::Module,
+    optimization::{OptimizationMetrics, OptimizationStrategy},
+    predictor::{Predict, PredictConfig},
+    signature::Signature,
+};
 use crate::memory::MemoryManager;
-use crate::security::{SecurityManager, SecurityContext, SecurityEvent};
-use crate::security::policy::{SecurityPolicy, PolicyEffect, PolicyCondition, PolicyOperator, PolicyValue};
+use crate::security::policy::{
+    PolicyCondition, PolicyEffect, PolicyOperator, PolicyValue, SecurityPolicy,
+};
+use crate::security::{SecurityContext, SecurityEvent, SecurityManager};
 use crate::utils::error::{AgentError, Result};
 
 pub use conversation::ConversationManager;
+pub use dspy_integration::{DspyAgentConfig, DspyAgentExtension, DspyModuleMetadata};
 pub use tool_orchestrator::ToolOrchestrator;
 
 /// Main agent that orchestrates conversations, tools, and memory
@@ -39,6 +51,8 @@ pub struct Agent {
     security_context: Option<SecurityContext>,
     /// Current conversation ID
     current_conversation_id: Option<String>,
+    /// DSPy integration extension
+    dspy_extension: Option<dspy_integration::DspyAgentExtension>,
 }
 
 /// Builder for creating agents with custom configurations
@@ -106,6 +120,7 @@ impl Agent {
             security_manager,
             security_context: None,
             current_conversation_id: None,
+            dspy_extension: None,
         })
     }
 
@@ -116,9 +131,7 @@ impl Agent {
         ip_address: Option<String>,
     ) -> Result<()> {
         if let Some(security_manager) = &self.security_manager {
-            let context = security_manager
-                .create_context(user_id, ip_address)
-                .await?;
+            let context = security_manager.create_context(user_id, ip_address).await?;
 
             // Initialize default roles for agent operations
             let mut enhanced_context = context;
@@ -147,9 +160,18 @@ impl Agent {
         if let Some(security_manager) = &self.security_manager {
             // Generate encryption keys for different data types
             let keys_to_generate = [
-                ("agent_memory", crate::security::EncryptionAlgorithm::Aes256Gcm),
-                ("agent_chat", crate::security::EncryptionAlgorithm::Aes256Gcm),
-                ("agent_config", crate::security::EncryptionAlgorithm::ChaCha20Poly1305),
+                (
+                    "agent_memory",
+                    crate::security::EncryptionAlgorithm::Aes256Gcm,
+                ),
+                (
+                    "agent_chat",
+                    crate::security::EncryptionAlgorithm::Aes256Gcm,
+                ),
+                (
+                    "agent_config",
+                    crate::security::EncryptionAlgorithm::ChaCha20Poly1305,
+                ),
             ];
 
             for (key_id, algorithm) in &keys_to_generate {
@@ -166,7 +188,9 @@ impl Agent {
 
     /// Validate security context and check permissions
     async fn validate_security_context(&self, action: &str, resource: &str) -> Result<bool> {
-        if let (Some(security_manager), Some(context)) = (&self.security_manager, &self.security_context) {
+        if let (Some(security_manager), Some(context)) =
+            (&self.security_manager, &self.security_context)
+        {
             // Validate the security context
             if !security_manager.validate_context(context).await? {
                 return Err(AgentError::security("Invalid security context".to_string()));
@@ -178,7 +202,10 @@ impl Agent {
                 .await?;
 
             if !policy_decision.granted {
-                let deciding_policy = policy_decision.deciding_policy.clone().unwrap_or("unknown".to_string());
+                let deciding_policy = policy_decision
+                    .deciding_policy
+                    .clone()
+                    .unwrap_or("unknown".to_string());
 
                 // Log policy-based denial
                 security_manager
@@ -191,8 +218,7 @@ impl Agent {
 
                 return Err(AgentError::security(format!(
                     "Policy denied: {} - {}",
-                    policy_decision.reason,
-                    deciding_policy
+                    policy_decision.reason, deciding_policy
                 )));
             }
 
@@ -231,7 +257,10 @@ impl Agent {
             Ok(true)
         } else {
             // If no security manager is configured, allow the operation but log it
-            debug!("No security context available, allowing operation: {} on {}", action, resource);
+            debug!(
+                "No security context available, allowing operation: {} on {}",
+                action, resource
+            );
             Ok(true)
         }
     }
@@ -295,7 +324,9 @@ impl Agent {
 
     /// Log security event for tool execution
     async fn log_tool_execution_event(&self, tool_name: &str, _success: bool) -> Result<()> {
-        if let (Some(security_manager), Some(context)) = (&self.security_manager, &self.security_context) {
+        if let (Some(security_manager), Some(context)) =
+            (&self.security_manager, &self.security_context)
+        {
             security_manager
                 .log_security_event(SecurityEvent::DataAccess {
                     user_id: context.user_id.clone(),
@@ -317,7 +348,11 @@ impl Agent {
                     description: "Require encryption for sensitive memory content".to_string(),
                     version: "1.0".to_string(),
                     effect: PolicyEffect::Allow,
-                    resources: vec!["memory:credentials".to_string(), "memory:personal".to_string(), "memory:confidential".to_string()],
+                    resources: vec![
+                        "memory:credentials".to_string(),
+                        "memory:personal".to_string(),
+                        "memory:confidential".to_string(),
+                    ],
                     actions: vec!["encrypt".to_string()],
                     conditions: vec![],
                     priority: 100,
@@ -346,7 +381,11 @@ impl Agent {
                     description: "Enhanced security for sensitive tool operations".to_string(),
                     version: "1.0".to_string(),
                     effect: PolicyEffect::Deny,
-                    resources: vec!["tool:file_system".to_string(), "tool:network".to_string(), "tool:system".to_string()],
+                    resources: vec![
+                        "tool:file_system".to_string(),
+                        "tool:network".to_string(),
+                        "tool:system".to_string(),
+                    ],
                     actions: vec!["execute".to_string()],
                     conditions: vec![PolicyCondition {
                         field: "user.roles".to_string(),
@@ -361,7 +400,10 @@ impl Agent {
             ];
 
             for policy in agent_policies {
-                if !security_manager.security_policy_exists(&policy.name).await? {
+                if !security_manager
+                    .security_policy_exists(&policy.name)
+                    .await?
+                {
                     security_manager.add_security_policy(policy).await?;
                     debug!("Added agent security policy");
                 }
@@ -372,10 +414,10 @@ impl Agent {
 
     /// Terminate security context
     pub async fn terminate_security_context(&mut self, reason: String) -> Result<()> {
-        if let (Some(security_manager), Some(context)) = (&self.security_manager, &self.security_context) {
-            security_manager
-                .terminate_context(context, reason)
-                .await?;
+        if let (Some(security_manager), Some(context)) =
+            (&self.security_manager, &self.security_context)
+        {
+            security_manager.terminate_context(context, reason).await?;
             self.security_context = None;
             info!("Security context terminated");
         }
@@ -397,7 +439,8 @@ impl Agent {
         debug!("Processing chat message: {} chars", message.len());
 
         // Security validation: Check permissions for chat operation
-        self.validate_security_context("chat", "conversation").await?;
+        self.validate_security_context("chat", "conversation")
+            .await?;
 
         // Security validation: Sanitize input message
         let sanitized_message = self.validate_input_message(&message).await?;
@@ -408,7 +451,9 @@ impl Agent {
         }
 
         // Encrypt sensitive chat content if needed
-        let processed_message = self.encrypt_chat_message_if_needed(&sanitized_message).await?;
+        let processed_message = self
+            .encrypt_chat_message_if_needed(&sanitized_message)
+            .await?;
 
         // Add user message to conversation (using processed message)
         let user_message = ChatMessage::user(processed_message);
@@ -978,7 +1023,9 @@ impl Agent {
         let entry_type_str = entry_type.into();
 
         // Encrypt sensitive content before storing
-        let processed_content = self.encrypt_sensitive_content(&content_str, &entry_type_str).await?;
+        let processed_content = self
+            .encrypt_sensitive_content(&content_str, &entry_type_str)
+            .await?;
 
         let mut memory_manager = self.memory_manager.lock().await;
         let metadata = std::collections::HashMap::new();
@@ -1026,11 +1073,21 @@ impl Agent {
     async fn should_encrypt_content(&self, content: &str, entry_type: &str) -> Result<bool> {
         // Always encrypt certain types
         let always_encrypt_types = [
-            "credentials", "password", "token", "key", "secret",
-            "personal", "private", "confidential", "sensitive"
+            "credentials",
+            "password",
+            "token",
+            "key",
+            "secret",
+            "personal",
+            "private",
+            "confidential",
+            "sensitive",
         ];
 
-        if always_encrypt_types.iter().any(|&t| entry_type.to_lowercase().contains(t)) {
+        if always_encrypt_types
+            .iter()
+            .any(|&t| entry_type.to_lowercase().contains(t))
+        {
             return Ok(true);
         }
 
@@ -1041,8 +1098,8 @@ impl Agent {
             r"(?i)token\s*[:=]\s*\S+",
             r"(?i)secret\s*[:=]\s*\S+",
             r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", // Email addresses
-            r"\b\d{3}-\d{2}-\d{4}\b", // SSN pattern
-            r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b", // Credit card pattern
+            r"\b\d{3}-\d{2}-\d{4}\b",                               // SSN pattern
+            r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",          // Credit card pattern
         ];
 
         for pattern in &sensitive_patterns {
@@ -1055,7 +1112,9 @@ impl Agent {
         }
 
         // Policy-based encryption decision
-        if let (Some(security_manager), Some(context)) = (&self.security_manager, &self.security_context) {
+        if let (Some(security_manager), Some(context)) =
+            (&self.security_manager, &self.security_context)
+        {
             // Check if there's a policy requiring encryption for this content type
             let policy_decision = security_manager
                 .evaluate_all_policies(context, &format!("memory:{}", entry_type), "encrypt")
@@ -1104,16 +1163,20 @@ impl Agent {
     /// Get memory statistics
     pub async fn get_memory_stats(&self) -> Result<crate::memory::MemoryStats> {
         // Security validation: Check permissions for memory stats
-        self.validate_security_context("read", "memory_stats").await?;
+        self.validate_security_context("read", "memory_stats")
+            .await?;
 
         let memory_manager = self.memory_manager.lock().await;
         memory_manager.get_stats().await
     }
 
     /// Get security statistics and policy evaluation metrics
-    pub async fn get_security_stats(&self) -> Result<Option<crate::security::policy::PolicyStatistics>> {
+    pub async fn get_security_stats(
+        &self,
+    ) -> Result<Option<crate::security::policy::PolicyStatistics>> {
         // Security validation: Check permissions for security stats
-        self.validate_security_context("read", "security_stats").await?;
+        self.validate_security_context("read", "security_stats")
+            .await?;
 
         if let Some(security_manager) = &self.security_manager {
             let stats = security_manager.get_policy_statistics().await?;
@@ -1194,6 +1257,94 @@ impl Agent {
     pub async fn finalize_memory(&mut self) -> Result<()> {
         // No-op for JSON storage - data is already persisted
         Ok(())
+    }
+
+    // ===== DSPy Integration Methods =====
+
+    /// Enable DSPy integration with custom configuration
+    pub fn enable_dspy_integration(&mut self, config: Option<DspyAgentConfig>) -> Result<()> {
+        let dspy_config = config.unwrap_or_default();
+        let extension = dspy_integration::DspyAgentExtension::new(
+            dspy_config,
+            self.anthropic_client.clone(),
+            self.security_manager.clone(),
+        );
+        self.dspy_extension = Some(extension);
+        info!("DSPy integration enabled for agent");
+        Ok(())
+    }
+
+    /// Create a DSPy module from a signature
+    pub async fn as_dspy_module<I, O>(
+        &self,
+        signature: Signature<I, O>,
+        config: Option<PredictConfig>,
+    ) -> DspyResult<Predict<I, O>>
+    where
+        I: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + Sync + Clone + 'static,
+        O: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + Sync + Clone + 'static,
+    {
+        let extension = self.dspy_extension.as_ref()
+            .ok_or_else(|| crate::dspy::error::DspyError::configuration("dspy_integration", "DSPy integration not enabled. Call enable_dspy_integration() first."))?;
+
+        extension.create_predict_module(signature, config, self.security_context.as_ref()).await
+    }
+
+    /// Use a compiled DSPy module for a specific task
+    pub async fn use_dspy_module<I, O>(
+        &self,
+        module: &dyn Module<Input = I, Output = O>,
+        input: I,
+    ) -> DspyResult<O>
+    where
+        I: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + Sync + 'static,
+        O: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + Sync + 'static,
+    {
+        let extension = self.dspy_extension.as_ref()
+            .ok_or_else(|| crate::dspy::error::DspyError::configuration("dspy_integration", "DSPy integration not enabled. Call enable_dspy_integration() first."))?;
+
+        extension.use_module(module, input, self.security_context.as_ref()).await
+    }
+
+    /// Optimize a DSPy module using examples
+    pub async fn optimize_dspy_module<I, O>(
+        &self,
+        module: &mut dyn Module<Input = I, Output = O>,
+        examples: ExampleSet<I, O>,
+        strategy: Option<OptimizationStrategy>,
+    ) -> DspyResult<OptimizationMetrics>
+    where
+        I: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + Sync + Clone + 'static,
+        O: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + Sync + Clone + 'static,
+    {
+        let extension = self.dspy_extension.as_ref()
+            .ok_or_else(|| crate::dspy::error::DspyError::configuration("dspy_integration", "DSPy integration not enabled. Call enable_dspy_integration() first."))?;
+
+        extension.optimize_module(module, examples, strategy, self.security_context.as_ref()).await
+    }
+
+    /// Get DSPy module registry statistics
+    pub async fn get_dspy_registry_stats(&self) -> Result<std::collections::HashMap<String, serde_json::Value>> {
+        let extension = self.dspy_extension.as_ref()
+            .ok_or_else(|| AgentError::invalid_input("DSPy integration not enabled"))?;
+
+        Ok(extension.get_registry_stats().await)
+    }
+
+    /// List all registered DSPy modules
+    pub async fn list_dspy_modules(&self) -> Result<Vec<DspyModuleMetadata>> {
+        let extension = self.dspy_extension.as_ref()
+            .ok_or_else(|| AgentError::invalid_input("DSPy integration not enabled"))?;
+
+        Ok(extension.list_modules().await)
+    }
+
+    /// Remove a DSPy module from the registry
+    pub async fn remove_dspy_module(&self, module_id: &str) -> DspyResult<()> {
+        let extension = self.dspy_extension.as_ref()
+            .ok_or_else(|| crate::dspy::error::DspyError::configuration("dspy_integration", "DSPy integration not enabled. Call enable_dspy_integration() first."))?;
+
+        extension.remove_module(module_id, self.security_context.as_ref()).await
     }
 
     /// Request human input during agent execution

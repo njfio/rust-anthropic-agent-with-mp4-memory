@@ -293,9 +293,9 @@ impl CachePolicy {
             name: "temporary".to_string(),
             policy_type: PolicyType::Temporary,
             ttl_config: TtlConfig {
-                default_ttl: 300,  // 5 minutes
-                min_ttl: 60,       // 1 minute
-                max_ttl: 1800,     // 30 minutes
+                default_ttl: 300, // 5 minutes
+                min_ttl: 60,      // 1 minute
+                max_ttl: 1800,    // 30 minutes
                 strategy: TtlStrategy::Fixed,
                 sliding_expiration: false,
                 refresh_threshold: 0.0,
@@ -417,9 +417,8 @@ impl CachePolicy {
             }
             TtlStrategy::ExponentialBackoff => {
                 // Decrease TTL for items that haven't been accessed recently
-                let hours_since_access = Utc::now()
-                    .signed_duration_since(last_access)
-                    .num_hours() as f64;
+                let hours_since_access =
+                    Utc::now().signed_duration_since(last_access).num_hours() as f64;
                 let backoff_factor = 2.0_f64.powf(-hours_since_access / 24.0);
                 let backoff_ttl = (self.ttl_config.default_ttl as f64 * backoff_factor) as u64;
                 backoff_ttl.clamp(self.ttl_config.min_ttl, self.ttl_config.max_ttl)
@@ -448,7 +447,7 @@ impl CachePolicy {
         if original_ttl == 0 {
             return false;
         }
-        
+
         let remaining_ratio = remaining_ttl as f64 / original_ttl as f64;
         remaining_ratio < self.ttl_config.refresh_threshold
     }
@@ -458,7 +457,7 @@ impl CachePolicy {
         if !self.compression_config.enabled || entry_size < self.compression_config.threshold {
             return (false, CompressionAlgorithm::None, 0);
         }
-        
+
         (
             true,
             self.compression_config.algorithm.clone(),
@@ -468,15 +467,21 @@ impl CachePolicy {
 
     /// Check if entry is protected from eviction
     pub fn is_protected(&self) -> bool {
-        self.eviction_config.protected || self.eviction_config.strategy == EvictionStrategy::NoEviction
+        self.eviction_config.protected
+            || self.eviction_config.strategy == EvictionStrategy::NoEviction
     }
 
     /// Get eviction priority (higher = more likely to be evicted)
-    pub fn get_eviction_priority(&self, access_count: u64, last_access: DateTime<Utc>, entry_size: usize) -> u64 {
+    pub fn get_eviction_priority(
+        &self,
+        access_count: u64,
+        last_access: DateTime<Utc>,
+        entry_size: usize,
+    ) -> u64 {
         if self.is_protected() {
             return 0; // Never evict protected entries
         }
-        
+
         match self.eviction_config.strategy {
             EvictionStrategy::LRU => {
                 Utc::now().signed_duration_since(last_access).num_seconds() as u64
@@ -487,9 +492,7 @@ impl CachePolicy {
             EvictionStrategy::TimeBase => {
                 Utc::now().signed_duration_since(last_access).num_seconds() as u64
             }
-            EvictionStrategy::SizeBased => {
-                entry_size as u64
-            }
+            EvictionStrategy::SizeBased => entry_size as u64,
             EvictionStrategy::PriorityBased => {
                 (10 - self.priority) as u64 // Invert priority
             }
