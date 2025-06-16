@@ -234,10 +234,9 @@ impl PrivacyControlManager {
         purpose_id: &str,
         data_categories: &[String],
     ) -> Result<bool> {
-        let purpose = self.purposes.get(purpose_id)
-            .ok_or_else(|| AgentError::validation(
-                format!("Unknown processing purpose: {}", purpose_id)
-            ))?;
+        let purpose = self.purposes.get(purpose_id).ok_or_else(|| {
+            AgentError::validation(format!("Unknown processing purpose: {}", purpose_id))
+        })?;
 
         // Check if all data categories are allowed for this purpose
         for category in data_categories {
@@ -280,7 +279,7 @@ impl PrivacyControlManager {
 
         // Log for audit trail
         tracing::info!("Privacy event recorded: {:?}", event_type);
-        
+
         Ok(())
     }
 
@@ -299,7 +298,12 @@ impl PrivacyControlManager {
         // Check data minimization
         if self.config.data_minimization.enabled {
             for field in data_fields {
-                if self.config.data_minimization.excluded_fields.contains(field) {
+                if self
+                    .config
+                    .data_minimization
+                    .excluded_fields
+                    .contains(field)
+                {
                     result.valid = false;
                     result.violations.push(format!(
                         "Field '{}' is excluded by data minimization policy",
@@ -313,16 +317,15 @@ impl PrivacyControlManager {
         if let Some(purpose) = self.purposes.get(purpose_id) {
             // Validate that data collection aligns with stated purpose
             if purpose.requires_consent {
-                result.warnings.push(
-                    "This purpose requires explicit consent".to_string()
-                );
+                result
+                    .warnings
+                    .push("This purpose requires explicit consent".to_string());
             }
         } else {
             result.valid = false;
-            result.violations.push(format!(
-                "Unknown processing purpose: {}",
-                purpose_id
-            ));
+            result
+                .violations
+                .push(format!("Unknown processing purpose: {}", purpose_id));
         }
 
         Ok(result)
@@ -336,10 +339,7 @@ impl PrivacyControlManager {
             name: "Service Provision".to_string(),
             description: "Providing AI agent services to users".to_string(),
             legal_basis: "Performance of contract".to_string(),
-            data_categories: vec![
-                "conversation".to_string(),
-                "preferences".to_string(),
-            ],
+            data_categories: vec!["conversation".to_string(), "preferences".to_string()],
             retention_days: 3 * 365, // 3 years
             requires_consent: false,
         };
@@ -350,10 +350,7 @@ impl PrivacyControlManager {
             name: "Service Improvement".to_string(),
             description: "Improving AI agent capabilities and user experience".to_string(),
             legal_basis: "Legitimate interests".to_string(),
-            data_categories: vec![
-                "conversation".to_string(),
-                "usage_analytics".to_string(),
-            ],
+            data_categories: vec!["conversation".to_string(), "usage_analytics".to_string()],
             retention_days: 2 * 365, // 2 years
             requires_consent: true,
         };
@@ -364,26 +361,30 @@ impl PrivacyControlManager {
             name: "Legal Compliance".to_string(),
             description: "Meeting legal and regulatory requirements".to_string(),
             legal_basis: "Legal obligation".to_string(),
-            data_categories: vec![
-                "audit_logs".to_string(),
-                "personal".to_string(),
-            ],
+            data_categories: vec!["audit_logs".to_string(), "personal".to_string()],
             retention_days: 7 * 365, // 7 years
             requires_consent: false,
         };
 
-        self.purposes.insert(service_purpose.id.clone(), service_purpose);
-        self.purposes.insert(improvement_purpose.id.clone(), improvement_purpose);
-        self.purposes.insert(compliance_purpose.id.clone(), compliance_purpose);
+        self.purposes
+            .insert(service_purpose.id.clone(), service_purpose);
+        self.purposes
+            .insert(improvement_purpose.id.clone(), improvement_purpose);
+        self.purposes
+            .insert(compliance_purpose.id.clone(), compliance_purpose);
     }
 
     /// Get privacy compliance report
     pub fn get_compliance_report(&self) -> PrivacyComplianceReport {
         let total_events = self.events.len();
-        let violations = self.events.iter()
+        let violations = self
+            .events
+            .iter()
             .filter(|e| matches!(e.event_type, PrivacyEventType::PrivacyViolation))
             .count();
-        let breaches = self.events.iter()
+        let breaches = self
+            .events
+            .iter()
             .filter(|e| matches!(e.event_type, PrivacyEventType::DataBreach))
             .count();
 
@@ -421,12 +422,18 @@ impl PrivacyControlManager {
     fn calculate_compliance_score(&self) -> f64 {
         // Simple scoring algorithm
         let base_score = 100.0;
-        let violation_penalty = self.events.iter()
+        let violation_penalty = self
+            .events
+            .iter()
             .filter(|e| matches!(e.event_type, PrivacyEventType::PrivacyViolation))
-            .count() as f64 * 10.0;
-        let breach_penalty = self.events.iter()
+            .count() as f64
+            * 10.0;
+        let breach_penalty = self
+            .events
+            .iter()
             .filter(|e| matches!(e.event_type, PrivacyEventType::DataBreach))
-            .count() as f64 * 25.0;
+            .count() as f64
+            * 25.0;
 
         (base_score - violation_penalty - breach_penalty).max(0.0)
     }

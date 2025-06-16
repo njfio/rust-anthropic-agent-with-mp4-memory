@@ -334,8 +334,6 @@ impl MemoryManager {
             index_file_size: 0, // Synaptic handles indexing internally
         })
     }
-
-
 }
 
 impl std::fmt::Debug for MemoryManager {

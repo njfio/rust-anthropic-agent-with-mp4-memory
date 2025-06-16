@@ -140,13 +140,13 @@ pub struct AlertManagerHealth {
 pub trait NotificationChannel: Send + Sync {
     /// Get channel name
     fn name(&self) -> &str;
-    
+
     /// Send alert notification
     async fn send_alert(&self, alert: &Alert) -> Result<()>;
-    
+
     /// Test the notification channel
     async fn test(&self) -> Result<()>;
-    
+
     /// Get channel configuration
     fn config(&self) -> NotificationConfig;
 }
@@ -177,10 +177,10 @@ impl AlertManager {
     /// Start the alert manager
     pub async fn start(&self) -> Result<()> {
         info!("Starting alert manager");
-        
+
         // Initialize default alert rules
         self.initialize_default_rules().await?;
-        
+
         info!("Alert manager started successfully");
         Ok(())
     }
@@ -188,7 +188,7 @@ impl AlertManager {
     /// Stop the alert manager
     pub async fn stop(&self) -> Result<()> {
         info!("Stopping alert manager");
-        
+
         // Resolve all active alerts
         let mut active_alerts = self.active_alerts.write().await;
         for alert in active_alerts.values_mut() {
@@ -196,17 +196,20 @@ impl AlertManager {
             alert.resolved_at = Some(Utc::now());
             alert.resolution_reason = Some("System shutdown".to_string());
         }
-        
+
         info!("Alert manager stopped");
         Ok(())
     }
 
     /// Add a notification channel
-    pub async fn add_notification_channel(&self, channel: Box<dyn NotificationChannel>) -> Result<()> {
+    pub async fn add_notification_channel(
+        &self,
+        channel: Box<dyn NotificationChannel>,
+    ) -> Result<()> {
         let name = channel.name().to_string();
         let mut channels = self.notification_channels.write().await;
         channels.push(channel);
-        
+
         info!("Added notification channel: {}", name);
         Ok(())
     }
@@ -216,7 +219,7 @@ impl AlertManager {
         let name = rule.name.clone();
         let mut rules = self.alert_rules.write().await;
         rules.insert(name.clone(), rule);
-        
+
         info!("Added alert rule: {}", name);
         Ok(())
     }
@@ -224,11 +227,11 @@ impl AlertManager {
     /// Check metrics against alert rules
     pub async fn check_metrics(&self, metrics: &[Metric]) -> Result<()> {
         let rules = self.alert_rules.read().await;
-        
+
         for metric in metrics {
             // Check built-in thresholds
             self.check_builtin_thresholds(metric).await?;
-            
+
             // Check custom rules
             for rule in rules.values() {
                 if rule.enabled && rule.metric_name == metric.name {
@@ -236,7 +239,7 @@ impl AlertManager {
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -262,7 +265,10 @@ impl AlertManager {
                 id: alert_id.clone(),
                 name: format!("High {}", metric.name),
                 severity,
-                message: format!("{} is {}%, exceeding threshold of {}%", metric.name, value, threshold),
+                message: format!(
+                    "{} is {}%, exceeding threshold of {}%",
+                    metric.name, value, threshold
+                ),
                 metric_name: metric.name.clone(),
                 current_value: value,
                 threshold_value: threshold,
@@ -305,7 +311,9 @@ impl AlertManager {
                 id: alert_id.clone(),
                 name: rule.name.clone(),
                 severity: rule.severity.clone(),
-                message: rule.message_template.replace("{value}", &value.to_string())
+                message: rule
+                    .message_template
+                    .replace("{value}", &value.to_string())
                     .replace("{threshold}", &rule.threshold.to_string()),
                 metric_name: metric.name.clone(),
                 current_value: value,
@@ -326,7 +334,7 @@ impl AlertManager {
     /// Trigger an alert
     async fn trigger_alert(&self, alert: Alert) -> Result<()> {
         let alert_id = alert.id.clone();
-        
+
         // Check if alert is already active
         {
             let active_alerts = self.active_alerts.read().await;
@@ -345,7 +353,7 @@ impl AlertManager {
         {
             let mut history = self.alert_history.write().await;
             history.push(alert.clone());
-            
+
             // Keep only last 1000 alerts in history
             if history.len() > 1000 {
                 history.remove(0);
@@ -358,8 +366,11 @@ impl AlertManager {
             stats.total_alerts += 1;
             stats.active_alerts_count += 1;
             stats.last_alert_time = Some(alert.timestamp);
-            
-            let severity_count = stats.alerts_by_severity.entry(alert.severity.clone()).or_insert(0);
+
+            let severity_count = stats
+                .alerts_by_severity
+                .entry(alert.severity.clone())
+                .or_insert(0);
             *severity_count += 1;
         }
 
@@ -373,7 +384,7 @@ impl AlertManager {
     /// Send alert notifications
     async fn send_notifications(&self, alert: &Alert) -> Result<()> {
         let channels = self.notification_channels.read().await;
-        
+
         for channel in channels.iter() {
             match channel.send_alert(alert).await {
                 Ok(_) => {
@@ -384,37 +395,40 @@ impl AlertManager {
                 }
             }
         }
-        
+
         Ok(())
     }
 
     /// Resolve an alert
     pub async fn resolve_alert(&self, alert_id: &str, reason: Option<String>) -> Result<()> {
         let mut active_alerts = self.active_alerts.write().await;
-        
+
         if let Some(alert) = active_alerts.get_mut(alert_id) {
             alert.status = AlertStatus::Resolved;
             alert.resolved_at = Some(Utc::now());
             alert.resolution_reason = reason;
-            
+
             // Update statistics
             {
                 let mut stats = self.stats.write().await;
                 stats.active_alerts_count = stats.active_alerts_count.saturating_sub(1);
                 stats.resolved_alerts_count += 1;
-                
+
                 // Update average resolution time
                 if let Some(resolved_at) = alert.resolved_at {
                     let resolution_time = (resolved_at - alert.timestamp).num_seconds() as f64;
-                    stats.avg_resolution_time_seconds = 
+                    stats.avg_resolution_time_seconds =
                         (stats.avg_resolution_time_seconds + resolution_time) / 2.0;
                 }
             }
-            
+
             info!("Alert resolved: {}", alert_id);
             Ok(())
         } else {
-            Err(AgentError::validation(format!("Alert not found: {}", alert_id)))
+            Err(AgentError::validation(format!(
+                "Alert not found: {}",
+                alert_id
+            )))
         }
     }
 
@@ -449,7 +463,8 @@ impl AlertManager {
                 severity: AlertSeverity::Warning,
                 evaluation_window: 300,
                 min_duration: 60,
-                message_template: "CPU usage is {value}%, exceeding threshold of {threshold}%".to_string(),
+                message_template: "CPU usage is {value}%, exceeding threshold of {threshold}%"
+                    .to_string(),
                 labels: HashMap::new(),
                 enabled: true,
             },
@@ -461,7 +476,8 @@ impl AlertManager {
                 severity: AlertSeverity::Warning,
                 evaluation_window: 300,
                 min_duration: 60,
-                message_template: "Memory usage is {value}%, exceeding threshold of {threshold}%".to_string(),
+                message_template: "Memory usage is {value}%, exceeding threshold of {threshold}%"
+                    .to_string(),
                 labels: HashMap::new(),
                 enabled: true,
             },

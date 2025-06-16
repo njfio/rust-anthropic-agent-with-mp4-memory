@@ -1,7 +1,9 @@
 // Metrics Utilities and Helpers for Performance Monitoring
 // Provides metric creation, aggregation, and analysis utilities
 
-use super::{Metric, MetricType, MetricValue, HistogramData, HistogramBucket, SummaryData, Quantile};
+use super::{
+    HistogramBucket, HistogramData, Metric, MetricType, MetricValue, Quantile, SummaryData,
+};
 use crate::utils::error::{AgentError, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -134,12 +136,18 @@ impl MetricsRegistry {
     }
 
     /// Register a metric
-    pub async fn register_metric(&self, metric: Metric, tags: HashMap<String, String>) -> Result<()> {
+    pub async fn register_metric(
+        &self,
+        metric: Metric,
+        tags: HashMap<String, String>,
+    ) -> Result<()> {
         let mut metrics = self.metrics.write().await;
-        
+
         // Check if we're at capacity
         if metrics.len() >= self.config.max_metrics {
-            return Err(AgentError::validation("Metrics registry at capacity".to_string()));
+            return Err(AgentError::validation(
+                "Metrics registry at capacity".to_string(),
+            ));
         }
 
         let registered_metric = RegisteredMetric {
@@ -158,7 +166,7 @@ impl MetricsRegistry {
     /// Update an existing metric
     pub async fn update_metric(&self, name: &str, value: MetricValue) -> Result<()> {
         let mut metrics = self.metrics.write().await;
-        
+
         if let Some(registered_metric) = metrics.get_mut(name) {
             registered_metric.metric.value = value;
             registered_metric.metric.timestamp = Utc::now();
@@ -167,7 +175,10 @@ impl MetricsRegistry {
             debug!("Updated metric: {}", name);
             Ok(())
         } else {
-            Err(AgentError::validation(format!("Metric not found: {}", name)))
+            Err(AgentError::validation(format!(
+                "Metric not found: {}",
+                name
+            )))
         }
     }
 
@@ -198,7 +209,10 @@ impl MetricsRegistry {
             debug!("Removed aggregation rule: {}", name);
             Ok(())
         } else {
-            Err(AgentError::validation(format!("Aggregation rule not found: {}", name)))
+            Err(AgentError::validation(format!(
+                "Aggregation rule not found: {}",
+                name
+            )))
         }
     }
 
@@ -224,12 +238,16 @@ impl MetricsRegistry {
             }
 
             // Apply aggregation function
-            if let Some(aggregated_metric) = self.aggregate_metrics(&matching_metrics, rule).await? {
+            if let Some(aggregated_metric) = self.aggregate_metrics(&matching_metrics, rule).await?
+            {
                 aggregated_metrics.push(aggregated_metric);
             }
         }
 
-        debug!("Applied aggregations, created {} metrics", aggregated_metrics.len());
+        debug!(
+            "Applied aggregations, created {} metrics",
+            aggregated_metrics.len()
+        );
         Ok(aggregated_metrics)
     }
 
@@ -249,7 +267,11 @@ impl MetricsRegistry {
     }
 
     /// Aggregate metrics according to rule
-    async fn aggregate_metrics(&self, metrics: &[&RegisteredMetric], rule: &AggregationRule) -> Result<Option<Metric>> {
+    async fn aggregate_metrics(
+        &self,
+        metrics: &[&RegisteredMetric],
+        rule: &AggregationRule,
+    ) -> Result<Option<Metric>> {
         if metrics.is_empty() {
             return Ok(None);
         }
@@ -291,15 +313,19 @@ impl MetricsRegistry {
             labels: HashMap::new(),
             timestamp: Utc::now(),
             metric_type: MetricType::Gauge,
-            help: Some(format!("Aggregated metric using {:?}", rule.aggregation_function)),
+            help: Some(format!(
+                "Aggregated metric using {:?}",
+                rule.aggregation_function
+            )),
         }))
     }
 
     /// Cleanup old metrics
     pub async fn cleanup_old_metrics(&self) -> Result<usize> {
         let mut metrics = self.metrics.write().await;
-        let cutoff_time = Utc::now() - chrono::Duration::from_std(self.config.retention_period)
-            .map_err(|e| AgentError::validation(format!("Invalid retention period: {}", e)))?;
+        let cutoff_time = Utc::now()
+            - chrono::Duration::from_std(self.config.retention_period)
+                .map_err(|e| AgentError::validation(format!("Invalid retention period: {}", e)))?;
 
         let initial_count = metrics.len();
         metrics.retain(|_, metric| metric.last_updated > cutoff_time);
@@ -321,12 +347,8 @@ impl MetricsRegistry {
             total_metrics: metrics.len(),
             total_rules: rules.len(),
             enabled_rules: rules.values().filter(|r| r.enabled).count(),
-            oldest_metric: metrics.values()
-                .map(|m| m.registered_at)
-                .min(),
-            newest_metric: metrics.values()
-                .map(|m| m.registered_at)
-                .max(),
+            oldest_metric: metrics.values().map(|m| m.registered_at).min(),
+            newest_metric: metrics.values().map(|m| m.registered_at).max(),
         }
     }
 }
@@ -503,7 +525,8 @@ impl SummaryBuilder {
             let value = if sorted_values.is_empty() {
                 0.0
             } else {
-                let index = ((q * (sorted_values.len() - 1) as f64) as usize).min(sorted_values.len() - 1);
+                let index =
+                    ((q * (sorted_values.len() - 1) as f64) as usize).min(sorted_values.len() - 1);
                 sorted_values.get(index).copied().unwrap_or(0.0)
             };
             quantiles.push(Quantile { quantile: q, value });

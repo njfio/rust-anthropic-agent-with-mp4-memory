@@ -2,15 +2,17 @@
 // Provides Tool trait integration for the audio processing system
 
 use super::{
-    AudioConfig, AudioProcessor, AudioQuality, EffectsConfig,
     codecs::{AudioCodec, AudioData},
-    effects::{AudioEffects, create_voice_effects_processor, create_music_effects_processor},
-    metadata::{MetadataExtractor, AudioMetadata},
+    effects::{create_music_effects_processor, create_voice_effects_processor, AudioEffects},
+    metadata::{AudioMetadata, MetadataExtractor},
     synthesis::SynthesisService,
     transcription::TranscriptionService,
+    AudioConfig, AudioProcessor, AudioQuality, EffectsConfig,
 };
 use crate::anthropic::models::ToolDefinition;
-use crate::tools::{create_tool_definition, extract_optional_string_param, extract_string_param, Tool, ToolResult};
+use crate::tools::{
+    create_tool_definition, extract_optional_string_param, extract_string_param, Tool, ToolResult,
+};
 use crate::utils::error::{AgentError, Result};
 use crate::utils::validation;
 use async_trait::async_trait;
@@ -121,7 +123,10 @@ impl AudioProcessingTool {
     }
 
     /// Set resource monitor for the audio processor
-    pub async fn set_resource_monitor(&self, resource_monitor: Arc<crate::utils::resource_monitor::ResourceMonitor>) {
+    pub async fn set_resource_monitor(
+        &self,
+        resource_monitor: Arc<crate::utils::resource_monitor::ResourceMonitor>,
+    ) {
         // Note: This would need to be implemented properly in AudioProcessor
         // For now, we'll skip this functionality
         warn!("Resource monitor setting not implemented for audio processor");
@@ -138,7 +143,10 @@ impl AudioProcessingTool {
         let path = Path::new(&file_path);
 
         if !path.exists() {
-            return Err(AgentError::invalid_input(format!("File not found: {}", file_path)));
+            return Err(AgentError::invalid_input(format!(
+                "File not found: {}",
+                file_path
+            )));
         }
 
         // Get file size for validation
@@ -158,7 +166,10 @@ impl AudioProcessingTool {
             "effects" => self.apply_effects_to_file(path, input, output_path).await,
             "transcribe" => self.transcribe_audio_file(path).await,
             "convert" => self.convert_audio_file(path, input, output_path).await,
-            _ => Err(AgentError::invalid_input(format!("Unsupported action: {}", action))),
+            _ => Err(AgentError::invalid_input(format!(
+                "Unsupported action: {}",
+                action
+            ))),
         }
     }
 
@@ -167,7 +178,7 @@ impl AudioProcessingTool {
         info!("Decoding audio file: {}", path.display());
 
         let audio = AudioCodec::decode_file(path)?;
-        
+
         let result = json!({
             "action": "decode",
             "file_path": path.display().to_string(),
@@ -214,7 +225,7 @@ impl AudioProcessingTool {
 
         // Decode audio
         let audio = AudioCodec::decode_file(path)?;
-        
+
         // Analyze with effects processor
         let effects = self.effects.lock().await;
         let analysis = effects.analyze_audio(&audio);
@@ -252,7 +263,12 @@ impl AudioProcessingTool {
     }
 
     /// Apply effects to audio file
-    async fn apply_effects_to_file(&self, path: &Path, input: &Value, output_path: Option<String>) -> Result<ToolResult> {
+    async fn apply_effects_to_file(
+        &self,
+        path: &Path,
+        input: &Value,
+        output_path: Option<String>,
+    ) -> Result<ToolResult> {
         info!("Applying effects to audio file: {}", path.display());
 
         // Decode audio
@@ -276,10 +292,10 @@ impl AudioProcessingTool {
         if let Some(ref output_path) = output_path {
             validation::validate_path(&output_path)?;
             let output_path = Path::new(&output_path);
-            
+
             let quality = AudioQuality::default();
             AudioCodec::encode_file(&processed_audio, output_path, &quality)?;
-            
+
             info!("Processed audio saved to: {}", output_path.display());
         }
 
@@ -304,14 +320,19 @@ impl AudioProcessingTool {
     async fn transcribe_audio_file(&self, path: &Path) -> Result<ToolResult> {
         info!("Transcribing audio file: {}", path.display());
 
-        let transcription_service = self.transcription_service.as_ref()
-            .ok_or_else(|| AgentError::tool("audio_processing".to_string(), "Transcription service not configured".to_string()))?;
+        let transcription_service = self.transcription_service.as_ref().ok_or_else(|| {
+            AgentError::tool(
+                "audio_processing".to_string(),
+                "Transcription service not configured".to_string(),
+            )
+        })?;
 
         // Read file as bytes for transcription
         let audio_bytes = std::fs::read(path)
             .map_err(|e| AgentError::invalid_input(format!("Failed to read audio file: {}", e)))?;
 
-        let extension = path.extension()
+        let extension = path
+            .extension()
             .and_then(|ext| ext.to_str())
             .ok_or_else(|| AgentError::invalid_input("Invalid file extension"))?;
 
@@ -341,11 +362,17 @@ impl AudioProcessingTool {
     }
 
     /// Convert audio file format
-    async fn convert_audio_file(&self, path: &Path, input: &Value, output_path: Option<String>) -> Result<ToolResult> {
+    async fn convert_audio_file(
+        &self,
+        path: &Path,
+        input: &Value,
+        output_path: Option<String>,
+    ) -> Result<ToolResult> {
         info!("Converting audio file: {}", path.display());
 
-        let output_path = output_path.ok_or_else(|| 
-            AgentError::invalid_input("Output path required for conversion".to_string()))?;
+        let output_path = output_path.ok_or_else(|| {
+            AgentError::invalid_input("Output path required for conversion".to_string())
+        })?;
 
         validation::validate_path(&output_path)?;
         let output_path = Path::new(&output_path);
@@ -406,8 +433,12 @@ impl AudioProcessingTool {
         let text = extract_string_param(input, "text")?;
         let output_path = extract_optional_string_param(input, "output_path");
 
-        let synthesis_service = self.synthesis_service.as_ref()
-            .ok_or_else(|| AgentError::tool("audio_processing".to_string(), "Synthesis service not configured".to_string()))?;
+        let synthesis_service = self.synthesis_service.as_ref().ok_or_else(|| {
+            AgentError::tool(
+                "audio_processing".to_string(),
+                "Synthesis service not configured".to_string(),
+            )
+        })?;
 
         info!("Synthesizing text to speech: {} characters", text.len());
 
@@ -475,19 +506,31 @@ impl AudioProcessingTool {
         // Use the instance metadata extractor
         let metadata = self.metadata_extractor.extract_metadata(file_path).await?;
 
-        info!("Extracted comprehensive metadata from: {} (duration: {:?}s, format: {:?})",
-              file_path, metadata.duration_seconds, metadata.format);
+        info!(
+            "Extracted comprehensive metadata from: {} (duration: {:?}s, format: {:?})",
+            file_path, metadata.duration_seconds, metadata.format
+        );
 
         Ok(metadata)
     }
 
     /// Extract metadata from audio data buffer using instance extractor
-    pub async fn extract_metadata_from_buffer(&self, audio_data: &AudioData) -> Result<AudioMetadata> {
+    pub async fn extract_metadata_from_buffer(
+        &self,
+        audio_data: &AudioData,
+    ) -> Result<AudioMetadata> {
         // Use the instance metadata extractor for buffer analysis
-        let metadata = self.metadata_extractor.extract_from_buffer(audio_data).await?;
+        let metadata = self
+            .metadata_extractor
+            .extract_from_buffer(audio_data)
+            .await?;
 
-        info!("Extracted metadata from audio buffer (samples: {}, channels: {}, sample_rate: {})",
-              audio_data.samples.len(), audio_data.channels, audio_data.sample_rate);
+        info!(
+            "Extracted metadata from audio buffer (samples: {}, channels: {}, sample_rate: {})",
+            audio_data.samples.len(),
+            audio_data.channels,
+            audio_data.sample_rate
+        );
 
         Ok(metadata)
     }
@@ -500,21 +543,32 @@ impl AudioProcessingTool {
 
     /// Estimate synthesis duration for text using synthesis service
     pub async fn estimate_synthesis_duration(&self, text: &str, speed: Option<f32>) -> Result<f64> {
-        let synthesis_service = self.synthesis_service.as_ref()
-            .ok_or_else(|| AgentError::tool("audio_processing".to_string(), "Synthesis service not configured".to_string()))?;
+        let synthesis_service = self.synthesis_service.as_ref().ok_or_else(|| {
+            AgentError::tool(
+                "audio_processing".to_string(),
+                "Synthesis service not configured".to_string(),
+            )
+        })?;
 
         let service = synthesis_service.lock().await;
         let duration = service.estimate_audio_duration(text, speed.unwrap_or(1.0));
         drop(service);
 
-        info!("Estimated synthesis duration for {} characters: {:.2}s (speed: {:.1}x)",
-              text.len(), duration, speed.unwrap_or(1.0));
+        info!(
+            "Estimated synthesis duration for {} characters: {:.2}s (speed: {:.1}x)",
+            text.len(),
+            duration,
+            speed.unwrap_or(1.0)
+        );
 
         Ok(duration)
     }
 
     /// Analyze audio file comprehensively using all available tools
-    pub async fn analyze_audio_comprehensive(&self, file_path: &str) -> Result<AudioAnalysisResult> {
+    pub async fn analyze_audio_comprehensive(
+        &self,
+        file_path: &str,
+    ) -> Result<AudioAnalysisResult> {
         info!("Starting comprehensive audio analysis for: {}", file_path);
 
         // Extract metadata using instance extractor
@@ -530,16 +584,17 @@ impl AudioProcessingTool {
         };
 
         // Estimate synthesis duration if text content is available
-        let estimated_synthesis_duration = if let Some(ref synthesis_service) = self.synthesis_service {
-            if let Some(text_content) = metadata.title.as_ref().or(metadata.comment.as_ref()) {
-                let service = synthesis_service.lock().await;
-                Some(service.estimate_audio_duration(text_content, 1.0))
+        let estimated_synthesis_duration =
+            if let Some(ref synthesis_service) = self.synthesis_service {
+                if let Some(text_content) = metadata.title.as_ref().or(metadata.comment.as_ref()) {
+                    let service = synthesis_service.lock().await;
+                    Some(service.estimate_audio_duration(text_content, 1.0))
+                } else {
+                    None
+                }
             } else {
                 None
-            }
-        } else {
-            None
-        };
+            };
 
         let result = AudioAnalysisResult {
             metadata,
@@ -554,8 +609,15 @@ impl AudioProcessingTool {
     }
 
     /// Process audio with comprehensive pipeline using all components
-    pub async fn process_audio_comprehensive(&self, file_path: &str, effects_config: Option<EffectsConfig>) -> Result<ProcessedAudioResult> {
-        info!("Starting comprehensive audio processing pipeline for: {}", file_path);
+    pub async fn process_audio_comprehensive(
+        &self,
+        file_path: &str,
+        effects_config: Option<EffectsConfig>,
+    ) -> Result<ProcessedAudioResult> {
+        info!(
+            "Starting comprehensive audio processing pipeline for: {}",
+            file_path
+        );
 
         // Step 1: Extract initial metadata using instance extractor
         let initial_metadata = self.extract_comprehensive_metadata(file_path).await?;
@@ -590,35 +652,55 @@ impl AudioProcessingTool {
             processing_timestamp: chrono::Utc::now(),
         };
 
-        info!("Completed comprehensive audio processing pipeline for: {} (effects applied: {})",
-              file_path, effects_applied);
+        info!(
+            "Completed comprehensive audio processing pipeline for: {} (effects applied: {})",
+            file_path, effects_applied
+        );
 
         Ok(result)
     }
 
     /// Batch process multiple audio files using comprehensive analysis
-    pub async fn batch_process_audio(&self, file_paths: &[String]) -> Result<Vec<AudioAnalysisResult>> {
+    pub async fn batch_process_audio(
+        &self,
+        file_paths: &[String],
+    ) -> Result<Vec<AudioAnalysisResult>> {
         let mut results = Vec::new();
 
-        info!("Starting batch processing of {} audio files", file_paths.len());
+        info!(
+            "Starting batch processing of {} audio files",
+            file_paths.len()
+        );
 
         for (index, file_path) in file_paths.iter().enumerate() {
             match self.analyze_audio_comprehensive(file_path).await {
                 Ok(result) => {
                     results.push(result);
-                    info!("Successfully processed audio file {}/{}: {}",
-                          index + 1, file_paths.len(), file_path);
+                    info!(
+                        "Successfully processed audio file {}/{}: {}",
+                        index + 1,
+                        file_paths.len(),
+                        file_path
+                    );
                 }
                 Err(e) => {
-                    warn!("Failed to process audio file {}/{} ({}): {}",
-                          index + 1, file_paths.len(), file_path, e);
+                    warn!(
+                        "Failed to process audio file {}/{} ({}): {}",
+                        index + 1,
+                        file_paths.len(),
+                        file_path,
+                        e
+                    );
                     // Continue processing other files
                 }
             }
         }
 
-        info!("Batch processing completed: {} successful out of {} files",
-              results.len(), file_paths.len());
+        info!(
+            "Batch processing completed: {} successful out of {} files",
+            results.len(),
+            file_paths.len()
+        );
 
         Ok(results)
     }
@@ -682,12 +764,14 @@ impl Tool for AudioProcessingTool {
         debug!("Executing audio processing action: {}", action);
 
         match action.as_str() {
-            "process_file" | "decode" | "metadata" | "analyze" | "effects" | "transcribe" | "convert" => {
-                self.process_audio_file(&input).await
-            }
+            "process_file" | "decode" | "metadata" | "analyze" | "effects" | "transcribe"
+            | "convert" => self.process_audio_file(&input).await,
             "synthesize" => self.synthesize_text(&input).await,
             "statistics" => self.get_statistics().await,
-            _ => Err(AgentError::invalid_input(format!("Unsupported action: {}", action))),
+            _ => Err(AgentError::invalid_input(format!(
+                "Unsupported action: {}",
+                action
+            ))),
         }
     }
 
@@ -703,7 +787,8 @@ impl Tool for AudioProcessingTool {
         let action = extract_string_param(input, "action")?;
 
         match action.as_str() {
-            "process_file" | "decode" | "metadata" | "analyze" | "effects" | "transcribe" | "convert" => {
+            "process_file" | "decode" | "metadata" | "analyze" | "effects" | "transcribe"
+            | "convert" => {
                 extract_string_param(input, "file_path")?;
             }
             "synthesize" => {
@@ -712,7 +797,12 @@ impl Tool for AudioProcessingTool {
             "statistics" => {
                 // No additional validation needed
             }
-            _ => return Err(AgentError::invalid_input(format!("Unsupported action: {}", action))),
+            _ => {
+                return Err(AgentError::invalid_input(format!(
+                    "Unsupported action: {}",
+                    action
+                )))
+            }
         }
 
         Ok(())
@@ -728,16 +818,16 @@ pub fn create_default_audio_tool() -> Result<AudioProcessingTool> {
 /// Create an audio processing tool with OpenAI services
 pub fn create_openai_audio_tool(api_key: String) -> Result<AudioProcessingTool> {
     let mut config = AudioConfig::default();
-    
+
     // Configure transcription
     config.transcription.provider = "openai".to_string();
     config.transcription.api_key = Some(api_key.clone());
     config.transcription.model = "whisper-1".to_string();
-    
+
     // Configure synthesis
     config.synthesis.provider = "openai".to_string();
     config.synthesis.api_key = Some(api_key);
     config.synthesis.voice = "alloy".to_string();
-    
+
     AudioProcessingTool::new(config)
 }

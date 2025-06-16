@@ -2,11 +2,11 @@
 // Demonstrates the comprehensive caching capabilities for AI agent systems
 
 use rust_memvid_agent::caching::{
-    CacheManager, CacheConfig, 
-    memory_cache::MemoryCache,
     backends::InMemoryDataSource,
-    strategies::{WriteThroughStrategy, DataSource},
+    memory_cache::MemoryCache,
     policies::CachePolicy,
+    strategies::{DataSource, WriteThroughStrategy},
+    CacheConfig, CacheManager,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -37,13 +37,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Create cache manager with custom configuration
     let config = CacheConfig {
         enable_multi_tier: true,
-        default_ttl: 3600, // 1 hour
+        default_ttl: 3600,                // 1 hour
         max_entry_size: 50 * 1024 * 1024, // 50MB
         enable_compression: true,
         compression_threshold: 1024, // 1KB
         ..Default::default()
     };
-    
+
     let mut cache_manager = CacheManager::new(config);
     println!("✅ Created cache manager with custom configuration");
 
@@ -65,44 +65,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 4. Cache AI model data with high-frequency policy
     let high_freq_policy = CachePolicy::high_frequency();
-    println!("📊 Using high-frequency cache policy: TTL={}s, Priority={}", 
-             high_freq_policy.ttl_config.default_ttl, 
-             high_freq_policy.priority);
-    
-    cache_manager.set("ai_model:gpt-4", &model_data, Some(7200)).await?;
+    println!(
+        "📊 Using high-frequency cache policy: TTL={}s, Priority={}",
+        high_freq_policy.ttl_config.default_ttl, high_freq_policy.priority
+    );
+
+    cache_manager
+        .set("ai_model:gpt-4", &model_data, Some(7200))
+        .await?;
     println!("✅ Cached AI model data");
 
     // 5. Cache user session with temporary policy
     let temp_policy = CachePolicy::temporary();
-    println!("📊 Using temporary cache policy: TTL={}s, Priority={}", 
-             temp_policy.ttl_config.default_ttl, 
-             temp_policy.priority);
-    
-    cache_manager.set("session:user_123", &user_session, Some(300)).await?;
+    println!(
+        "📊 Using temporary cache policy: TTL={}s, Priority={}",
+        temp_policy.ttl_config.default_ttl, temp_policy.priority
+    );
+
+    cache_manager
+        .set("session:user_123", &user_session, Some(300))
+        .await?;
     println!("✅ Cached user session data");
 
     // 6. Retrieve cached data
-    let cached_model: rust_memvid_agent::caching::CacheResult<AIModelData> = 
+    let cached_model: rust_memvid_agent::caching::CacheResult<AIModelData> =
         cache_manager.get("ai_model:gpt-4").await?;
-    
+
     if cached_model.hit {
-        println!("🎯 Cache HIT for AI model data from tier: {}", 
-                 cached_model.source_tier.unwrap_or("unknown".to_string()));
+        println!(
+            "🎯 Cache HIT for AI model data from tier: {}",
+            cached_model.source_tier.unwrap_or("unknown".to_string())
+        );
         println!("   Model ID: {}", cached_model.value.unwrap().model_id);
     }
 
-    let cached_session: rust_memvid_agent::caching::CacheResult<serde_json::Value> = 
+    let cached_session: rust_memvid_agent::caching::CacheResult<serde_json::Value> =
         cache_manager.get("session:user_123").await?;
-    
+
     if cached_session.hit {
-        println!("🎯 Cache HIT for user session from tier: {}", 
-                 cached_session.source_tier.unwrap_or("unknown".to_string()));
+        println!(
+            "🎯 Cache HIT for user session from tier: {}",
+            cached_session.source_tier.unwrap_or("unknown".to_string())
+        );
     }
 
     // 7. Test cache miss
-    let missing_data: rust_memvid_agent::caching::CacheResult<AIModelData> = 
+    let missing_data: rust_memvid_agent::caching::CacheResult<AIModelData> =
         cache_manager.get("ai_model:nonexistent").await?;
-    
+
     if !missing_data.hit {
         println!("❌ Cache MISS for nonexistent model (expected)");
     }
@@ -132,9 +142,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 11. Verify invalidation
-    let invalidated_session: rust_memvid_agent::caching::CacheResult<serde_json::Value> = 
+    let invalidated_session: rust_memvid_agent::caching::CacheResult<serde_json::Value> =
         cache_manager.get("session:user_123").await?;
-    
+
     if !invalidated_session.hit {
         println!("✅ Confirmed session invalidation - cache miss as expected");
     }
@@ -142,9 +152,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 12. Final metrics
     let final_metrics = cache_manager.get_metrics().await;
     println!("\n📊 Final Cache Metrics:");
-    println!("   Total Operations: {}", final_metrics.hits + final_metrics.misses);
+    println!(
+        "   Total Operations: {}",
+        final_metrics.hits + final_metrics.misses
+    );
     println!("   Hit Ratio: {:.2}%", final_metrics.hit_ratio);
-    println!("   Average Response Time: {:.2}ms", final_metrics.avg_response_time);
+    println!(
+        "   Average Response Time: {:.2}ms",
+        final_metrics.avg_response_time
+    );
 
     println!("\n🎉 Advanced Caching System Demo Complete!");
     println!("   ✅ Multi-tier caching operational");

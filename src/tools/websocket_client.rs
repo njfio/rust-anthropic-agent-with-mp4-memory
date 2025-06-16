@@ -14,9 +14,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::time::timeout;
-use tokio_tungstenite::{
-    connect_async, tungstenite::protocol::Message,
-};
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use tracing::{debug, error, info, warn};
 use url::Url;
 
@@ -236,10 +234,16 @@ impl WebSocketClientTool {
         // Check allowed origins if configured
         if !self.config.allowed_origins.is_empty() {
             if let Some(host) = parsed_url.host_str() {
-                if !self.config.allowed_origins.iter().any(|origin| host.ends_with(origin)) {
-                    return Err(AgentError::validation(
-                        format!("Host '{}' is not in allowed origins list", host),
-                    ));
+                if !self
+                    .config
+                    .allowed_origins
+                    .iter()
+                    .any(|origin| host.ends_with(origin))
+                {
+                    return Err(AgentError::validation(format!(
+                        "Host '{}' is not in allowed origins list",
+                        host
+                    )));
                 }
             }
         }
@@ -262,10 +266,13 @@ impl WebSocketClientTool {
 
         // Create connection request with timeout
         let connect_future = connect_async(&parsed_url);
-        let (ws_stream, _) = timeout(Duration::from_secs(self.config.connect_timeout), connect_future)
-            .await
-            .map_err(|_| AgentError::tool("websocket", "Connection timeout"))?
-            .map_err(|e| AgentError::tool("websocket", &format!("Connection failed: {}", e)))?;
+        let (ws_stream, _) = timeout(
+            Duration::from_secs(self.config.connect_timeout),
+            connect_future,
+        )
+        .await
+        .map_err(|_| AgentError::tool("websocket", "Connection timeout"))?
+        .map_err(|e| AgentError::tool("websocket", &format!("Connection failed: {}", e)))?;
 
         // Create message channel
         let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
@@ -383,9 +390,15 @@ impl WebSocketClientTool {
     }
 
     /// Send a message through WebSocket connection
-    pub async fn send_message(&self, url: &str, message: &str, message_type: WebSocketMessageType) -> Result<()> {
+    pub async fn send_message(
+        &self,
+        url: &str,
+        message: &str,
+        message_type: WebSocketMessageType,
+    ) -> Result<()> {
         let connections = self.connections.read().await;
-        let connection = connections.get(url)
+        let connection = connections
+            .get(url)
             .ok_or_else(|| AgentError::tool("websocket", "Connection not found"))?;
 
         if connection.state != ConnectionState::Connected {
@@ -400,8 +413,9 @@ impl WebSocketClientTool {
             WebSocketMessageType::Close => Message::Close(None),
         };
 
-        connection.sender.send(ws_message)
-            .map_err(|e| AgentError::tool("websocket", &format!("Failed to queue message: {}", e)))?;
+        connection.sender.send(ws_message).map_err(|e| {
+            AgentError::tool("websocket", &format!("Failed to queue message: {}", e))
+        })?;
 
         // Update statistics
         drop(connections);
@@ -411,7 +425,10 @@ impl WebSocketClientTool {
             conn.stats.bytes_sent += message.len() as u64;
         }
 
-        debug!("Message sent to WebSocket: {} (type: {:?})", url, message_type);
+        debug!(
+            "Message sent to WebSocket: {} (type: {:?})",
+            url, message_type
+        );
         Ok(())
     }
 
@@ -436,7 +453,7 @@ impl WebSocketClientTool {
     /// Get connection status and statistics
     pub async fn get_connection_status(&self, url: &str) -> Result<WebSocketResponse> {
         let connections = self.connections.read().await;
-        
+
         if let Some(connection) = connections.get(url) {
             let mut stats = connection.stats.clone();
             stats.connection_duration = Some(connection.created_at.elapsed());
@@ -478,31 +495,29 @@ impl WebSocketClientTool {
     /// Process WebSocket request and return response
     async fn process_request(&self, request: WebSocketRequest) -> Result<WebSocketResponse> {
         match request.action.as_str() {
-            "connect" => {
-                match self.connect(&request.url).await {
-                    Ok(_) => {
-                        let status = self.get_connection_status(&request.url).await?;
-                        Ok(WebSocketResponse {
-                            action: "connect".to_string(),
-                            url: request.url,
-                            state: status.state,
-                            message: Some("Connected successfully".to_string()),
-                            stats: status.stats,
-                            success: true,
-                            error: None,
-                        })
-                    }
-                    Err(e) => Ok(WebSocketResponse {
+            "connect" => match self.connect(&request.url).await {
+                Ok(_) => {
+                    let status = self.get_connection_status(&request.url).await?;
+                    Ok(WebSocketResponse {
                         action: "connect".to_string(),
                         url: request.url,
-                        state: ConnectionState::Failed,
-                        message: None,
-                        stats: ConnectionStats::default(),
-                        success: false,
-                        error: Some(e.to_string()),
+                        state: status.state,
+                        message: Some("Connected successfully".to_string()),
+                        stats: status.stats,
+                        success: true,
+                        error: None,
                     })
                 }
-            }
+                Err(e) => Ok(WebSocketResponse {
+                    action: "connect".to_string(),
+                    url: request.url,
+                    state: ConnectionState::Failed,
+                    message: None,
+                    stats: ConnectionStats::default(),
+                    success: false,
+                    error: Some(e.to_string()),
+                }),
+            },
             "send" => {
                 let message = request.message.unwrap_or_default();
                 let msg_type = match request.message_type.as_deref() {
@@ -534,45 +549,50 @@ impl WebSocketClientTool {
                         stats: ConnectionStats::default(),
                         success: false,
                         error: Some(e.to_string()),
-                    })
-                }
-            }
-            "disconnect" => {
-                match self.disconnect(&request.url).await {
-                    Ok(_) => Ok(WebSocketResponse {
-                        action: "disconnect".to_string(),
-                        url: request.url,
-                        state: ConnectionState::Disconnected,
-                        message: Some("Disconnected successfully".to_string()),
-                        stats: ConnectionStats::default(),
-                        success: true,
-                        error: None,
                     }),
-                    Err(e) => Ok(WebSocketResponse {
-                        action: "disconnect".to_string(),
-                        url: request.url,
-                        state: ConnectionState::Failed,
-                        message: None,
-                        stats: ConnectionStats::default(),
-                        success: false,
-                        error: Some(e.to_string()),
-                    })
                 }
             }
+            "disconnect" => match self.disconnect(&request.url).await {
+                Ok(_) => Ok(WebSocketResponse {
+                    action: "disconnect".to_string(),
+                    url: request.url,
+                    state: ConnectionState::Disconnected,
+                    message: Some("Disconnected successfully".to_string()),
+                    stats: ConnectionStats::default(),
+                    success: true,
+                    error: None,
+                }),
+                Err(e) => Ok(WebSocketResponse {
+                    action: "disconnect".to_string(),
+                    url: request.url,
+                    state: ConnectionState::Failed,
+                    message: None,
+                    stats: ConnectionStats::default(),
+                    success: false,
+                    error: Some(e.to_string()),
+                }),
+            },
             "status" => self.get_connection_status(&request.url).await,
             "list" => {
                 let connections = self.get_active_connections().await;
                 Ok(WebSocketResponse {
                     action: "list".to_string(),
                     url: "".to_string(),
-                    state: if connections.is_empty() { ConnectionState::Disconnected } else { ConnectionState::Connected },
+                    state: if connections.is_empty() {
+                        ConnectionState::Disconnected
+                    } else {
+                        ConnectionState::Connected
+                    },
                     message: Some(format!("Active connections: {}", connections.join(", "))),
                     stats: ConnectionStats::default(),
                     success: true,
                     error: None,
                 })
             }
-            _ => Err(AgentError::validation(format!("Unknown action: {}", request.action))),
+            _ => Err(AgentError::validation(format!(
+                "Unknown action: {}",
+                request.action
+            ))),
         }
     }
 }
@@ -583,7 +603,10 @@ impl Tool for WebSocketClientTool {
         ToolDefinition {
             tool_type: "custom".to_string(),
             name: "websocket_client".to_string(),
-            description: Some("Real-time WebSocket client for bidirectional communication with external services".to_string()),
+            description: Some(
+                "Real-time WebSocket client for bidirectional communication with external services"
+                    .to_string(),
+            ),
             input_schema: Some(json!({
                 "type": "object",
                 "properties": {
@@ -633,14 +656,22 @@ impl Tool for WebSocketClientTool {
     }
 
     async fn execute(&self, input: Value) -> Result<ToolResult> {
-        let request: WebSocketRequest = serde_json::from_value(input)
-            .map_err(|e| AgentError::invalid_input(format!("Invalid WebSocket request format: {}", e)))?;
+        let request: WebSocketRequest = serde_json::from_value(input).map_err(|e| {
+            AgentError::invalid_input(format!("Invalid WebSocket request format: {}", e))
+        })?;
 
         match self.process_request(request).await {
             Ok(response) => {
                 let mut metadata = HashMap::new();
-                metadata.insert("websocket_response".to_string(), serde_json::to_value(&response)
-                    .map_err(|e| AgentError::tool("websocket_client", &format!("Failed to serialize response: {}", e)))?);
+                metadata.insert(
+                    "websocket_response".to_string(),
+                    serde_json::to_value(&response).map_err(|e| {
+                        AgentError::tool(
+                            "websocket_client",
+                            &format!("Failed to serialize response: {}", e),
+                        )
+                    })?,
+                );
 
                 Ok(ToolResult {
                     content: format!(
@@ -649,9 +680,9 @@ impl Tool for WebSocketClientTool {
                         response.url,
                         response.state,
                         response.success,
-                        response.message.unwrap_or_else(||
-                            response.error.unwrap_or_else(|| "No additional information".to_string())
-                        )
+                        response.message.unwrap_or_else(|| response
+                            .error
+                            .unwrap_or_else(|| "No additional information".to_string()))
                     ),
                     is_error: !response.success,
                     metadata: Some(metadata),
@@ -661,7 +692,7 @@ impl Tool for WebSocketClientTool {
                 content: format!("WebSocket operation failed: {}", e),
                 is_error: true,
                 metadata: None,
-            })
+            }),
         }
     }
 }
@@ -720,7 +751,9 @@ mod tests {
         assert!(result2.is_err() || result2.is_ok()); // Either is acceptable for this test
 
         // This should definitely be blocked
-        assert!(client.validate_websocket_url("ws://localhost:8080/ws").is_err());
+        assert!(client
+            .validate_websocket_url("ws://localhost:8080/ws")
+            .is_err());
     }
 
     #[test]
@@ -729,7 +762,9 @@ mod tests {
 
         // Invalid protocols
         assert!(client.validate_websocket_url("http://example.com").is_err());
-        assert!(client.validate_websocket_url("https://example.com").is_err());
+        assert!(client
+            .validate_websocket_url("https://example.com")
+            .is_err());
         assert!(client.validate_websocket_url("ftp://example.com").is_err());
 
         // Invalid URLs
@@ -747,7 +782,9 @@ mod tests {
 
         // Test protocol validation first
         assert!(client.validate_websocket_url("http://example.com").is_err()); // Wrong protocol
-        assert!(client.validate_websocket_url("https://example.com").is_err()); // Wrong protocol
+        assert!(client
+            .validate_websocket_url("https://example.com")
+            .is_err()); // Wrong protocol
 
         // For allowed origins, we need to check if they pass the URL validation first
         // Since external URLs might be blocked by validate_url, we'll test the logic differently
@@ -860,7 +897,10 @@ mod tests {
 
         let result = client.execute(invalid_input).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid WebSocket request format"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid WebSocket request format"));
     }
 
     #[tokio::test]

@@ -4,22 +4,25 @@
 //! designed for AI agents, including conversation context tracking, episodic memory,
 //! working memory, and long-term memory consolidation patterns.
 
+use crate::caching::CacheManager;
 use crate::memory::{Conversation, MemoryEntry, MemoryManager, SearchResult};
+use crate::security::SecurityManager;
 use crate::utils::error::Result;
 use crate::utils::resource_monitor::ResourceMonitor;
-use crate::caching::CacheManager;
-use crate::security::SecurityManager;
 
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::RwLock;
 use tracing::debug;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 // Re-export memory types for convenience
-pub use crate::memory::{Conversation as BaseConversation, MemoryEntry as BaseMemoryEntry, MemoryManager as BaseMemoryManager, SearchResult as BaseSearchResult};
+pub use crate::memory::{
+    Conversation as BaseConversation, MemoryEntry as BaseMemoryEntry,
+    MemoryManager as BaseMemoryManager, SearchResult as BaseSearchResult,
+};
 
 /// Configuration for agent memory management
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -232,7 +235,10 @@ impl WorkingMemory {
         }
 
         self.entries.push_back(entry);
-        debug!("Added entry to working memory, current size: {}", self.entries.len());
+        debug!(
+            "Added entry to working memory, current size: {}",
+            self.entries.len()
+        );
     }
 
     fn cleanup_expired(&mut self) {
@@ -248,7 +254,10 @@ impl WorkingMemory {
 
         let removed_count = initial_len - self.entries.len();
         if removed_count > 0 {
-            debug!("Cleaned up {} expired working memory entries", removed_count);
+            debug!(
+                "Cleaned up {} expired working memory entries",
+                removed_count
+            );
         }
 
         self.last_cleanup = now;
@@ -294,7 +303,10 @@ impl ConversationContext {
         }
 
         self.entries.push_back(entry);
-        debug!("Added entry to conversation context, current size: {}", self.entries.len());
+        debug!(
+            "Added entry to conversation context, current size: {}",
+            self.entries.len()
+        );
     }
 
     fn get_context(&self) -> Vec<AgentMemoryEntry> {
@@ -312,7 +324,9 @@ impl ConversationContext {
 
         Some(format!(
             "Conversation {} with {} entries over {:?}",
-            self.conversation_id.as_ref().unwrap_or(&"unknown".to_string()),
+            self.conversation_id
+                .as_ref()
+                .unwrap_or(&"unknown".to_string()),
             total_entries,
             duration
         ))
@@ -472,21 +486,25 @@ impl AgentMemoryManager {
 
                 // Store in base memory manager using save_memory
                 let mut base_manager = self.base_manager.lock().await;
-                base_manager.save_memory(
-                    entry.content.clone(),
-                    format!("{:?}", entry.memory_type),
-                    entry.metadata.clone(),
-                ).await?;
+                base_manager
+                    .save_memory(
+                        entry.content.clone(),
+                        format!("{:?}", entry.memory_type),
+                        entry.metadata.clone(),
+                    )
+                    .await?;
                 debug!("Stored entry in episodic memory: {}", entry.id);
             }
             MemoryType::LongTerm => {
                 // Store directly in base memory manager for long-term persistence
                 let mut base_manager = self.base_manager.lock().await;
-                base_manager.save_memory(
-                    entry.content.clone(),
-                    format!("{:?}", entry.memory_type),
-                    entry.metadata.clone(),
-                ).await?;
+                base_manager
+                    .save_memory(
+                        entry.content.clone(),
+                        format!("{:?}", entry.memory_type),
+                        entry.metadata.clone(),
+                    )
+                    .await?;
                 debug!("Stored entry in long-term memory: {}", entry.id);
             }
         }
@@ -495,7 +513,11 @@ impl AgentMemoryManager {
     }
 
     /// Retrieve memory entries by type
-    pub async fn get_memories(&self, memory_type: MemoryType, limit: Option<usize>) -> Result<Vec<AgentMemoryEntry>> {
+    pub async fn get_memories(
+        &self,
+        memory_type: MemoryType,
+        limit: Option<usize>,
+    ) -> Result<Vec<AgentMemoryEntry>> {
         match memory_type {
             MemoryType::Working => {
                 let mut working = self.working_memory.write().await;
@@ -522,7 +544,8 @@ impl AgentMemoryManager {
 
                 // Sort by importance and recency
                 entries.sort_by(|a, b| {
-                    b.importance_score.partial_cmp(&a.importance_score)
+                    b.importance_score
+                        .partial_cmp(&a.importance_score)
                         .unwrap_or(std::cmp::Ordering::Equal)
                         .then_with(|| b.created_at.cmp(&a.created_at))
                 });
@@ -537,7 +560,9 @@ impl AgentMemoryManager {
                 // Query base memory manager for long-term memories
                 let base_manager = self.base_manager.lock().await;
                 let search_results = base_manager.search_memory("", 100).await?;
-                let entries = self.convert_from_memory_entries(search_results, MemoryType::LongTerm).await?;
+                let entries = self
+                    .convert_from_memory_entries(search_results, MemoryType::LongTerm)
+                    .await?;
 
                 Ok(if let Some(limit) = limit {
                     entries.into_iter().take(limit).collect()
@@ -549,7 +574,11 @@ impl AgentMemoryManager {
     }
 
     /// Search memories across all types
-    pub async fn search_memories(&self, query: &str, limit: usize) -> Result<Vec<AgentMemoryEntry>> {
+    pub async fn search_memories(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<AgentMemoryEntry>> {
         let mut all_results = Vec::new();
 
         // Search working memory
@@ -579,12 +608,15 @@ impl AgentMemoryManager {
         // Search base memory manager for long-term memories
         let base_manager = self.base_manager.lock().await;
         let search_results = base_manager.search_memory(query, limit).await?;
-        let long_term_entries = self.convert_from_memory_entries(search_results, MemoryType::LongTerm).await?;
+        let long_term_entries = self
+            .convert_from_memory_entries(search_results, MemoryType::LongTerm)
+            .await?;
         all_results.extend(long_term_entries);
 
         // Sort by importance score and limit results
         all_results.sort_by(|a, b| {
-            b.importance_score.partial_cmp(&a.importance_score)
+            b.importance_score
+                .partial_cmp(&a.importance_score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
@@ -623,7 +655,8 @@ impl AgentMemoryManager {
         user_id: Option<String>,
         tags: Vec<String>,
     ) -> Result<String> {
-        self.store_memory(MemoryType::Conversational, content, metadata, user_id, tags).await
+        self.store_memory(MemoryType::Conversational, content, metadata, user_id, tags)
+            .await
     }
 
     /// Perform memory consolidation
@@ -640,7 +673,8 @@ impl AgentMemoryManager {
         let mut entries_to_archive = Vec::new();
         let mut entries_to_delete = Vec::new();
 
-        let cutoff_date = SystemTime::now() - Duration::from_secs(self.config.episodic_retention_days * 24 * 3600);
+        let cutoff_date = SystemTime::now()
+            - Duration::from_secs(self.config.episodic_retention_days * 24 * 3600);
 
         for (id, entry) in episodic_cache.iter() {
             if entry.created_at < cutoff_date {
@@ -663,11 +697,13 @@ impl AgentMemoryManager {
             long_term_entry.memory_type = MemoryType::LongTerm;
 
             let mut base_manager = self.base_manager.lock().await;
-            base_manager.save_memory(
-                long_term_entry.content.clone(),
-                format!("{:?}", long_term_entry.memory_type),
-                long_term_entry.metadata.clone(),
-            ).await?;
+            base_manager
+                .save_memory(
+                    long_term_entry.content.clone(),
+                    format!("{:?}", long_term_entry.memory_type),
+                    long_term_entry.metadata.clone(),
+                )
+                .await?;
             drop(base_manager); // Release lock early
 
             episodic_cache.remove(&entry.id);
@@ -677,7 +713,9 @@ impl AgentMemoryManager {
         // Archive medium importance entries (keep in episodic but mark as archived)
         for id in entries_to_archive {
             if let Some(entry) = episodic_cache.get_mut(&id) {
-                entry.metadata.insert("archived".to_string(), "true".to_string());
+                entry
+                    .metadata
+                    .insert("archived".to_string(), "true".to_string());
                 stats.entries_archived += 1;
             }
         }
@@ -719,11 +757,17 @@ impl AgentMemoryManager {
 
         // Working memory stats
         let working = self.working_memory.read().await;
-        stats.insert("working_memory_entries".to_string(), working.entries.len() as u64);
+        stats.insert(
+            "working_memory_entries".to_string(),
+            working.entries.len() as u64,
+        );
 
         // Conversation context stats
         let context = self.conversation_context.read().await;
-        stats.insert("conversation_entries".to_string(), context.entries.len() as u64);
+        stats.insert(
+            "conversation_entries".to_string(),
+            context.entries.len() as u64,
+        );
 
         // Episodic memory stats
         let episodic = self.episodic_cache.read().await;
@@ -735,9 +779,18 @@ impl AgentMemoryManager {
 
         // Consolidation stats
         let consolidation_stats = self.consolidation_stats.read().await;
-        stats.insert("entries_consolidated".to_string(), consolidation_stats.entries_consolidated);
-        stats.insert("entries_archived".to_string(), consolidation_stats.entries_archived);
-        stats.insert("entries_deleted".to_string(), consolidation_stats.entries_deleted);
+        stats.insert(
+            "entries_consolidated".to_string(),
+            consolidation_stats.entries_consolidated,
+        );
+        stats.insert(
+            "entries_archived".to_string(),
+            consolidation_stats.entries_archived,
+        );
+        stats.insert(
+            "entries_deleted".to_string(),
+            consolidation_stats.entries_deleted,
+        );
 
         Ok(stats)
     }
@@ -785,25 +838,30 @@ impl AgentMemoryManager {
                 metadata: base_entry.metadata.clone(),
                 created_at: base_entry.created_at.into(),
                 last_accessed: SystemTime::now(),
-                access_count: base_entry.metadata
+                access_count: base_entry
+                    .metadata
                     .get("access_count")
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0),
-                importance_score: base_entry.metadata
+                importance_score: base_entry
+                    .metadata
                     .get("importance_score")
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0.5),
-                emotional_score: base_entry.metadata
+                emotional_score: base_entry
+                    .metadata
                     .get("emotional_score")
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0.0),
-                relevance_score: base_entry.metadata
+                relevance_score: base_entry
+                    .metadata
                     .get("relevance_score")
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0.5),
                 conversation_id: base_entry.metadata.get("conversation_id").cloned(),
                 user_id: base_entry.metadata.get("user_id").cloned(),
-                tags: base_entry.metadata
+                tags: base_entry
+                    .metadata
                     .get("tags")
                     .map(|s| s.split(',').map(|t| t.to_string()).collect())
                     .unwrap_or_default(),
@@ -875,7 +933,9 @@ impl AgentMemoryManager {
 }
 
 /// Create a new agent memory manager with default configuration
-pub fn create_agent_memory_manager(base_manager: Arc<tokio::sync::Mutex<MemoryManager>>) -> AgentMemoryManager {
+pub fn create_agent_memory_manager(
+    base_manager: Arc<tokio::sync::Mutex<MemoryManager>>,
+) -> AgentMemoryManager {
     AgentMemoryManager::new(AgentMemoryConfig::default(), base_manager)
 }
 

@@ -181,13 +181,13 @@ pub trait MetricsCollector: Send + Sync {
 pub trait MetricsExporter: Send + Sync {
     /// Get exporter name
     fn name(&self) -> &str;
-    
+
     /// Export metrics
     async fn export(&self, metrics: &[Metric]) -> Result<()>;
-    
+
     /// Get exporter health status
     async fn health_check(&self) -> Result<ExporterHealth>;
-    
+
     /// Get exporter configuration
     fn config(&self) -> ExporterConfig;
 }
@@ -540,7 +540,10 @@ impl PerformanceMonitor {
             info!("Removed metrics collector: {}", name);
             Ok(())
         } else {
-            Err(AgentError::validation(format!("Collector not found: {}", name)))
+            Err(AgentError::validation(format!(
+                "Collector not found: {}",
+                name
+            )))
         }
     }
 
@@ -573,7 +576,10 @@ impl PerformanceMonitor {
             endpoint: Some(self.config.export_config.prometheus_endpoint.clone()),
         };
 
-        let exporter = PrometheusExporter::new(config, self.config.export_config.prometheus_endpoint.clone());
+        let exporter = PrometheusExporter::new(
+            config,
+            self.config.export_config.prometheus_endpoint.clone(),
+        );
         self.add_exporter(Box::new(exporter)).await?;
 
         info!("Added Prometheus metrics exporter");
@@ -593,7 +599,8 @@ impl PerformanceMonitor {
             endpoint: None,
         };
 
-        let exporter = ConsoleExporter::new(config, crate::monitoring::exporters::ConsoleFormat::Table);
+        let exporter =
+            ConsoleExporter::new(config, crate::monitoring::exporters::ConsoleFormat::Table);
         self.add_exporter(Box::new(exporter)).await?;
 
         info!("Added console metrics exporter");
@@ -638,7 +645,10 @@ impl PerformanceMonitor {
 
         // Add file exporter if JSON export is enabled
         if self.config.export_config.enable_json {
-            if let Err(e) = self.add_file_exporter(&self.config.export_config.json_export_path).await {
+            if let Err(e) = self
+                .add_file_exporter(&self.config.export_config.json_export_path)
+                .await
+            {
                 warn!("Failed to add file exporter: {}", e);
             }
         }
@@ -687,7 +697,11 @@ impl PerformanceMonitor {
             match exporter.health_check().await {
                 Ok(health) => exporter_health.push((exporter.name().to_string(), health)),
                 Err(e) => {
-                    warn!("Failed to get health for exporter {}: {}", exporter.name(), e);
+                    warn!(
+                        "Failed to get health for exporter {}: {}",
+                        exporter.name(),
+                        e
+                    );
                 }
             }
         }
@@ -706,10 +720,18 @@ impl PerformanceMonitor {
     }
 
     /// Record application metric through the monitoring system
-    pub async fn record_application_metric(&self, name: &str, value: f64, labels: HashMap<String, String>) -> Result<()> {
+    pub async fn record_application_metric(
+        &self,
+        name: &str,
+        value: f64,
+        labels: HashMap<String, String>,
+    ) -> Result<()> {
         let collectors = self.collectors.read().await;
         if let Some(collector) = collectors.get("application") {
-            if let Some(app_collector) = collector.as_any().downcast_ref::<crate::monitoring::collectors::ApplicationMetricsCollector>() {
+            if let Some(app_collector) = collector
+                .as_any()
+                .downcast_ref::<crate::monitoring::collectors::ApplicationMetricsCollector>(
+            ) {
                 app_collector.record_metric(name, value, labels).await?;
                 info!("Recorded application metric: {} = {}", name, value);
             }
@@ -718,22 +740,41 @@ impl PerformanceMonitor {
     }
 
     /// Record HTTP request through the monitoring system
-    pub async fn record_http_request(&self, endpoint: &str, status_code: u16, response_time: f64) -> Result<()> {
+    pub async fn record_http_request(
+        &self,
+        endpoint: &str,
+        status_code: u16,
+        response_time: f64,
+    ) -> Result<()> {
         let collectors = self.collectors.read().await;
         if let Some(collector) = collectors.get("http") {
-            if let Some(http_collector) = collector.as_any().downcast_ref::<crate::monitoring::collectors::HttpMetricsCollector>() {
-                http_collector.record_request(endpoint, status_code, response_time).await?;
-                info!("Recorded HTTP request: {} {} {}ms", endpoint, status_code, response_time);
+            if let Some(http_collector) = collector
+                .as_any()
+                .downcast_ref::<crate::monitoring::collectors::HttpMetricsCollector>(
+            ) {
+                http_collector
+                    .record_request(endpoint, status_code, response_time)
+                    .await?;
+                info!(
+                    "Recorded HTTP request: {} {} {}ms",
+                    endpoint, status_code, response_time
+                );
             }
         }
         Ok(())
     }
 
     /// Add custom metric through the monitoring system
-    pub async fn add_custom_metric(&self, metric: crate::monitoring::collectors::CustomMetric) -> Result<()> {
+    pub async fn add_custom_metric(
+        &self,
+        metric: crate::monitoring::collectors::CustomMetric,
+    ) -> Result<()> {
         let collectors = self.collectors.read().await;
         if let Some(collector) = collectors.get("custom") {
-            if let Some(custom_collector) = collector.as_any().downcast_ref::<crate::monitoring::collectors::CustomMetricsCollector>() {
+            if let Some(custom_collector) = collector
+                .as_any()
+                .downcast_ref::<crate::monitoring::collectors::CustomMetricsCollector>(
+            ) {
                 custom_collector.add_metric(metric.clone()).await?;
                 info!("Added custom metric: {}", metric.name);
             }
@@ -771,7 +812,11 @@ impl PerformanceMonitor {
             stats.avg_collection_time_ms = new_avg;
         }
 
-        debug!("Collected {} total metrics in {:?}", all_metrics.len(), collection_time);
+        debug!(
+            "Collected {} total metrics in {:?}",
+            all_metrics.len(),
+            collection_time
+        );
         Ok(all_metrics)
     }
 
@@ -782,7 +827,11 @@ impl PerformanceMonitor {
         for exporter in exporters.iter() {
             match exporter.export(metrics).await {
                 Ok(_) => {
-                    debug!("Successfully exported {} metrics via {}", metrics.len(), exporter.name());
+                    debug!(
+                        "Successfully exported {} metrics via {}",
+                        metrics.len(),
+                        exporter.name()
+                    );
                 }
                 Err(e) => {
                     warn!("Failed to export metrics via {}: {}", exporter.name(), e);
@@ -814,12 +863,15 @@ impl PerformanceMonitor {
                 }
                 Err(e) => {
                     warn!("Health check failed for collector {}: {}", name, e);
-                    collector_health.insert(name.clone(), CollectorHealth {
-                        is_healthy: false,
-                        last_collection: None,
-                        error_count: 1,
-                        collection_duration_ms: None,
-                    });
+                    collector_health.insert(
+                        name.clone(),
+                        CollectorHealth {
+                            is_healthy: false,
+                            last_collection: None,
+                            error_count: 1,
+                            collection_duration_ms: None,
+                        },
+                    );
                 }
             }
         }
@@ -832,19 +884,26 @@ impl PerformanceMonitor {
                     exporter_health.insert(exporter.name().to_string(), health);
                 }
                 Err(e) => {
-                    warn!("Health check failed for exporter {}: {}", exporter.name(), e);
-                    exporter_health.insert(exporter.name().to_string(), ExporterHealth {
-                        is_healthy: false,
-                        last_export: None,
-                        error_count: 1,
-                        export_duration_ms: None,
-                    });
+                    warn!(
+                        "Health check failed for exporter {}: {}",
+                        exporter.name(),
+                        e
+                    );
+                    exporter_health.insert(
+                        exporter.name().to_string(),
+                        ExporterHealth {
+                            is_healthy: false,
+                            last_export: None,
+                            error_count: 1,
+                            export_duration_ms: None,
+                        },
+                    );
                 }
             }
         }
 
-        let overall_healthy = collector_health.values().all(|h| h.is_healthy) &&
-                             exporter_health.values().all(|h| h.is_healthy);
+        let overall_healthy = collector_health.values().all(|h| h.is_healthy)
+            && exporter_health.values().all(|h| h.is_healthy);
 
         Ok(SystemHealth {
             overall_healthy,
@@ -923,7 +982,8 @@ impl PerformanceMonitor {
                 "cpu_usage" => {
                     if let MetricValue::Gauge(value) = metric.value {
                         stats.trends.cpu_trend.push(value);
-                        if stats.trends.cpu_trend.len() > 1440 { // Keep 24 hours at 1-minute intervals
+                        if stats.trends.cpu_trend.len() > 1440 {
+                            // Keep 24 hours at 1-minute intervals
                             stats.trends.cpu_trend.remove(0);
                         }
                     }

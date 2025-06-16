@@ -14,8 +14,8 @@ pub mod effects;
 pub mod metadata;
 pub mod streaming;
 pub mod synthesis;
-pub mod transcription;
 pub mod tool;
+pub mod transcription;
 
 #[cfg(test)]
 mod tests;
@@ -59,7 +59,10 @@ impl AudioFormat {
 
     /// Check if format supports metadata
     pub fn supports_metadata(&self) -> bool {
-        matches!(self, AudioFormat::Mp3 | AudioFormat::Flac | AudioFormat::M4a)
+        matches!(
+            self,
+            AudioFormat::Mp3 | AudioFormat::Flac | AudioFormat::M4a
+        )
     }
 }
 
@@ -315,8 +318,17 @@ impl std::fmt::Debug for AudioProcessor {
         f.debug_struct("AudioProcessor")
             .field("config", &self.config)
             .field("stats", &"RwLock<AudioStats>")
-            .field("cache_manager", &self.cache_manager.as_ref().map(|_| "Some(CacheManager)"))
-            .field("resource_monitor", &self.resource_monitor.as_ref().map(|_| "Some(ResourceMonitor)"))
+            .field(
+                "cache_manager",
+                &self.cache_manager.as_ref().map(|_| "Some(CacheManager)"),
+            )
+            .field(
+                "resource_monitor",
+                &self
+                    .resource_monitor
+                    .as_ref()
+                    .map(|_| "Some(ResourceMonitor)"),
+            )
             .finish()
     }
 }

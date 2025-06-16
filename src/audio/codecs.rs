@@ -32,12 +32,7 @@ pub struct AudioData {
 
 impl AudioData {
     /// Create new audio data
-    pub fn new(
-        samples: Vec<f32>,
-        sample_rate: u32,
-        channels: u16,
-        format: AudioFormat,
-    ) -> Self {
+    pub fn new(samples: Vec<f32>, sample_rate: u32, channels: u16, format: AudioFormat) -> Self {
         let duration = samples.len() as f64 / (sample_rate as f64 * channels as f64);
         Self {
             samples,
@@ -85,8 +80,10 @@ impl AudioData {
             let fraction = source_frame - source_frame_floor as f64;
 
             for channel in 0..self.channels as usize {
-                let sample_floor = self.samples[source_frame_floor * self.channels as usize + channel];
-                let sample_ceil = self.samples[source_frame_ceil * self.channels as usize + channel];
+                let sample_floor =
+                    self.samples[source_frame_floor * self.channels as usize + channel];
+                let sample_ceil =
+                    self.samples[source_frame_ceil * self.channels as usize + channel];
                 let interpolated = sample_floor + (sample_ceil - sample_floor) * fraction as f32;
                 resampled.push(interpolated);
             }
@@ -134,8 +131,9 @@ impl AudioCodec {
             .and_then(|ext| ext.to_str())
             .ok_or_else(|| AgentError::invalid_input("Invalid file extension"))?;
 
-        let format = AudioFormat::from_extension(extension)
-            .ok_or_else(|| AgentError::invalid_input(format!("Unsupported format: {}", extension)))?;
+        let format = AudioFormat::from_extension(extension).ok_or_else(|| {
+            AgentError::invalid_input(format!("Unsupported format: {}", extension))
+        })?;
 
         match format {
             AudioFormat::Wav => Self::decode_wav(path),
@@ -148,7 +146,11 @@ impl AudioCodec {
 
     /// Decode audio from byte buffer
     pub fn decode_bytes(data: &[u8], format: AudioFormat) -> Result<AudioData> {
-        debug!("Decoding audio from {} bytes, format: {:?}", data.len(), format);
+        debug!(
+            "Decoding audio from {} bytes, format: {:?}",
+            data.len(),
+            format
+        );
 
         match format {
             AudioFormat::Wav => Self::decode_wav_bytes(data),
@@ -172,8 +174,9 @@ impl AudioCodec {
             .and_then(|ext| ext.to_str())
             .ok_or_else(|| AgentError::invalid_input("Invalid file extension"))?;
 
-        let format = AudioFormat::from_extension(extension)
-            .ok_or_else(|| AgentError::invalid_input(format!("Unsupported format: {}", extension)))?;
+        let format = AudioFormat::from_extension(extension).ok_or_else(|| {
+            AgentError::invalid_input(format!("Unsupported format: {}", extension))
+        })?;
 
         match format {
             AudioFormat::Wav => Self::encode_wav(audio, path, quality),
@@ -185,7 +188,11 @@ impl AudioCodec {
     }
 
     /// Encode AudioData to bytes
-    pub fn encode_bytes(audio: &AudioData, format: AudioFormat, quality: &AudioQuality) -> Result<Vec<u8>> {
+    pub fn encode_bytes(
+        audio: &AudioData,
+        format: AudioFormat,
+        quality: &AudioQuality,
+    ) -> Result<Vec<u8>> {
         debug!("Encoding audio to bytes, format: {:?}", format);
 
         match format {
@@ -218,10 +225,12 @@ impl AudioCodec {
                 .samples::<f32>()
                 .collect::<std::result::Result<Vec<_>, _>>()
                 .map_err(|e| AgentError::invalid_input(format!("Failed to read samples: {}", e))),
-            _ => return Err(AgentError::invalid_input(format!(
-                "Unsupported bit depth: {}",
-                spec.bits_per_sample
-            ))),
+            _ => {
+                return Err(AgentError::invalid_input(format!(
+                    "Unsupported bit depth: {}",
+                    spec.bits_per_sample
+                )))
+            }
         };
 
         let samples = samples?;
@@ -250,10 +259,12 @@ impl AudioCodec {
                 .map(|s| s.unwrap_or(0) as f32 / (1 << 23) as f32)
                 .collect(),
             32 => reader.samples::<f32>().map(|s| s.unwrap_or(0.0)).collect(),
-            _ => return Err(AgentError::invalid_input(format!(
-                "Unsupported bit depth: {}",
-                spec.bits_per_sample
-            ))),
+            _ => {
+                return Err(AgentError::invalid_input(format!(
+                    "Unsupported bit depth: {}",
+                    spec.bits_per_sample
+                )))
+            }
         };
 
         Ok(AudioData::new(
@@ -284,7 +295,12 @@ impl AudioCodec {
                     }
                 }
                 Err(minimp3::Error::Eof) => break,
-                Err(e) => return Err(AgentError::invalid_input(format!("MP3 decode error: {:?}", e))),
+                Err(e) => {
+                    return Err(AgentError::invalid_input(format!(
+                        "MP3 decode error: {:?}",
+                        e
+                    )))
+                }
             }
         }
 
@@ -292,11 +308,19 @@ impl AudioCodec {
             return Err(AgentError::invalid_input("No audio data found in MP3"));
         }
 
-        Ok(AudioData::new(samples, sample_rate, channels, AudioFormat::Mp3))
+        Ok(AudioData::new(
+            samples,
+            sample_rate,
+            channels,
+            AudioFormat::Mp3,
+        ))
     }
 
     /// Decode using Symphonia for various formats
-    fn decode_with_symphonia<P: AsRef<Path>>(path: P, audio_format: AudioFormat) -> Result<AudioData> {
+    fn decode_with_symphonia<P: AsRef<Path>>(
+        path: P,
+        audio_format: AudioFormat,
+    ) -> Result<AudioData> {
         let file = File::open(path)
             .map_err(|e| AgentError::invalid_input(format!("Failed to open file: {}", e)))?;
 
@@ -336,7 +360,9 @@ impl AudioCodec {
                     decoder.reset();
                     continue;
                 }
-                Err(SymphoniaError::IoError(ref e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                Err(SymphoniaError::IoError(ref e))
+                    if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+                {
                     break;
                 }
                 Err(e) => return Err(AgentError::invalid_input(format!("Decode error: {}", e))),
@@ -355,7 +381,8 @@ impl AudioCodec {
                     }
 
                     // Convert to f32 samples
-                    let mut sample_buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
+                    let mut sample_buf =
+                        SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
                     sample_buf.copy_interleaved_ref(decoded);
                     samples.extend_from_slice(sample_buf.samples());
                 }
@@ -411,7 +438,9 @@ impl AudioCodec {
                     decoder.reset();
                     continue;
                 }
-                Err(SymphoniaError::IoError(ref e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                Err(SymphoniaError::IoError(ref e))
+                    if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+                {
                     break;
                 }
                 Err(_) => break,
@@ -428,7 +457,8 @@ impl AudioCodec {
                     channels = spec.channels.count() as u16;
                 }
 
-                let mut sample_buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
+                let mut sample_buf =
+                    SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
                 sample_buf.copy_interleaved_ref(decoded);
                 samples.extend_from_slice(sample_buf.samples());
             }
@@ -442,7 +472,11 @@ impl AudioCodec {
     }
 
     /// Encode WAV file using hound
-    fn encode_wav<P: AsRef<Path>>(audio: &AudioData, path: P, quality: &AudioQuality) -> Result<()> {
+    fn encode_wav<P: AsRef<Path>>(
+        audio: &AudioData,
+        path: P,
+        quality: &AudioQuality,
+    ) -> Result<()> {
         let spec = hound::WavSpec {
             channels: quality.channels,
             sample_rate: quality.sample_rate,
@@ -454,8 +488,9 @@ impl AudioCodec {
             },
         };
 
-        let mut writer = hound::WavWriter::create(path, spec)
-            .map_err(|e| AgentError::invalid_input(format!("Failed to create WAV writer: {}", e)))?;
+        let mut writer = hound::WavWriter::create(path, spec).map_err(|e| {
+            AgentError::invalid_input(format!("Failed to create WAV writer: {}", e))
+        })?;
 
         // Resample if necessary
         let resampled_audio = if audio.sample_rate != quality.sample_rate {
@@ -469,31 +504,37 @@ impl AudioCodec {
             16 => {
                 for sample in &resampled_audio.samples {
                     let sample_i16 = (*sample * i16::MAX as f32) as i16;
-                    writer.write_sample(sample_i16)
-                        .map_err(|e| AgentError::invalid_input(format!("Failed to write sample: {}", e)))?;
+                    writer.write_sample(sample_i16).map_err(|e| {
+                        AgentError::invalid_input(format!("Failed to write sample: {}", e))
+                    })?;
                 }
             }
             24 => {
                 for sample in &resampled_audio.samples {
                     let sample_i32 = (*sample * (1 << 23) as f32) as i32;
-                    writer.write_sample(sample_i32)
-                        .map_err(|e| AgentError::invalid_input(format!("Failed to write sample: {}", e)))?;
+                    writer.write_sample(sample_i32).map_err(|e| {
+                        AgentError::invalid_input(format!("Failed to write sample: {}", e))
+                    })?;
                 }
             }
             32 => {
                 for sample in &resampled_audio.samples {
-                    writer.write_sample(*sample)
-                        .map_err(|e| AgentError::invalid_input(format!("Failed to write sample: {}", e)))?;
+                    writer.write_sample(*sample).map_err(|e| {
+                        AgentError::invalid_input(format!("Failed to write sample: {}", e))
+                    })?;
                 }
             }
-            _ => return Err(AgentError::invalid_input(format!(
-                "Unsupported bit depth: {}",
-                quality.bit_depth
-            ))),
+            _ => {
+                return Err(AgentError::invalid_input(format!(
+                    "Unsupported bit depth: {}",
+                    quality.bit_depth
+                )))
+            }
         }
 
-        writer.finalize()
-            .map_err(|e| AgentError::invalid_input(format!("Failed to finalize WAV file: {}", e)))?;
+        writer.finalize().map_err(|e| {
+            AgentError::invalid_input(format!("Failed to finalize WAV file: {}", e))
+        })?;
 
         Ok(())
     }
@@ -514,8 +555,9 @@ impl AudioCodec {
         let mut buffer = Vec::new();
         {
             let cursor = Cursor::new(&mut buffer);
-            let mut writer = hound::WavWriter::new(cursor, spec)
-                .map_err(|e| AgentError::invalid_input(format!("Failed to create WAV writer: {}", e)))?;
+            let mut writer = hound::WavWriter::new(cursor, spec).map_err(|e| {
+                AgentError::invalid_input(format!("Failed to create WAV writer: {}", e))
+            })?;
 
             // Resample if necessary
             let resampled_audio = if audio.sample_rate != quality.sample_rate {
@@ -529,30 +571,36 @@ impl AudioCodec {
                 16 => {
                     for sample in &resampled_audio.samples {
                         let sample_i16 = (*sample * i16::MAX as f32) as i16;
-                        writer.write_sample(sample_i16)
-                            .map_err(|e| AgentError::invalid_input(format!("Failed to write sample: {}", e)))?;
+                        writer.write_sample(sample_i16).map_err(|e| {
+                            AgentError::invalid_input(format!("Failed to write sample: {}", e))
+                        })?;
                     }
                 }
                 24 => {
                     for sample in &resampled_audio.samples {
                         let sample_i32 = (*sample * (1 << 23) as f32) as i32;
-                        writer.write_sample(sample_i32)
-                            .map_err(|e| AgentError::invalid_input(format!("Failed to write sample: {}", e)))?;
+                        writer.write_sample(sample_i32).map_err(|e| {
+                            AgentError::invalid_input(format!("Failed to write sample: {}", e))
+                        })?;
                     }
                 }
                 32 => {
                     for sample in &resampled_audio.samples {
-                        writer.write_sample(*sample)
-                            .map_err(|e| AgentError::invalid_input(format!("Failed to write sample: {}", e)))?;
+                        writer.write_sample(*sample).map_err(|e| {
+                            AgentError::invalid_input(format!("Failed to write sample: {}", e))
+                        })?;
                     }
                 }
-                _ => return Err(AgentError::invalid_input(format!(
-                    "Unsupported bit depth: {}",
-                    quality.bit_depth
-                ))),
+                _ => {
+                    return Err(AgentError::invalid_input(format!(
+                        "Unsupported bit depth: {}",
+                        quality.bit_depth
+                    )))
+                }
             }
 
-            writer.finalize()
+            writer
+                .finalize()
                 .map_err(|e| AgentError::invalid_input(format!("Failed to finalize WAV: {}", e)))?;
         }
 

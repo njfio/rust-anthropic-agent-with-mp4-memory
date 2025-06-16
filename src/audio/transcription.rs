@@ -1,7 +1,7 @@
 // Audio Transcription Service Integration
 // Provides speech-to-text functionality using Whisper API and other services
 
-use super::{TranscriptionConfig, codecs::AudioData};
+use super::{codecs::AudioData, TranscriptionConfig};
 use crate::utils::error::{AgentError, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -95,13 +95,22 @@ pub struct TranscriptionService {
 impl TranscriptionService {
     /// Create a new transcription service
     pub fn new(config: TranscriptionConfig) -> Result<Self> {
-        let provider = TranscriptionProvider::from_string(&config.provider)
-            .ok_or_else(|| AgentError::invalid_input(format!("Unsupported transcription provider: {}", config.provider)))?;
+        let provider = TranscriptionProvider::from_string(&config.provider).ok_or_else(|| {
+            AgentError::invalid_input(format!(
+                "Unsupported transcription provider: {}",
+                config.provider
+            ))
+        })?;
 
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout))
             .build()
-            .map_err(|e| AgentError::tool("transcription".to_string(), format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| {
+                AgentError::tool(
+                    "transcription".to_string(),
+                    format!("Failed to create HTTP client: {}", e),
+                )
+            })?;
 
         Ok(Self {
             config,
@@ -129,7 +138,10 @@ impl TranscriptionService {
         match result {
             Ok(mut transcription) => {
                 transcription.processing_duration_ms = start_time.elapsed().as_millis() as u64;
-                info!("Transcription completed in {}ms", transcription.processing_duration_ms);
+                info!(
+                    "Transcription completed in {}ms",
+                    transcription.processing_duration_ms
+                );
                 Ok(transcription)
             }
             Err(e) => {
@@ -140,18 +152,29 @@ impl TranscriptionService {
     }
 
     /// Transcribe audio file from bytes
-    pub async fn transcribe_bytes(&self, audio_bytes: &[u8], format: &str) -> Result<TranscriptionResult> {
+    pub async fn transcribe_bytes(
+        &self,
+        audio_bytes: &[u8],
+        format: &str,
+    ) -> Result<TranscriptionResult> {
         let start_time = Instant::now();
         info!("Starting transcription from bytes, format: {}", format);
 
         let result = match self.provider {
-            TranscriptionProvider::OpenAIWhisper => self.transcribe_bytes_with_openai(audio_bytes, format).await,
-            TranscriptionProvider::AzureSpeech => self.transcribe_bytes_with_azure(audio_bytes, format).await,
-            TranscriptionProvider::GoogleSpeech => self.transcribe_bytes_with_google(audio_bytes, format).await,
+            TranscriptionProvider::OpenAIWhisper => {
+                self.transcribe_bytes_with_openai(audio_bytes, format).await
+            }
+            TranscriptionProvider::AzureSpeech => {
+                self.transcribe_bytes_with_azure(audio_bytes, format).await
+            }
+            TranscriptionProvider::GoogleSpeech => {
+                self.transcribe_bytes_with_google(audio_bytes, format).await
+            }
             TranscriptionProvider::LocalWhisper => {
                 // For local whisper, we need to decode the audio first
-                let audio_format = super::AudioFormat::from_extension(format)
-                    .ok_or_else(|| AgentError::invalid_input(format!("Unsupported format: {}", format)))?;
+                let audio_format = super::AudioFormat::from_extension(format).ok_or_else(|| {
+                    AgentError::invalid_input(format!("Unsupported format: {}", format))
+                })?;
                 let audio = super::codecs::AudioCodec::decode_bytes(audio_bytes, audio_format)?;
                 self.transcribe_with_local_whisper(&audio).await
             }
@@ -160,7 +183,10 @@ impl TranscriptionService {
         match result {
             Ok(mut transcription) => {
                 transcription.processing_duration_ms = start_time.elapsed().as_millis() as u64;
-                info!("Transcription completed in {}ms", transcription.processing_duration_ms);
+                info!(
+                    "Transcription completed in {}ms",
+                    transcription.processing_duration_ms
+                );
                 Ok(transcription)
             }
             Err(e) => {
@@ -187,7 +213,10 @@ impl TranscriptionService {
         // Check for silence (all samples near zero)
         let max_amplitude = audio.samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         if max_amplitude < 0.001 {
-            warn!("Audio appears to be silent (max amplitude: {})", max_amplitude);
+            warn!(
+                "Audio appears to be silent (max amplitude: {})",
+                max_amplitude
+            );
         }
 
         Ok(())
@@ -195,8 +224,9 @@ impl TranscriptionService {
 
     /// Transcribe using OpenAI Whisper API
     async fn transcribe_with_openai(&self, audio: &AudioData) -> Result<TranscriptionResult> {
-        let api_key = self.config.api_key.as_ref()
-            .ok_or_else(|| AgentError::authentication("OpenAI API key not configured".to_string()))?;
+        let api_key = self.config.api_key.as_ref().ok_or_else(|| {
+            AgentError::authentication("OpenAI API key not configured".to_string())
+        })?;
 
         // Convert audio to WAV format for API
         let wav_data = super::codecs::AudioCodec::encode_bytes(
@@ -207,10 +237,18 @@ impl TranscriptionService {
 
         // Prepare multipart form
         let form = reqwest::multipart::Form::new()
-            .part("file", reqwest::multipart::Part::bytes(wav_data)
-                .file_name("audio.wav")
-                .mime_str("audio/wav")
-                .map_err(|e| AgentError::tool("transcription".to_string(), format!("Failed to create form part: {}", e)))?)
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(wav_data)
+                    .file_name("audio.wav")
+                    .mime_str("audio/wav")
+                    .map_err(|e| {
+                        AgentError::tool(
+                            "transcription".to_string(),
+                            format!("Failed to create form part: {}", e),
+                        )
+                    })?,
+            )
             .text("model", self.config.model.clone())
             .text("response_format", "verbose_json");
 
@@ -221,35 +259,57 @@ impl TranscriptionService {
         };
 
         // Make API request
-        let endpoint = self.config.endpoint.as_deref().unwrap_or("https://api.openai.com/v1/audio/transcriptions");
-        
+        let endpoint = self
+            .config
+            .endpoint
+            .as_deref()
+            .unwrap_or("https://api.openai.com/v1/audio/transcriptions");
+
         let response = timeout(
             Duration::from_secs(self.config.timeout),
             self.client
                 .post(endpoint)
                 .header("Authorization", format!("Bearer {}", api_key))
                 .multipart(form)
-                .send()
-        ).await
+                .send(),
+        )
+        .await
         .map_err(|_| AgentError::tool("transcription".to_string(), "Request timeout".to_string()))?
-        .map_err(|e| AgentError::tool("transcription".to_string(), format!("Request failed: {}", e)))?;
+        .map_err(|e| {
+            AgentError::tool(
+                "transcription".to_string(),
+                format!("Request failed: {}", e),
+            )
+        })?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AgentError::tool("transcription".to_string(), format!("API error: {}", error_text)));
+            return Err(AgentError::tool(
+                "transcription".to_string(),
+                format!("API error: {}", error_text),
+            ));
         }
 
         // Parse response
-        let response_text = response.text().await
-            .map_err(|e| AgentError::tool("transcription".to_string(), format!("Failed to read response: {}", e)))?;
+        let response_text = response.text().await.map_err(|e| {
+            AgentError::tool(
+                "transcription".to_string(),
+                format!("Failed to read response: {}", e),
+            )
+        })?;
 
-        let whisper_response: WhisperResponse = serde_json::from_str(&response_text)
-            .map_err(|e| AgentError::tool("transcription".to_string(), format!("Failed to parse response: {}", e)))?;
+        let whisper_response: WhisperResponse =
+            serde_json::from_str(&response_text).map_err(|e| {
+                AgentError::tool(
+                    "transcription".to_string(),
+                    format!("Failed to parse response: {}", e),
+                )
+            })?;
 
         Ok(TranscriptionResult {
             text: whisper_response.text,
             language: whisper_response.language,
-            confidence: None, // OpenAI doesn't provide overall confidence
+            confidence: None,          // OpenAI doesn't provide overall confidence
             processing_duration_ms: 0, // Will be set by caller
             words: whisper_response.words,
             segments: whisper_response.segments,
@@ -257,9 +317,14 @@ impl TranscriptionService {
     }
 
     /// Transcribe bytes using OpenAI Whisper API
-    async fn transcribe_bytes_with_openai(&self, audio_bytes: &[u8], format: &str) -> Result<TranscriptionResult> {
-        let api_key = self.config.api_key.as_ref()
-            .ok_or_else(|| AgentError::authentication("OpenAI API key not configured".to_string()))?;
+    async fn transcribe_bytes_with_openai(
+        &self,
+        audio_bytes: &[u8],
+        format: &str,
+    ) -> Result<TranscriptionResult> {
+        let api_key = self.config.api_key.as_ref().ok_or_else(|| {
+            AgentError::authentication("OpenAI API key not configured".to_string())
+        })?;
 
         // Prepare multipart form
         let mime_type = match format {
@@ -272,10 +337,18 @@ impl TranscriptionService {
         };
 
         let form = reqwest::multipart::Form::new()
-            .part("file", reqwest::multipart::Part::bytes(audio_bytes.to_vec())
-                .file_name(format!("audio.{}", format))
-                .mime_str(mime_type)
-                .map_err(|e| AgentError::tool("transcription".to_string(), format!("Failed to create form part: {}", e)))?)
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(audio_bytes.to_vec())
+                    .file_name(format!("audio.{}", format))
+                    .mime_str(mime_type)
+                    .map_err(|e| {
+                        AgentError::tool(
+                            "transcription".to_string(),
+                            format!("Failed to create form part: {}", e),
+                        )
+                    })?,
+            )
             .text("model", self.config.model.clone())
             .text("response_format", "verbose_json");
 
@@ -286,30 +359,52 @@ impl TranscriptionService {
         };
 
         // Make API request
-        let endpoint = self.config.endpoint.as_deref().unwrap_or("https://api.openai.com/v1/audio/transcriptions");
-        
+        let endpoint = self
+            .config
+            .endpoint
+            .as_deref()
+            .unwrap_or("https://api.openai.com/v1/audio/transcriptions");
+
         let response = timeout(
             Duration::from_secs(self.config.timeout),
             self.client
                 .post(endpoint)
                 .header("Authorization", format!("Bearer {}", api_key))
                 .multipart(form)
-                .send()
-        ).await
+                .send(),
+        )
+        .await
         .map_err(|_| AgentError::tool("transcription".to_string(), "Request timeout".to_string()))?
-        .map_err(|e| AgentError::tool("transcription".to_string(), format!("Request failed: {}", e)))?;
+        .map_err(|e| {
+            AgentError::tool(
+                "transcription".to_string(),
+                format!("Request failed: {}", e),
+            )
+        })?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AgentError::tool("transcription".to_string(), format!("API error: {}", error_text)));
+            return Err(AgentError::tool(
+                "transcription".to_string(),
+                format!("API error: {}", error_text),
+            ));
         }
 
         // Parse response
-        let response_text = response.text().await
-            .map_err(|e| AgentError::tool("transcription".to_string(), format!("Failed to read response: {}", e)))?;
+        let response_text = response.text().await.map_err(|e| {
+            AgentError::tool(
+                "transcription".to_string(),
+                format!("Failed to read response: {}", e),
+            )
+        })?;
 
-        let whisper_response: WhisperResponse = serde_json::from_str(&response_text)
-            .map_err(|e| AgentError::tool("transcription".to_string(), format!("Failed to parse response: {}", e)))?;
+        let whisper_response: WhisperResponse =
+            serde_json::from_str(&response_text).map_err(|e| {
+                AgentError::tool(
+                    "transcription".to_string(),
+                    format!("Failed to parse response: {}", e),
+                )
+            })?;
 
         Ok(TranscriptionResult {
             text: whisper_response.text,
@@ -325,14 +420,19 @@ impl TranscriptionService {
     async fn transcribe_with_azure(&self, audio: &AudioData) -> Result<TranscriptionResult> {
         debug!("Starting Azure Speech Services transcription");
 
-        let subscription_key = std::env::var("AZURE_SPEECH_KEY")
-            .map_err(|_| AgentError::tool("transcription".to_string(), "AZURE_SPEECH_KEY environment variable not set".to_string()))?;
+        let subscription_key = std::env::var("AZURE_SPEECH_KEY").map_err(|_| {
+            AgentError::tool(
+                "transcription".to_string(),
+                "AZURE_SPEECH_KEY environment variable not set".to_string(),
+            )
+        })?;
 
-        let region = std::env::var("AZURE_SPEECH_REGION")
-            .unwrap_or_else(|_| "eastus".to_string());
+        let region = std::env::var("AZURE_SPEECH_REGION").unwrap_or_else(|_| "eastus".to_string());
 
         // Get access token
-        let token = self.get_azure_access_token(&subscription_key, &region).await?;
+        let token = self
+            .get_azure_access_token(&subscription_key, &region)
+            .await?;
 
         // Convert audio to required format (WAV, 16kHz, mono)
         let audio_bytes = self.convert_audio_for_azure(audio).await?;
@@ -344,25 +444,43 @@ impl TranscriptionService {
         let response = client
             .post(&endpoint)
             .header("Authorization", format!("Bearer {}", token))
-            .header("Content-Type", "audio/wav; codecs=audio/pcm; samplerate=16000")
+            .header(
+                "Content-Type",
+                "audio/wav; codecs=audio/pcm; samplerate=16000",
+            )
             .header("Accept", "application/json")
             .query(&[
                 ("language", "en-US"),
                 ("format", "detailed"),
-                ("profanity", "masked")
+                ("profanity", "masked"),
             ])
             .body(audio_bytes)
             .send()
             .await
-            .map_err(|e| AgentError::tool("transcription".to_string(), format!("Azure API request failed: {}", e)))?;
+            .map_err(|e| {
+                AgentError::tool(
+                    "transcription".to_string(),
+                    format!("Azure API request failed: {}", e),
+                )
+            })?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(AgentError::tool("transcription".to_string(), format!("Azure API error: {}", error_text)));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AgentError::tool(
+                "transcription".to_string(),
+                format!("Azure API error: {}", error_text),
+            ));
         }
 
-        let response_json: serde_json::Value = response.json().await
-            .map_err(|e| AgentError::tool("transcription".to_string(), format!("Failed to parse Azure response: {}", e)))?;
+        let response_json: serde_json::Value = response.json().await.map_err(|e| {
+            AgentError::tool(
+                "transcription".to_string(),
+                format!("Failed to parse Azure response: {}", e),
+            )
+        })?;
 
         // Parse Azure response
         let text = response_json
@@ -379,36 +497,53 @@ impl TranscriptionService {
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        info!("Azure transcription completed: {} characters, confidence: {:.2}", text.len(), confidence);
+        info!(
+            "Azure transcription completed: {} characters, confidence: {:.2}",
+            text.len(),
+            confidence
+        );
 
         Ok(TranscriptionResult {
             text,
             confidence: Some(confidence as f32),
             language: Some("en-US".to_string()),
-            processing_duration_ms: 0, // Will be set by caller
-            words: None, // Azure detailed format could provide word-level timestamps
+            processing_duration_ms: 0,  // Will be set by caller
+            words: None,                // Azure detailed format could provide word-level timestamps
             segments: Some(Vec::new()), // Azure detailed format could provide segments
         })
     }
 
     /// Transcribe bytes using Azure Speech Services
-    async fn transcribe_bytes_with_azure(&self, audio_bytes: &[u8], format: &str) -> Result<TranscriptionResult> {
-        debug!("Starting Azure Speech Services transcription from bytes, format: {}", format);
+    async fn transcribe_bytes_with_azure(
+        &self,
+        audio_bytes: &[u8],
+        format: &str,
+    ) -> Result<TranscriptionResult> {
+        debug!(
+            "Starting Azure Speech Services transcription from bytes, format: {}",
+            format
+        );
 
-        let subscription_key = std::env::var("AZURE_SPEECH_KEY")
-            .map_err(|_| AgentError::tool("transcription".to_string(), "AZURE_SPEECH_KEY environment variable not set".to_string()))?;
+        let subscription_key = std::env::var("AZURE_SPEECH_KEY").map_err(|_| {
+            AgentError::tool(
+                "transcription".to_string(),
+                "AZURE_SPEECH_KEY environment variable not set".to_string(),
+            )
+        })?;
 
-        let region = std::env::var("AZURE_SPEECH_REGION")
-            .unwrap_or_else(|_| "eastus".to_string());
+        let region = std::env::var("AZURE_SPEECH_REGION").unwrap_or_else(|_| "eastus".to_string());
 
         // Get access token
-        let token = self.get_azure_access_token(&subscription_key, &region).await?;
+        let token = self
+            .get_azure_access_token(&subscription_key, &region)
+            .await?;
 
         // Convert audio bytes to required format if needed
         let processed_bytes = if format.to_lowercase().contains("wav") && format.contains("16000") {
             audio_bytes.to_vec()
         } else {
-            self.convert_audio_bytes_for_azure(audio_bytes, format).await?
+            self.convert_audio_bytes_for_azure(audio_bytes, format)
+                .await?
         };
 
         // Create transcription request
@@ -418,25 +553,43 @@ impl TranscriptionService {
         let response = client
             .post(&endpoint)
             .header("Authorization", format!("Bearer {}", token))
-            .header("Content-Type", "audio/wav; codecs=audio/pcm; samplerate=16000")
+            .header(
+                "Content-Type",
+                "audio/wav; codecs=audio/pcm; samplerate=16000",
+            )
             .header("Accept", "application/json")
             .query(&[
                 ("language", "en-US"),
                 ("format", "detailed"),
-                ("profanity", "masked")
+                ("profanity", "masked"),
             ])
             .body(processed_bytes)
             .send()
             .await
-            .map_err(|e| AgentError::tool("transcription".to_string(), format!("Azure API request failed: {}", e)))?;
+            .map_err(|e| {
+                AgentError::tool(
+                    "transcription".to_string(),
+                    format!("Azure API request failed: {}", e),
+                )
+            })?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(AgentError::tool("transcription".to_string(), format!("Azure API error: {}", error_text)));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AgentError::tool(
+                "transcription".to_string(),
+                format!("Azure API error: {}", error_text),
+            ));
         }
 
-        let response_json: serde_json::Value = response.json().await
-            .map_err(|e| AgentError::tool("transcription".to_string(), format!("Failed to parse Azure response: {}", e)))?;
+        let response_json: serde_json::Value = response.json().await.map_err(|e| {
+            AgentError::tool(
+                "transcription".to_string(),
+                format!("Failed to parse Azure response: {}", e),
+            )
+        })?;
 
         // Parse Azure response
         let text = response_json
@@ -453,40 +606,69 @@ impl TranscriptionService {
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        info!("Azure transcription from bytes completed: {} characters, confidence: {:.2}", text.len(), confidence);
+        info!(
+            "Azure transcription from bytes completed: {} characters, confidence: {:.2}",
+            text.len(),
+            confidence
+        );
 
         Ok(TranscriptionResult {
             text,
             confidence: Some(confidence as f32),
             language: Some("en-US".to_string()),
-            processing_duration_ms: 0, // Will be set by caller
-            words: None, // Azure detailed format could provide word-level timestamps
+            processing_duration_ms: 0,  // Will be set by caller
+            words: None,                // Azure detailed format could provide word-level timestamps
             segments: Some(Vec::new()), // Azure detailed format could provide segments
         })
     }
 
     /// Transcribe using Google Cloud Speech-to-Text (placeholder)
     async fn transcribe_with_google(&self, _audio: &AudioData) -> Result<TranscriptionResult> {
-        Err(AgentError::tool("transcription".to_string(), "Google Cloud Speech-to-Text not implemented yet".to_string()))
+        Err(AgentError::tool(
+            "transcription".to_string(),
+            "Google Cloud Speech-to-Text not implemented yet".to_string(),
+        ))
     }
 
     /// Transcribe bytes using Google Cloud Speech-to-Text (placeholder)
-    async fn transcribe_bytes_with_google(&self, _audio_bytes: &[u8], _format: &str) -> Result<TranscriptionResult> {
-        Err(AgentError::tool("transcription".to_string(), "Google Cloud Speech-to-Text not implemented yet".to_string()))
+    async fn transcribe_bytes_with_google(
+        &self,
+        _audio_bytes: &[u8],
+        _format: &str,
+    ) -> Result<TranscriptionResult> {
+        Err(AgentError::tool(
+            "transcription".to_string(),
+            "Google Cloud Speech-to-Text not implemented yet".to_string(),
+        ))
     }
 
     /// Transcribe using local Whisper implementation (placeholder)
-    async fn transcribe_with_local_whisper(&self, _audio: &AudioData) -> Result<TranscriptionResult> {
-        Err(AgentError::tool("transcription".to_string(), "Local Whisper implementation not available yet".to_string()))
+    async fn transcribe_with_local_whisper(
+        &self,
+        _audio: &AudioData,
+    ) -> Result<TranscriptionResult> {
+        Err(AgentError::tool(
+            "transcription".to_string(),
+            "Local Whisper implementation not available yet".to_string(),
+        ))
     }
 
     /// Get supported languages for the current provider
     pub fn get_supported_languages(&self) -> Vec<String> {
         match self.provider {
             TranscriptionProvider::OpenAIWhisper => vec![
-                "en".to_string(), "es".to_string(), "fr".to_string(), "de".to_string(),
-                "it".to_string(), "pt".to_string(), "ru".to_string(), "ja".to_string(),
-                "ko".to_string(), "zh".to_string(), "ar".to_string(), "hi".to_string(),
+                "en".to_string(),
+                "es".to_string(),
+                "fr".to_string(),
+                "de".to_string(),
+                "it".to_string(),
+                "pt".to_string(),
+                "ru".to_string(),
+                "ja".to_string(),
+                "ko".to_string(),
+                "zh".to_string(),
+                "ar".to_string(),
+                "hi".to_string(),
                 // Add more languages as supported by Whisper
             ],
             _ => vec!["en".to_string()], // Default to English for other providers
@@ -495,7 +677,8 @@ impl TranscriptionService {
 
     /// Check if a language is supported
     pub fn is_language_supported(&self, language: &str) -> bool {
-        self.get_supported_languages().contains(&language.to_string())
+        self.get_supported_languages()
+            .contains(&language.to_string())
     }
 
     // ========================================
@@ -504,23 +687,42 @@ impl TranscriptionService {
 
     /// Get Azure access token for Speech Services
     async fn get_azure_access_token(&self, subscription_key: &str, region: &str) -> Result<String> {
-        let token_endpoint = format!("https://{}.api.cognitive.microsoft.com/sts/v1.0/issuetoken", region);
+        let token_endpoint = format!(
+            "https://{}.api.cognitive.microsoft.com/sts/v1.0/issuetoken",
+            region
+        );
 
-        let response = self.client
+        let response = self
+            .client
             .post(&token_endpoint)
             .header("Ocp-Apim-Subscription-Key", subscription_key)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .send()
             .await
-            .map_err(|e| AgentError::tool("transcription".to_string(), format!("Failed to get Azure token: {}", e)))?;
+            .map_err(|e| {
+                AgentError::tool(
+                    "transcription".to_string(),
+                    format!("Failed to get Azure token: {}", e),
+                )
+            })?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(AgentError::tool("transcription".to_string(), format!("Azure token request failed: {}", error_text)));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AgentError::tool(
+                "transcription".to_string(),
+                format!("Azure token request failed: {}", error_text),
+            ));
         }
 
-        let token = response.text().await
-            .map_err(|e| AgentError::tool("transcription".to_string(), format!("Failed to read Azure token: {}", e)))?;
+        let token = response.text().await.map_err(|e| {
+            AgentError::tool(
+                "transcription".to_string(),
+                format!("Failed to read Azure token: {}", e),
+            )
+        })?;
 
         Ok(token)
     }
@@ -548,12 +750,20 @@ impl TranscriptionService {
             bitrate: None,
         };
 
-        let wav_bytes = super::codecs::AudioCodec::encode_bytes(&processed_audio, super::AudioFormat::Wav, &quality)?;
+        let wav_bytes = super::codecs::AudioCodec::encode_bytes(
+            &processed_audio,
+            super::AudioFormat::Wav,
+            &quality,
+        )?;
         Ok(wav_bytes)
     }
 
     /// Convert audio bytes to Azure-compatible format
-    async fn convert_audio_bytes_for_azure(&self, audio_bytes: &[u8], format: &str) -> Result<Vec<u8>> {
+    async fn convert_audio_bytes_for_azure(
+        &self,
+        audio_bytes: &[u8],
+        format: &str,
+    ) -> Result<Vec<u8>> {
         // For now, assume the audio is already in the correct format
         // In a real implementation, you would use audio processing libraries
         // to convert the audio format based on the input format string
@@ -599,14 +809,14 @@ pub fn detect_speech_activity(audio: &AudioData, threshold: f32) -> Vec<(f64, f6
     let mut speech_segments = Vec::new();
     let mut in_speech = false;
     let mut speech_start = 0.0;
-    
+
     let frame_duration = 1.0 / audio.sample_rate as f64;
     let window_size = (audio.sample_rate as f64 * 0.02) as usize; // 20ms windows
-    
+
     for (i, window) in audio.samples.chunks(window_size).enumerate() {
         let energy = window.iter().map(|s| s * s).sum::<f32>() / window.len() as f32;
         let time = i as f64 * window_size as f64 * frame_duration;
-        
+
         if energy > threshold && !in_speech {
             // Speech started
             in_speech = true;
@@ -617,12 +827,12 @@ pub fn detect_speech_activity(audio: &AudioData, threshold: f32) -> Vec<(f64, f6
             speech_segments.push((speech_start, time));
         }
     }
-    
+
     // Handle case where speech continues to end of audio
     if in_speech {
         speech_segments.push((speech_start, audio.duration));
     }
-    
+
     speech_segments
 }
 
@@ -718,12 +928,16 @@ mod tests {
 
         // Test with WAV format that contains "16000"
         let test_bytes = b"test audio data";
-        let result = service.convert_audio_bytes_for_azure(test_bytes, "wav_16000").await;
+        let result = service
+            .convert_audio_bytes_for_azure(test_bytes, "wav_16000")
+            .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), test_bytes.to_vec());
 
         // Test with other format
-        let result = service.convert_audio_bytes_for_azure(test_bytes, "mp3").await;
+        let result = service
+            .convert_audio_bytes_for_azure(test_bytes, "mp3")
+            .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), test_bytes.to_vec());
     }

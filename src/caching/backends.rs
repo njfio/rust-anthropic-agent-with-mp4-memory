@@ -89,10 +89,10 @@ impl InMemoryDataSource {
     {
         let data = serde_json::to_vec(value)
             .map_err(|e| AgentError::validation(format!("Serialization failed: {}", e)))?;
-        
+
         let mut storage = self.data.write().await;
         storage.insert(key.to_string(), data);
-        
+
         Ok(())
     }
 
@@ -137,11 +137,11 @@ impl DataSource for InMemoryDataSource {
     async fn delete(&self, key: &str) -> Result<bool> {
         let mut storage = self.data.write().await;
         let removed = storage.remove(key).is_some();
-        
+
         if removed {
             debug!("Deleted data from in-memory source: {}", key);
         }
-        
+
         Ok(removed)
     }
 
@@ -179,8 +179,14 @@ impl FileSystemDataSource {
 
     /// Ensure base directory exists
     async fn ensure_directory(&self) -> Result<()> {
-        tokio::fs::create_dir_all(&self.base_dir).await
-            .map_err(|e| AgentError::tool("filesystem_cache", &format!("Failed to create directory: {}", e)))?;
+        tokio::fs::create_dir_all(&self.base_dir)
+            .await
+            .map_err(|e| {
+                AgentError::tool(
+                    "filesystem_cache",
+                    &format!("Failed to create directory: {}", e),
+                )
+            })?;
         Ok(())
     }
 }
@@ -199,8 +205,12 @@ impl DataSource for FileSystemDataSource {
 
                     let mut decoder = GzDecoder::new(&data[..]);
                     let mut decompressed = Vec::new();
-                    decoder.read_to_end(&mut decompressed)
-                        .map_err(|e| AgentError::tool("filesystem_cache", &format!("Decompression failed: {}", e)))?;
+                    decoder.read_to_end(&mut decompressed).map_err(|e| {
+                        AgentError::tool(
+                            "filesystem_cache",
+                            &format!("Decompression failed: {}", e),
+                        )
+                    })?;
                     decompressed
                 } else {
                     data
@@ -209,7 +219,10 @@ impl DataSource for FileSystemDataSource {
                 Ok(Some(decompressed_data))
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(AgentError::tool("filesystem_cache", &format!("Failed to read file: {}", e))),
+            Err(e) => Err(AgentError::tool(
+                "filesystem_cache",
+                &format!("Failed to read file: {}", e),
+            )),
         }
     }
 
@@ -223,17 +236,25 @@ impl DataSource for FileSystemDataSource {
             use std::io::Write;
 
             let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-            encoder.write_all(data)
-                .map_err(|e| AgentError::tool("filesystem_cache", &format!("Compression failed: {}", e)))?;
-            encoder.finish()
-                .map_err(|e| AgentError::tool("filesystem_cache", &format!("Compression finalization failed: {}", e)))?
+            encoder.write_all(data).map_err(|e| {
+                AgentError::tool("filesystem_cache", &format!("Compression failed: {}", e))
+            })?;
+            encoder.finish().map_err(|e| {
+                AgentError::tool(
+                    "filesystem_cache",
+                    &format!("Compression finalization failed: {}", e),
+                )
+            })?
         } else {
             data.to_vec()
         };
 
         let file_path = self.get_file_path(key);
-        tokio::fs::write(&file_path, final_data).await
-            .map_err(|e| AgentError::tool("filesystem_cache", &format!("Failed to write file: {}", e)))?;
+        tokio::fs::write(&file_path, final_data)
+            .await
+            .map_err(|e| {
+                AgentError::tool("filesystem_cache", &format!("Failed to write file: {}", e))
+            })?;
 
         debug!("Saved data to file system: {}", key);
         Ok(())
@@ -241,14 +262,17 @@ impl DataSource for FileSystemDataSource {
 
     async fn delete(&self, key: &str) -> Result<bool> {
         let file_path = self.get_file_path(key);
-        
+
         match tokio::fs::remove_file(&file_path).await {
             Ok(()) => {
                 debug!("Deleted file: {}", key);
                 Ok(true)
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-            Err(e) => Err(AgentError::tool("filesystem_cache", &format!("Failed to delete file: {}", e))),
+            Err(e) => Err(AgentError::tool(
+                "filesystem_cache",
+                &format!("Failed to delete file: {}", e),
+            )),
         }
     }
 
@@ -312,24 +336,33 @@ impl DataSource for HttpDataSource {
         match request.send().await {
             Ok(response) => {
                 if response.status().is_success() {
-                    let data = response.bytes().await
-                        .map_err(|e| AgentError::tool("http_cache", &format!("Failed to read response: {}", e)))?;
+                    let data = response.bytes().await.map_err(|e| {
+                        AgentError::tool("http_cache", &format!("Failed to read response: {}", e))
+                    })?;
 
                     Ok(Some(data.to_vec()))
                 } else if response.status() == 404 {
                     Ok(None)
                 } else {
-                    Err(AgentError::tool("http_cache", &format!("HTTP error: {}", response.status())))
+                    Err(AgentError::tool(
+                        "http_cache",
+                        &format!("HTTP error: {}", response.status()),
+                    ))
                 }
             }
-            Err(e) => Err(AgentError::tool("http_cache", &format!("Request failed: {}", e))),
+            Err(e) => Err(AgentError::tool(
+                "http_cache",
+                &format!("Request failed: {}", e),
+            )),
         }
     }
 
     async fn save_bytes(&self, key: &str, data: &[u8]) -> Result<()> {
         let url = self.get_url(key);
 
-        let mut request = self.client.put(&url)
+        let mut request = self
+            .client
+            .put(&url)
             .header("Content-Type", "application/json")
             .body(data.to_vec());
 
@@ -338,26 +371,31 @@ impl DataSource for HttpDataSource {
             request = request.header(header_key, header_value);
         }
 
-        let response = request.send().await
+        let response = request
+            .send()
+            .await
             .map_err(|e| AgentError::tool("http_cache", &format!("Request failed: {}", e)))?;
 
         if response.status().is_success() {
             debug!("Saved data via HTTP: {}", key);
             Ok(())
         } else {
-            Err(AgentError::tool("http_cache", &format!("HTTP error: {}", response.status())))
+            Err(AgentError::tool(
+                "http_cache",
+                &format!("HTTP error: {}", response.status()),
+            ))
         }
     }
 
     async fn delete(&self, key: &str) -> Result<bool> {
         let url = self.get_url(key);
         let mut request = self.client.delete(&url);
-        
+
         // Add authentication headers
         for (header_key, header_value) in &self.auth_headers {
             request = request.header(header_key, header_value);
         }
-        
+
         match request.send().await {
             Ok(response) => {
                 if response.status().is_success() {
@@ -366,22 +404,28 @@ impl DataSource for HttpDataSource {
                 } else if response.status() == 404 {
                     Ok(false)
                 } else {
-                    Err(AgentError::tool("http_cache", &format!("HTTP error: {}", response.status())))
+                    Err(AgentError::tool(
+                        "http_cache",
+                        &format!("HTTP error: {}", response.status()),
+                    ))
                 }
             }
-            Err(e) => Err(AgentError::tool("http_cache", &format!("Request failed: {}", e))),
+            Err(e) => Err(AgentError::tool(
+                "http_cache",
+                &format!("Request failed: {}", e),
+            )),
         }
     }
 
     async fn health_check(&self) -> Result<bool> {
         // Perform a simple HEAD request to check connectivity
         let mut request = self.client.head(&self.base_url);
-        
+
         // Add authentication headers
         for (header_key, header_value) in &self.auth_headers {
             request = request.header(header_key, header_value);
         }
-        
+
         match request.send().await {
             Ok(response) => Ok(response.status().is_success() || response.status() == 404),
             Err(_) => Ok(false),
@@ -421,10 +465,10 @@ impl MockDataSource {
     {
         let data = serde_json::to_vec(value)
             .map_err(|e| AgentError::validation(format!("Serialization failed: {}", e)))?;
-        
+
         let mut storage = self.mock_data.write().await;
         storage.insert(key.to_string(), data);
-        
+
         Ok(())
     }
 
@@ -469,11 +513,11 @@ impl DataSource for MockDataSource {
 
         let mut storage = self.mock_data.write().await;
         let removed = storage.remove(key).is_some();
-        
+
         if removed {
             debug!("Deleted data from mock source: {}", key);
         }
-        
+
         Ok(removed)
     }
 

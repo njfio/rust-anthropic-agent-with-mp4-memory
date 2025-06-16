@@ -216,7 +216,7 @@ impl DataExportHandler {
         let mut handler = Self {
             export_formats: HashMap::new(),
         };
-        
+
         handler.initialize_formats();
         handler
     }
@@ -224,40 +224,52 @@ impl DataExportHandler {
     /// Initialize supported export formats
     fn initialize_formats(&mut self) {
         // JSON format (default, most comprehensive)
-        self.export_formats.insert("json".to_string(), ExportFormat {
-            name: "JSON".to_string(),
-            mime_type: "application/json".to_string(),
-            file_extension: "json".to_string(),
-            supports_structured: true,
-            machine_readable: true,
-        });
+        self.export_formats.insert(
+            "json".to_string(),
+            ExportFormat {
+                name: "JSON".to_string(),
+                mime_type: "application/json".to_string(),
+                file_extension: "json".to_string(),
+                supports_structured: true,
+                machine_readable: true,
+            },
+        );
 
         // CSV format (for tabular data)
-        self.export_formats.insert("csv".to_string(), ExportFormat {
-            name: "CSV".to_string(),
-            mime_type: "text/csv".to_string(),
-            file_extension: "csv".to_string(),
-            supports_structured: false,
-            machine_readable: true,
-        });
+        self.export_formats.insert(
+            "csv".to_string(),
+            ExportFormat {
+                name: "CSV".to_string(),
+                mime_type: "text/csv".to_string(),
+                file_extension: "csv".to_string(),
+                supports_structured: false,
+                machine_readable: true,
+            },
+        );
 
         // XML format
-        self.export_formats.insert("xml".to_string(), ExportFormat {
-            name: "XML".to_string(),
-            mime_type: "application/xml".to_string(),
-            file_extension: "xml".to_string(),
-            supports_structured: true,
-            machine_readable: true,
-        });
+        self.export_formats.insert(
+            "xml".to_string(),
+            ExportFormat {
+                name: "XML".to_string(),
+                mime_type: "application/xml".to_string(),
+                file_extension: "xml".to_string(),
+                supports_structured: true,
+                machine_readable: true,
+            },
+        );
 
         // PDF format (human-readable)
-        self.export_formats.insert("pdf".to_string(), ExportFormat {
-            name: "PDF".to_string(),
-            mime_type: "application/pdf".to_string(),
-            file_extension: "pdf".to_string(),
-            supports_structured: false,
-            machine_readable: false,
-        });
+        self.export_formats.insert(
+            "pdf".to_string(),
+            ExportFormat {
+                name: "PDF".to_string(),
+                mime_type: "application/pdf".to_string(),
+                file_extension: "pdf".to_string(),
+                supports_structured: false,
+                machine_readable: false,
+            },
+        );
     }
 
     /// Export all data for a subject (GDPR Article 20 - Data Portability)
@@ -288,8 +300,9 @@ impl DataExportHandler {
         let portable_package = self.create_portable_package(subject_id).await?;
 
         // Serialize to JSON with specific formatting for portability
-        let json_data = serde_json::to_vec_pretty(&portable_package)
-            .map_err(|e| AgentError::validation(format!("Failed to serialize portable data: {}", e)))?;
+        let json_data = serde_json::to_vec_pretty(&portable_package).map_err(|e| {
+            AgentError::validation(format!("Failed to serialize portable data: {}", e))
+        })?;
 
         Ok(json_data)
     }
@@ -303,9 +316,10 @@ impl DataExportHandler {
     ) -> Result<DataExportRequest> {
         // Validate format
         if !self.export_formats.contains_key(&format) {
-            return Err(AgentError::validation(
-                format!("Unsupported export format: {}", format)
-            ));
+            return Err(AgentError::validation(format!(
+                "Unsupported export format: {}",
+                format
+            )));
         }
 
         let request = DataExportRequest {
@@ -326,7 +340,11 @@ impl DataExportHandler {
             },
         };
 
-        tracing::info!("Created export request {} for subject {}", request.id, request.subject_id);
+        tracing::info!(
+            "Created export request {} for subject {}",
+            request.id,
+            request.subject_id
+        );
         Ok(request)
     }
 
@@ -339,7 +357,9 @@ impl DataExportHandler {
                 exported_at: Utc::now(),
                 data_controller: "Rust MemVid Agent".to_string(),
                 format: "json".to_string(),
-                compliance_statement: "This export complies with GDPR Article 20 (Right to Data Portability)".to_string(),
+                compliance_statement:
+                    "This export complies with GDPR Article 20 (Right to Data Portability)"
+                        .to_string(),
             },
             personal_data: self.collect_personal_data(subject_id).await?,
             conversations: self.collect_conversations(subject_id).await?,
@@ -361,8 +381,14 @@ impl DataExportHandler {
         // Collect basic user information
         // In a real implementation, this would query user database
         basic_info.insert("user_id".to_string(), Value::String(subject_id.to_string()));
-        basic_info.insert("created_at".to_string(), Value::String(chrono::Utc::now().to_rfc3339()));
-        basic_info.insert("last_active".to_string(), Value::String(chrono::Utc::now().to_rfc3339()));
+        basic_info.insert(
+            "created_at".to_string(),
+            Value::String(chrono::Utc::now().to_rfc3339()),
+        );
+        basic_info.insert(
+            "last_active".to_string(),
+            Value::String(chrono::Utc::now().to_rfc3339()),
+        );
 
         // Collect user preferences from configuration
         if let Ok(config_data) = self.collect_user_preferences(subject_id).await {
@@ -377,10 +403,18 @@ impl DataExportHandler {
         }
 
         // Add data processing activities
-        basic_info.insert("data_processing_activities".to_string(),
-            Value::String("AI conversation processing, memory storage, audio processing".to_string()));
-        basic_info.insert("legal_basis".to_string(),
-            Value::String("Consent (GDPR Art. 6(1)(a)), Legitimate Interest (GDPR Art. 6(1)(f))".to_string()));
+        basic_info.insert(
+            "data_processing_activities".to_string(),
+            Value::String(
+                "AI conversation processing, memory storage, audio processing".to_string(),
+            ),
+        );
+        basic_info.insert(
+            "legal_basis".to_string(),
+            Value::String(
+                "Consent (GDPR Art. 6(1)(a)), Legitimate Interest (GDPR Art. 6(1)(f))".to_string(),
+            ),
+        );
 
         Ok(PersonalDataExport {
             basic_info,
@@ -410,8 +444,9 @@ impl DataExportHandler {
             for audit_entry in audit_entries {
                 if let Some(conversation) = self.extract_conversation_from_audit(&audit_entry) {
                     // Merge with existing or add new
-                    if let Some(existing) = conversations.iter_mut()
-                        .find(|c| c.id == conversation.id) {
+                    if let Some(existing) =
+                        conversations.iter_mut().find(|c| c.id == conversation.id)
+                    {
                         existing.metadata.extend(conversation.metadata);
                     } else {
                         conversations.push(conversation);
@@ -423,7 +458,11 @@ impl DataExportHandler {
         // Sort conversations by timestamp
         conversations.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
 
-        info!("Collected {} conversations for subject {}", conversations.len(), subject_id);
+        info!(
+            "Collected {} conversations for subject {}",
+            conversations.len(),
+            subject_id
+        );
         Ok(conversations)
     }
 
@@ -437,22 +476,44 @@ impl DataExportHandler {
         if let Ok(memory_entries) = self.query_synaptic_memory(subject_id).await {
             for entry in memory_entries {
                 let memory_export = MemoryExport {
-                    id: entry.get("id").and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
-                    content: entry.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    memory_type: entry.get("type").and_then(|v| v.as_str()).unwrap_or("general").to_string(),
-                    created_at: entry.get("created_at").and_then(|v| v.as_str())
+                    id: entry
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    content: entry
+                        .get("content")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    memory_type: entry
+                        .get("type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("general")
+                        .to_string(),
+                    created_at: entry
+                        .get("created_at")
+                        .and_then(|v| v.as_str())
                         .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
                         .map(|dt| dt.with_timezone(&Utc))
                         .unwrap_or_else(Utc::now),
-                    last_accessed: entry.get("last_accessed").and_then(|v| v.as_str())
+                    last_accessed: entry
+                        .get("last_accessed")
+                        .and_then(|v| v.as_str())
                         .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
                         .map(|dt| dt.with_timezone(&Utc))
                         .unwrap_or_else(Utc::now),
-                    metadata: entry.as_object()
-                        .map(|obj| obj.iter()
-                            .filter(|(k, _)| !["id", "content", "type", "created_at", "last_accessed"].contains(&k.as_str()))
-                            .map(|(k, v)| (k.clone(), v.clone()))
-                            .collect())
+                    metadata: entry
+                        .as_object()
+                        .map(|obj| {
+                            obj.iter()
+                                .filter(|(k, _)| {
+                                    !["id", "content", "type", "created_at", "last_accessed"]
+                                        .contains(&k.as_str())
+                                })
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect()
+                        })
                         .unwrap_or_default(),
                 };
                 memory_exports.push(memory_export);
@@ -462,7 +523,11 @@ impl DataExportHandler {
         // Sort by creation date
         memory_exports.sort_by(|a, b| a.created_at.cmp(&b.created_at));
 
-        info!("Collected {} memory entries for subject {}", memory_exports.len(), subject_id);
+        info!(
+            "Collected {} memory entries for subject {}",
+            memory_exports.len(),
+            subject_id
+        );
         Ok(memory_exports)
     }
 
@@ -485,10 +550,16 @@ impl DataExportHandler {
                     metadata.insert("resource".to_string(), Value::String(resource.to_string()));
                 }
                 if let Some(ip_address) = entry.get("ip_address").and_then(|v| v.as_str()) {
-                    metadata.insert("ip_address".to_string(), Value::String(ip_address.to_string()));
+                    metadata.insert(
+                        "ip_address".to_string(),
+                        Value::String(ip_address.to_string()),
+                    );
                 }
                 if let Some(user_agent) = entry.get("user_agent").and_then(|v| v.as_str()) {
-                    metadata.insert("user_agent".to_string(), Value::String(user_agent.to_string()));
+                    metadata.insert(
+                        "user_agent".to_string(),
+                        Value::String(user_agent.to_string()),
+                    );
                 }
                 if let Some(result) = entry.get("result").and_then(|v| v.as_str()) {
                     metadata.insert("result".to_string(), Value::String(result.to_string()));
@@ -498,15 +569,33 @@ impl DataExportHandler {
                 }
 
                 let audit_export = AuditExport {
-                    id: entry.get("event_id").and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
-                    timestamp: entry.get("timestamp").and_then(|v| v.as_str())
+                    id: entry
+                        .get("event_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    timestamp: entry
+                        .get("timestamp")
+                        .and_then(|v| v.as_str())
                         .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
                         .map(|dt| dt.with_timezone(&Utc))
                         .unwrap_or_else(Utc::now),
-                    event_type: entry.get("event_type").and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
-                    description: format!("Event: {} - {}",
-                        entry.get("action").and_then(|v| v.as_str()).unwrap_or("unknown"),
-                        entry.get("result").and_then(|v| v.as_str()).unwrap_or("unknown")),
+                    event_type: entry
+                        .get("event_type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    description: format!(
+                        "Event: {} - {}",
+                        entry
+                            .get("action")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown"),
+                        entry
+                            .get("result")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown")
+                    ),
                     metadata,
                 };
                 audit_exports.push(audit_export);
@@ -516,7 +605,11 @@ impl DataExportHandler {
         // Sort by timestamp (most recent first)
         audit_exports.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
-        info!("Collected {} audit entries for subject {}", audit_exports.len(), subject_id);
+        info!(
+            "Collected {} audit entries for subject {}",
+            audit_exports.len(),
+            subject_id
+        );
         Ok(audit_exports)
     }
 
@@ -606,16 +699,14 @@ impl DataExportHandler {
 
         // In a real implementation, this would use the rust-synaptic API
         // For now, return sample synaptic memory entries
-        let sample_entries = vec![
-            serde_json::json!({
-                "id": format!("synaptic_{}_{}", subject_id, 1),
-                "content": "Long-term memory: User expertise in systems programming",
-                "type": "long_term",
-                "created_at": Utc::now().to_rfc3339(),
-                "tags": ["expertise", "programming"],
-                "strength": 0.95
-            }),
-        ];
+        let sample_entries = vec![serde_json::json!({
+            "id": format!("synaptic_{}_{}", subject_id, 1),
+            "content": "Long-term memory: User expertise in systems programming",
+            "type": "long_term",
+            "created_at": Utc::now().to_rfc3339(),
+            "tags": ["expertise", "programming"],
+            "strength": 0.95
+        })];
 
         Ok(sample_entries)
     }
@@ -625,22 +716,20 @@ impl DataExportHandler {
         debug!("Querying audit system for: {}", subject_id);
 
         // In a real implementation, this would query the audit logging system
-        let sample_audit_entries = vec![
-            serde_json::json!({
-                "event_id": format!("audit_{}_{}", subject_id, 1),
-                "event_type": "data_access",
-                "timestamp": Utc::now().to_rfc3339(),
-                "action": "memory_query",
-                "resource": "user_memories",
-                "ip_address": "127.0.0.1",
-                "user_agent": "rust-agent/1.0",
-                "result": "success",
-                "details": {
-                    "query_type": "user_data",
-                    "records_accessed": 5
-                }
-            }),
-        ];
+        let sample_audit_entries = vec![serde_json::json!({
+            "event_id": format!("audit_{}_{}", subject_id, 1),
+            "event_type": "data_access",
+            "timestamp": Utc::now().to_rfc3339(),
+            "action": "memory_query",
+            "resource": "user_memories",
+            "ip_address": "127.0.0.1",
+            "user_agent": "rust-agent/1.0",
+            "result": "success",
+            "details": {
+                "query_type": "user_data",
+                "records_accessed": 5
+            }
+        })];
 
         Ok(sample_audit_entries)
     }
@@ -649,17 +738,15 @@ impl DataExportHandler {
     async fn query_conversation_audit_logs(&self, subject_id: &str) -> Result<Vec<Value>> {
         debug!("Querying conversation audit logs for: {}", subject_id);
 
-        let sample_logs = vec![
-            serde_json::json!({
-                "conversation_id": format!("conv_{}_{}", subject_id, 1),
-                "timestamp": Utc::now().to_rfc3339(),
-                "event_type": "conversation_start",
-                "metadata": {
-                    "duration_seconds": 300,
-                    "message_count": 15
-                }
-            }),
-        ];
+        let sample_logs = vec![serde_json::json!({
+            "conversation_id": format!("conv_{}_{}", subject_id, 1),
+            "timestamp": Utc::now().to_rfc3339(),
+            "event_type": "conversation_start",
+            "metadata": {
+                "duration_seconds": 300,
+                "message_count": 15
+            }
+        })];
 
         Ok(sample_logs)
     }
@@ -668,7 +755,9 @@ impl DataExportHandler {
     fn extract_conversation_from_memory(&self, entry: &Value) -> Option<ConversationExport> {
         let id = entry.get("id")?.as_str()?.to_string();
         let content = entry.get("content")?.as_str()?.to_string();
-        let timestamp = entry.get("created_at")?.as_str()
+        let timestamp = entry
+            .get("created_at")?
+            .as_str()
             .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&Utc))?;
 
@@ -692,7 +781,9 @@ impl DataExportHandler {
     /// Extract conversation data from audit entry
     fn extract_conversation_from_audit(&self, entry: &Value) -> Option<ConversationExport> {
         let id = entry.get("conversation_id")?.as_str()?.to_string();
-        let timestamp = entry.get("timestamp")?.as_str()
+        let timestamp = entry
+            .get("timestamp")?
+            .as_str()
             .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&Utc))?;
 
@@ -740,11 +831,14 @@ mod tests {
     async fn test_export_request_creation() {
         let handler = DataExportHandler::new();
 
-        let request = handler.create_export_request(
-            "test_user_123".to_string(),
-            "json".to_string(),
-            vec!["personal_data".to_string(), "conversations".to_string()],
-        ).await.unwrap();
+        let request = handler
+            .create_export_request(
+                "test_user_123".to_string(),
+                "json".to_string(),
+                vec!["personal_data".to_string(), "conversations".to_string()],
+            )
+            .await
+            .unwrap();
 
         assert_eq!(request.subject_id, "test_user_123");
         assert_eq!(request.format, "json");
@@ -757,11 +851,13 @@ mod tests {
     async fn test_export_request_invalid_format() {
         let handler = DataExportHandler::new();
 
-        let result = handler.create_export_request(
-            "test_user_123".to_string(),
-            "invalid_format".to_string(),
-            vec!["personal_data".to_string()],
-        ).await;
+        let result = handler
+            .create_export_request(
+                "test_user_123".to_string(),
+                "invalid_format".to_string(),
+                vec!["personal_data".to_string()],
+            )
+            .await;
 
         assert!(result.is_err());
     }
@@ -770,13 +866,18 @@ mod tests {
     async fn test_personal_data_collection() {
         let handler = DataExportHandler::new();
 
-        let personal_data = handler.collect_personal_data("test_user_123").await.unwrap();
+        let personal_data = handler
+            .collect_personal_data("test_user_123")
+            .await
+            .unwrap();
 
         // Should have basic info
         assert!(!personal_data.basic_info.is_empty());
         assert!(personal_data.basic_info.contains_key("user_id"));
         assert!(personal_data.basic_info.contains_key("created_at"));
-        assert!(personal_data.basic_info.contains_key("data_processing_activities"));
+        assert!(personal_data
+            .basic_info
+            .contains_key("data_processing_activities"));
         assert!(personal_data.basic_info.contains_key("legal_basis"));
 
         // Should have preferences
@@ -784,7 +885,10 @@ mod tests {
 
         // Should have consent records
         assert!(!personal_data.consent_records.is_empty());
-        assert_eq!(personal_data.consent_records[0].purpose, "AI conversation processing");
+        assert_eq!(
+            personal_data.consent_records[0].purpose,
+            "AI conversation processing"
+        );
         assert_eq!(personal_data.consent_records[0].status, "active");
     }
 
@@ -792,20 +896,25 @@ mod tests {
     async fn test_conversation_data_collection() {
         let handler = DataExportHandler::new();
 
-        let conversations = handler.collect_conversations("test_user_123").await.unwrap();
+        let conversations = handler
+            .collect_conversations("test_user_123")
+            .await
+            .unwrap();
 
         // Should collect conversations from memory system
         assert!(!conversations.is_empty());
 
         // Conversations should be sorted by timestamp
         for i in 1..conversations.len() {
-            assert!(conversations[i-1].timestamp <= conversations[i].timestamp);
+            assert!(conversations[i - 1].timestamp <= conversations[i].timestamp);
         }
 
         // Each conversation should have proper structure
         for conv in &conversations {
             assert!(!conv.id.is_empty());
-            assert!(!conv.messages.is_empty() || conv.metadata.is_empty() || !conv.metadata.is_empty());
+            assert!(
+                !conv.messages.is_empty() || conv.metadata.is_empty() || !conv.metadata.is_empty()
+            );
         }
     }
 
@@ -820,7 +929,7 @@ mod tests {
 
         // Memory entries should be sorted by creation date
         for i in 1..memory_data.len() {
-            assert!(memory_data[i-1].created_at <= memory_data[i].created_at);
+            assert!(memory_data[i - 1].created_at <= memory_data[i].created_at);
         }
 
         // Each memory entry should have proper structure
@@ -842,7 +951,7 @@ mod tests {
 
         // Audit entries should be sorted by timestamp (most recent first)
         for i in 1..audit_trail.len() {
-            assert!(audit_trail[i-1].timestamp >= audit_trail[i].timestamp);
+            assert!(audit_trail[i - 1].timestamp >= audit_trail[i].timestamp);
         }
 
         // Each audit entry should have proper structure
@@ -915,11 +1024,15 @@ mod tests {
         assert!(parsed["metadata"]["exported_at"].is_string());
 
         // Personal data should include legal basis
-        let legal_basis = parsed["personal_data"]["basic_info"]["legal_basis"].as_str().unwrap();
+        let legal_basis = parsed["personal_data"]["basic_info"]["legal_basis"]
+            .as_str()
+            .unwrap();
         assert!(legal_basis.contains("GDPR"));
 
         // Should include consent records with proper structure
-        let consent_records = parsed["personal_data"]["consent_records"].as_array().unwrap();
+        let consent_records = parsed["personal_data"]["consent_records"]
+            .as_array()
+            .unwrap();
         assert!(!consent_records.is_empty());
 
         for consent in consent_records {

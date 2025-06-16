@@ -1,7 +1,7 @@
 // Text-to-Speech Synthesis Service
 // Provides speech synthesis functionality using various TTS providers
 
-use super::{AudioFormat, SynthesisConfig, codecs::AudioData};
+use super::{codecs::AudioData, AudioFormat, SynthesisConfig};
 use crate::utils::error::{AgentError, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -105,13 +105,22 @@ pub struct SynthesisService {
 impl SynthesisService {
     /// Create a new synthesis service
     pub fn new(config: SynthesisConfig) -> Result<Self> {
-        let provider = SynthesisProvider::from_string(&config.provider)
-            .ok_or_else(|| AgentError::invalid_input(format!("Unsupported synthesis provider: {}", config.provider)))?;
+        let provider = SynthesisProvider::from_string(&config.provider).ok_or_else(|| {
+            AgentError::invalid_input(format!(
+                "Unsupported synthesis provider: {}",
+                config.provider
+            ))
+        })?;
 
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout))
             .build()
-            .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| {
+                AgentError::tool(
+                    "synthesis".to_string(),
+                    format!("Failed to create HTTP client: {}", e),
+                )
+            })?;
 
         Ok(Self {
             config,
@@ -123,7 +132,10 @@ impl SynthesisService {
     /// Synthesize text to speech
     pub async fn synthesize(&self, text: &str) -> Result<SynthesisResult> {
         let start_time = Instant::now();
-        info!("Starting speech synthesis with provider: {:?}", self.provider);
+        info!(
+            "Starting speech synthesis with provider: {:?}",
+            self.provider
+        );
 
         // Validate input text
         self.validate_text(text)?;
@@ -140,7 +152,10 @@ impl SynthesisService {
         match result {
             Ok(mut synthesis) => {
                 synthesis.processing_duration_ms = start_time.elapsed().as_millis() as u64;
-                info!("Speech synthesis completed in {}ms", synthesis.processing_duration_ms);
+                info!(
+                    "Speech synthesis completed in {}ms",
+                    synthesis.processing_duration_ms
+                );
                 Ok(synthesis)
             }
             Err(e) => {
@@ -164,7 +179,9 @@ impl SynthesisService {
     /// Validate input text for synthesis
     fn validate_text(&self, text: &str) -> Result<()> {
         if text.is_empty() {
-            return Err(AgentError::invalid_input("Text cannot be empty".to_string()));
+            return Err(AgentError::invalid_input(
+                "Text cannot be empty".to_string(),
+            ));
         }
 
         if text.len() > 4000 {
@@ -174,7 +191,10 @@ impl SynthesisService {
         }
 
         // Check for potentially problematic characters
-        if text.chars().any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t') {
+        if text
+            .chars()
+            .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
+        {
             warn!("Text contains control characters that may affect synthesis");
         }
 
@@ -183,8 +203,9 @@ impl SynthesisService {
 
     /// Synthesize using OpenAI TTS API
     async fn synthesize_with_openai(&self, text: &str) -> Result<SynthesisResult> {
-        let api_key = self.config.api_key.as_ref()
-            .ok_or_else(|| AgentError::authentication("OpenAI API key not configured".to_string()))?;
+        let api_key = self.config.api_key.as_ref().ok_or_else(|| {
+            AgentError::authentication("OpenAI API key not configured".to_string())
+        })?;
 
         // Prepare request body
         let request_body = serde_json::json!({
@@ -202,8 +223,12 @@ impl SynthesisService {
         });
 
         // Make API request
-        let endpoint = self.config.endpoint.as_deref().unwrap_or("https://api.openai.com/v1/audio/speech");
-        
+        let endpoint = self
+            .config
+            .endpoint
+            .as_deref()
+            .unwrap_or("https://api.openai.com/v1/audio/speech");
+
         let response = timeout(
             Duration::from_secs(self.config.timeout),
             self.client
@@ -211,22 +236,31 @@ impl SynthesisService {
                 .header("Authorization", format!("Bearer {}", api_key))
                 .header("Content-Type", "application/json")
                 .json(&request_body)
-                .send()
-        ).await
+                .send(),
+        )
+        .await
         .map_err(|_| AgentError::tool("synthesis".to_string(), "Request timeout".to_string()))?
         .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Request failed: {}", e)))?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AgentError::tool("synthesis".to_string(), format!("API error: {}", error_text)));
+            return Err(AgentError::tool(
+                "synthesis".to_string(),
+                format!("API error: {}", error_text),
+            ));
         }
 
         // Get audio bytes
-        let audio_bytes = response.bytes().await
-            .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Failed to read audio data: {}", e)))?;
+        let audio_bytes = response.bytes().await.map_err(|e| {
+            AgentError::tool(
+                "synthesis".to_string(),
+                format!("Failed to read audio data: {}", e),
+            )
+        })?;
 
         // Decode audio data
-        let audio = super::codecs::AudioCodec::decode_bytes(&audio_bytes, self.config.output_format)?;
+        let audio =
+            super::codecs::AudioCodec::decode_bytes(&audio_bytes, self.config.output_format)?;
 
         Ok(SynthesisResult {
             audio,
@@ -302,41 +336,71 @@ impl SynthesisService {
     async fn synthesize_with_azure(&self, text: &str) -> Result<SynthesisResult> {
         debug!("Starting Azure Cognitive Services synthesis");
 
-        let subscription_key = std::env::var("AZURE_SPEECH_KEY")
-            .map_err(|_| AgentError::tool("synthesis".to_string(), "AZURE_SPEECH_KEY environment variable not set".to_string()))?;
+        let subscription_key = std::env::var("AZURE_SPEECH_KEY").map_err(|_| {
+            AgentError::tool(
+                "synthesis".to_string(),
+                "AZURE_SPEECH_KEY environment variable not set".to_string(),
+            )
+        })?;
 
-        let region = std::env::var("AZURE_SPEECH_REGION")
-            .unwrap_or_else(|_| "eastus".to_string());
+        let region = std::env::var("AZURE_SPEECH_REGION").unwrap_or_else(|_| "eastus".to_string());
 
         // Get access token
-        let token = self.get_azure_access_token(&subscription_key, &region).await?;
+        let token = self
+            .get_azure_access_token(&subscription_key, &region)
+            .await?;
 
         // Create SSML for Azure TTS
         let ssml = self.create_azure_ssml(text, &self.config.voice).await?;
 
         // Create synthesis request
-        let endpoint = format!("https://{}.tts.speech.microsoft.com/cognitiveservices/v1", region);
+        let endpoint = format!(
+            "https://{}.tts.speech.microsoft.com/cognitiveservices/v1",
+            region
+        );
 
-        let response = self.client
+        let response = self
+            .client
             .post(&endpoint)
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/ssml+xml")
-            .header("X-Microsoft-OutputFormat", "audio-16khz-32kbitrate-mono-mp3")
+            .header(
+                "X-Microsoft-OutputFormat",
+                "audio-16khz-32kbitrate-mono-mp3",
+            )
             .header("User-Agent", "rust-agent/1.0")
             .body(ssml)
             .send()
             .await
-            .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Azure API request failed: {}", e)))?;
+            .map_err(|e| {
+                AgentError::tool(
+                    "synthesis".to_string(),
+                    format!("Azure API request failed: {}", e),
+                )
+            })?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(AgentError::tool("synthesis".to_string(), format!("Azure API error: {}", error_text)));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AgentError::tool(
+                "synthesis".to_string(),
+                format!("Azure API error: {}", error_text),
+            ));
         }
 
-        let audio_bytes = response.bytes().await
-            .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Failed to read Azure response: {}", e)))?;
+        let audio_bytes = response.bytes().await.map_err(|e| {
+            AgentError::tool(
+                "synthesis".to_string(),
+                format!("Failed to read Azure response: {}", e),
+            )
+        })?;
 
-        info!("Azure synthesis completed: {} bytes generated", audio_bytes.len());
+        info!(
+            "Azure synthesis completed: {} bytes generated",
+            audio_bytes.len()
+        );
 
         // Decode the audio bytes to AudioData
         let audio = super::codecs::AudioCodec::decode_bytes(&audio_bytes, super::AudioFormat::Mp3)?;
@@ -354,32 +418,56 @@ impl SynthesisService {
     async fn get_azure_voices(&self) -> Result<Vec<VoiceInfo>> {
         debug!("Getting Azure voices list");
 
-        let subscription_key = std::env::var("AZURE_SPEECH_KEY")
-            .map_err(|_| AgentError::tool("synthesis".to_string(), "AZURE_SPEECH_KEY environment variable not set".to_string()))?;
+        let subscription_key = std::env::var("AZURE_SPEECH_KEY").map_err(|_| {
+            AgentError::tool(
+                "synthesis".to_string(),
+                "AZURE_SPEECH_KEY environment variable not set".to_string(),
+            )
+        })?;
 
-        let region = std::env::var("AZURE_SPEECH_REGION")
-            .unwrap_or_else(|_| "eastus".to_string());
+        let region = std::env::var("AZURE_SPEECH_REGION").unwrap_or_else(|_| "eastus".to_string());
 
         // Get access token
-        let token = self.get_azure_access_token(&subscription_key, &region).await?;
+        let token = self
+            .get_azure_access_token(&subscription_key, &region)
+            .await?;
 
         // Get voices list
-        let endpoint = format!("https://{}.tts.speech.microsoft.com/cognitiveservices/voices/list", region);
+        let endpoint = format!(
+            "https://{}.tts.speech.microsoft.com/cognitiveservices/voices/list",
+            region
+        );
 
-        let response = self.client
+        let response = self
+            .client
             .get(&endpoint)
             .header("Authorization", format!("Bearer {}", token))
             .send()
             .await
-            .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Azure API request failed: {}", e)))?;
+            .map_err(|e| {
+                AgentError::tool(
+                    "synthesis".to_string(),
+                    format!("Azure API request failed: {}", e),
+                )
+            })?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(AgentError::tool("synthesis".to_string(), format!("Azure API error: {}", error_text)));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AgentError::tool(
+                "synthesis".to_string(),
+                format!("Azure API error: {}", error_text),
+            ));
         }
 
-        let voices_json: serde_json::Value = response.json().await
-            .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Failed to parse Azure response: {}", e)))?;
+        let voices_json: serde_json::Value = response.json().await.map_err(|e| {
+            AgentError::tool(
+                "synthesis".to_string(),
+                format!("Failed to parse Azure response: {}", e),
+            )
+        })?;
 
         let mut voices = Vec::new();
 
@@ -388,9 +476,10 @@ impl SynthesisService {
                 if let (Some(name), Some(display_name), Some(locale)) = (
                     voice.get("ShortName").and_then(|v| v.as_str()),
                     voice.get("DisplayName").and_then(|v| v.as_str()),
-                    voice.get("Locale").and_then(|v| v.as_str())
+                    voice.get("Locale").and_then(|v| v.as_str()),
                 ) {
-                    let gender_str = voice.get("Gender")
+                    let gender_str = voice
+                        .get("Gender")
                         .and_then(|v| v.as_str())
                         .unwrap_or("Unknown");
 
@@ -407,8 +496,8 @@ impl SynthesisService {
                         language: locale.to_string(),
                         gender,
                         quality: VoiceQuality::Neural, // Azure voices are typically neural
-                        supports_ssml: true, // Azure supports SSML
-                        sample_rate: 16000, // Default sample rate for Azure
+                        supports_ssml: true,           // Azure supports SSML
+                        sample_rate: 16000,            // Default sample rate for Azure
                     });
                 }
             }
@@ -420,32 +509,50 @@ impl SynthesisService {
 
     /// Synthesize using Google Cloud Text-to-Speech (placeholder)
     async fn synthesize_with_google(&self, _text: &str) -> Result<SynthesisResult> {
-        Err(AgentError::tool("synthesis".to_string(), "Google Cloud Text-to-Speech not implemented yet".to_string()))
+        Err(AgentError::tool(
+            "synthesis".to_string(),
+            "Google Cloud Text-to-Speech not implemented yet".to_string(),
+        ))
     }
 
     /// Get Google voices (placeholder)
     async fn get_google_voices(&self) -> Result<Vec<VoiceInfo>> {
-        Err(AgentError::tool("synthesis".to_string(), "Google Cloud Text-to-Speech not implemented yet".to_string()))
+        Err(AgentError::tool(
+            "synthesis".to_string(),
+            "Google Cloud Text-to-Speech not implemented yet".to_string(),
+        ))
     }
 
     /// Synthesize using Amazon Polly (placeholder)
     async fn synthesize_with_amazon(&self, _text: &str) -> Result<SynthesisResult> {
-        Err(AgentError::tool("synthesis".to_string(), "Amazon Polly not implemented yet".to_string()))
+        Err(AgentError::tool(
+            "synthesis".to_string(),
+            "Amazon Polly not implemented yet".to_string(),
+        ))
     }
 
     /// Get Amazon voices (placeholder)
     async fn get_amazon_voices(&self) -> Result<Vec<VoiceInfo>> {
-        Err(AgentError::tool("synthesis".to_string(), "Amazon Polly not implemented yet".to_string()))
+        Err(AgentError::tool(
+            "synthesis".to_string(),
+            "Amazon Polly not implemented yet".to_string(),
+        ))
     }
 
     /// Synthesize using local TTS engine (placeholder)
     async fn synthesize_with_local(&self, _text: &str) -> Result<SynthesisResult> {
-        Err(AgentError::tool("synthesis".to_string(), "Local TTS engine not implemented yet".to_string()))
+        Err(AgentError::tool(
+            "synthesis".to_string(),
+            "Local TTS engine not implemented yet".to_string(),
+        ))
     }
 
     /// Get local voices (placeholder)
     async fn get_local_voices(&self) -> Result<Vec<VoiceInfo>> {
-        Err(AgentError::tool("synthesis".to_string(), "Local TTS engine not implemented yet".to_string()))
+        Err(AgentError::tool(
+            "synthesis".to_string(),
+            "Local TTS engine not implemented yet".to_string(),
+        ))
     }
 
     /// Check if a voice is available
@@ -463,13 +570,19 @@ impl SynthesisService {
     /// Get voices by language
     pub async fn get_voices_by_language(&self, language: &str) -> Result<Vec<VoiceInfo>> {
         let voices = self.get_voices().await?;
-        Ok(voices.into_iter().filter(|v| v.language.starts_with(language)).collect())
+        Ok(voices
+            .into_iter()
+            .filter(|v| v.language.starts_with(language))
+            .collect())
     }
 
     /// Get voices by gender
     pub async fn get_voices_by_gender(&self, gender: VoiceGender) -> Result<Vec<VoiceInfo>> {
         let voices = self.get_voices().await?;
-        Ok(voices.into_iter().filter(|v| std::mem::discriminant(&v.gender) == std::mem::discriminant(&gender)).collect())
+        Ok(voices
+            .into_iter()
+            .filter(|v| std::mem::discriminant(&v.gender) == std::mem::discriminant(&gender))
+            .collect())
     }
 
     // ========================================
@@ -478,23 +591,42 @@ impl SynthesisService {
 
     /// Get Azure access token for Speech Services
     async fn get_azure_access_token(&self, subscription_key: &str, region: &str) -> Result<String> {
-        let token_endpoint = format!("https://{}.api.cognitive.microsoft.com/sts/v1.0/issuetoken", region);
+        let token_endpoint = format!(
+            "https://{}.api.cognitive.microsoft.com/sts/v1.0/issuetoken",
+            region
+        );
 
-        let response = self.client
+        let response = self
+            .client
             .post(&token_endpoint)
             .header("Ocp-Apim-Subscription-Key", subscription_key)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .send()
             .await
-            .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Failed to get Azure token: {}", e)))?;
+            .map_err(|e| {
+                AgentError::tool(
+                    "synthesis".to_string(),
+                    format!("Failed to get Azure token: {}", e),
+                )
+            })?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(AgentError::tool("synthesis".to_string(), format!("Azure token request failed: {}", error_text)));
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AgentError::tool(
+                "synthesis".to_string(),
+                format!("Azure token request failed: {}", error_text),
+            ));
         }
 
-        let token = response.text().await
-            .map_err(|e| AgentError::tool("synthesis".to_string(), format!("Failed to read Azure token: {}", e)))?;
+        let token = response.text().await.map_err(|e| {
+            AgentError::tool(
+                "synthesis".to_string(),
+                format!("Failed to read Azure token: {}", e),
+            )
+        })?;
 
         Ok(token)
     }
@@ -568,38 +700,39 @@ pub fn split_text_for_synthesis(text: &str, max_chunk_size: usize) -> Vec<String
 
     let mut chunks = Vec::new();
     let mut current_chunk = String::new();
-    
+
     for sentence in text.split('.') {
         let sentence = sentence.trim();
         if sentence.is_empty() {
             continue;
         }
-        
+
         let sentence_with_period = format!("{}.", sentence);
-        
+
         if current_chunk.len() + sentence_with_period.len() > max_chunk_size {
             if !current_chunk.is_empty() {
                 chunks.push(current_chunk.trim().to_string());
                 current_chunk.clear();
             }
-            
+
             // If single sentence is too long, split by words
             if sentence_with_period.len() > max_chunk_size {
                 let words: Vec<&str> = sentence_with_period.split_whitespace().collect();
                 let mut word_chunk = String::new();
-                
+
                 for word in words {
-                    if word_chunk.len() + word.len() + 1 > max_chunk_size && !word_chunk.is_empty() {
+                    if word_chunk.len() + word.len() + 1 > max_chunk_size && !word_chunk.is_empty()
+                    {
                         chunks.push(word_chunk.trim().to_string());
                         word_chunk.clear();
                     }
-                    
+
                     if !word_chunk.is_empty() {
                         word_chunk.push(' ');
                     }
                     word_chunk.push_str(word);
                 }
-                
+
                 if !word_chunk.is_empty() {
                     current_chunk = word_chunk;
                 }
@@ -613,10 +746,10 @@ pub fn split_text_for_synthesis(text: &str, max_chunk_size: usize) -> Vec<String
             current_chunk.push_str(&sentence_with_period);
         }
     }
-    
+
     if !current_chunk.is_empty() {
         chunks.push(current_chunk.trim().to_string());
     }
-    
+
     chunks
 }

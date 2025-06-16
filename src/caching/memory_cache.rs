@@ -148,18 +148,18 @@ impl MemoryCache {
         let interval = self.config.ttl_check_interval;
 
         tokio::spawn(async move {
-            let mut interval_timer = tokio::time::interval(
-                tokio::time::Duration::from_secs(interval)
-            );
+            let mut interval_timer =
+                tokio::time::interval(tokio::time::Duration::from_secs(interval));
 
             loop {
                 interval_timer.tick().await;
-                
+
                 let expired_keys = {
                     let storage_guard = storage.read().await;
                     let now = Instant::now();
-                    
-                    storage_guard.entries
+
+                    storage_guard
+                        .entries
                         .iter()
                         .filter_map(|(key, stored_entry)| {
                             if Self::is_entry_expired(&stored_entry.entry, now) {
@@ -174,20 +174,23 @@ impl MemoryCache {
                 if !expired_keys.is_empty() {
                     let mut storage_guard = storage.write().await;
                     let mut stats_guard = stats.write().await;
-                    
+
                     for key in expired_keys {
                         if let Some(stored_entry) = storage_guard.entries.remove(&key) {
-                            storage_guard.memory_usage = storage_guard.memory_usage
+                            storage_guard.memory_usage = storage_guard
+                                .memory_usage
                                 .saturating_sub(stored_entry.entry.metadata.size);
                             stats_guard.expired_entries += 1;
-                            
+
                             // Remove from access order
-                            if let Some(pos) = storage_guard.access_order.iter().position(|k| k == &key) {
+                            if let Some(pos) =
+                                storage_guard.access_order.iter().position(|k| k == &key)
+                            {
                                 storage_guard.access_order.remove(pos);
                             }
                         }
                     }
-                    
+
                     stats_guard.entry_count = storage_guard.entries.len();
                     stats_guard.memory_usage = storage_guard.memory_usage;
                     stats_guard.last_cleanup = Some(Utc::now());
@@ -202,9 +205,12 @@ impl MemoryCache {
     /// Check if entry is expired
     fn is_entry_expired(entry: &CacheEntry, now: Instant) -> bool {
         if let Some(ttl) = entry.ttl {
-            let created_instant = now - std::time::Duration::from_secs(
-                Utc::now().signed_duration_since(entry.created_at).num_seconds() as u64
-            );
+            let created_instant = now
+                - std::time::Duration::from_secs(
+                    Utc::now()
+                        .signed_duration_since(entry.created_at)
+                        .num_seconds() as u64,
+                );
             now.duration_since(created_instant).as_secs() > ttl
         } else {
             false
@@ -225,31 +231,39 @@ impl MemoryCache {
         }
 
         let evict_count = std::cmp::max(
-            storage.entries.len().saturating_sub(self.config.max_entries * 9 / 10),
-            if storage.memory_usage >= self.config.max_memory { 1 } else { 0 }
+            storage
+                .entries
+                .len()
+                .saturating_sub(self.config.max_entries * 9 / 10),
+            if storage.memory_usage >= self.config.max_memory {
+                1
+            } else {
+                0
+            },
         );
 
         let keys_to_evict = match self.config.eviction_policy {
-            EvictionPolicy::LRU => {
-                storage.access_order.iter()
-                    .take(evict_count)
-                    .cloned()
-                    .collect::<Vec<_>>()
-            }
+            EvictionPolicy::LRU => storage
+                .access_order
+                .iter()
+                .take(evict_count)
+                .cloned()
+                .collect::<Vec<_>>(),
             EvictionPolicy::LFU => {
                 let mut entries: Vec<_> = storage.entries.iter().collect();
                 entries.sort_by_key(|(_, stored)| stored.access_count);
-                entries.into_iter()
+                entries
+                    .into_iter()
                     .take(evict_count)
                     .map(|(key, _)| key.clone())
                     .collect()
             }
-            EvictionPolicy::FIFO => {
-                storage.access_order.iter()
-                    .take(evict_count)
-                    .cloned()
-                    .collect::<Vec<_>>()
-            }
+            EvictionPolicy::FIFO => storage
+                .access_order
+                .iter()
+                .take(evict_count)
+                .cloned()
+                .collect::<Vec<_>>(),
             EvictionPolicy::Random => {
                 use rand::seq::SliceRandom;
                 let mut keys: Vec<_> = storage.entries.keys().cloned().collect();
@@ -260,7 +274,8 @@ impl MemoryCache {
                 // TTL-based eviction: remove expired entries first
                 let mut entries: Vec<_> = storage.entries.iter().collect();
                 entries.sort_by_key(|(_, stored)| stored.entry.created_at);
-                entries.into_iter()
+                entries
+                    .into_iter()
                     .take(evict_count)
                     .map(|(key, _)| key.clone())
                     .collect()
@@ -269,7 +284,8 @@ impl MemoryCache {
                 // Priority-based eviction: remove lowest priority entries first
                 let mut entries: Vec<_> = storage.entries.iter().collect();
                 entries.sort_by_key(|(_, stored)| stored.entry.metadata.priority);
-                entries.into_iter()
+                entries
+                    .into_iter()
                     .take(evict_count)
                     .map(|(key, _)| key.clone())
                     .collect()
@@ -279,10 +295,11 @@ impl MemoryCache {
         // Perform eviction
         for key in keys_to_evict {
             if let Some(stored_entry) = storage.entries.remove(&key) {
-                storage.memory_usage = storage.memory_usage
+                storage.memory_usage = storage
+                    .memory_usage
                     .saturating_sub(stored_entry.entry.metadata.size);
                 stats.evictions += 1;
-                
+
                 // Remove from access order
                 if let Some(pos) = storage.access_order.iter().position(|k| k == &key) {
                     storage.access_order.remove(pos);
@@ -293,12 +310,20 @@ impl MemoryCache {
         stats.entry_count = storage.entries.len();
         stats.memory_usage = storage.memory_usage;
 
-        debug!("Evicted {} entries from memory cache: {}", stats.evictions, self.name);
+        debug!(
+            "Evicted {} entries from memory cache: {}",
+            stats.evictions, self.name
+        );
         Ok(())
     }
 
     /// Update access tracking
-    fn update_access_tracking(&self, storage: &mut CacheStorage, key: &str, stored_entry: &mut StoredEntry) {
+    fn update_access_tracking(
+        &self,
+        storage: &mut CacheStorage,
+        key: &str,
+        stored_entry: &mut StoredEntry,
+    ) {
         if !self.config.track_access {
             return;
         }
@@ -336,12 +361,17 @@ impl CacheTier for MemoryCache {
                 // Entry is expired, remove it
                 let key_to_remove = key.to_string();
                 if let Some(removed_entry) = storage.entries.remove(&key_to_remove) {
-                    storage.memory_usage = storage.memory_usage
+                    storage.memory_usage = storage
+                        .memory_usage
                         .saturating_sub(removed_entry.entry.metadata.size);
                     stats.expired_entries += 1;
 
                     // Remove from access order
-                    if let Some(pos) = storage.access_order.iter().position(|k| k == &key_to_remove) {
+                    if let Some(pos) = storage
+                        .access_order
+                        .iter()
+                        .position(|k| k == &key_to_remove)
+                    {
                         storage.access_order.remove(pos);
                     }
                 }
@@ -381,7 +411,9 @@ impl CacheTier for MemoryCache {
     async fn set(&self, key: &str, entry: CacheEntry) -> Result<()> {
         // Check entry size
         if entry.metadata.size > self.config.max_memory {
-            return Err(AgentError::validation("Entry too large for memory cache".to_string()));
+            return Err(AgentError::validation(
+                "Entry too large for memory cache".to_string(),
+            ));
         }
 
         let mut storage = self.storage.write().await;
@@ -389,9 +421,10 @@ impl CacheTier for MemoryCache {
 
         // Remove existing entry if present
         if let Some(existing) = storage.entries.remove(key) {
-            storage.memory_usage = storage.memory_usage
+            storage.memory_usage = storage
+                .memory_usage
                 .saturating_sub(existing.entry.metadata.size);
-            
+
             // Remove from access order
             if let Some(pos) = storage.access_order.iter().position(|k| k == key) {
                 storage.access_order.remove(pos);
@@ -429,9 +462,10 @@ impl CacheTier for MemoryCache {
         let mut stats = self.stats.write().await;
 
         if let Some(stored_entry) = storage.entries.remove(key) {
-            storage.memory_usage = storage.memory_usage
+            storage.memory_usage = storage
+                .memory_usage
                 .saturating_sub(stored_entry.entry.metadata.size);
-            
+
             // Remove from access order
             if let Some(pos) = storage.access_order.iter().position(|k| k == key) {
                 storage.access_order.remove(pos);
@@ -439,7 +473,7 @@ impl CacheTier for MemoryCache {
 
             stats.entry_count = storage.entries.len();
             stats.memory_usage = storage.memory_usage;
-            
+
             Ok(true)
         } else {
             Ok(false)
@@ -485,7 +519,7 @@ impl CacheTier for MemoryCache {
 
         let memory_usage_ratio = storage.memory_usage as f64 / self.config.max_memory as f64;
         let entry_usage_ratio = storage.entries.len() as f64 / self.config.max_entries as f64;
-        
+
         let health_score = ((1.0 - memory_usage_ratio.max(entry_usage_ratio)) * 100.0) as u8;
         let is_healthy = health_score > 20; // Healthy if less than 80% capacity
 

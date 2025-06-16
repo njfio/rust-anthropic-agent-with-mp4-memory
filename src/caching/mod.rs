@@ -46,28 +46,28 @@ pub struct CacheManager {
 pub trait CacheTier: Send + Sync {
     /// Get tier name
     fn name(&self) -> &str;
-    
+
     /// Get tier level (1 = fastest, higher = slower but larger)
     fn level(&self) -> u8;
-    
+
     /// Get cached value
     async fn get(&self, key: &str) -> Result<Option<CacheEntry>>;
-    
+
     /// Set cached value with TTL
     async fn set(&self, key: &str, entry: CacheEntry) -> Result<()>;
-    
+
     /// Delete cached value
     async fn delete(&self, key: &str) -> Result<bool>;
-    
+
     /// Check if key exists
     async fn exists(&self, key: &str) -> Result<bool>;
-    
+
     /// Get tier statistics
     async fn stats(&self) -> Result<TierStats>;
-    
+
     /// Clear all entries (use with caution)
     async fn clear(&self) -> Result<()>;
-    
+
     /// Get tier health status
     async fn health_check(&self) -> Result<TierHealth>;
 }
@@ -264,7 +264,7 @@ impl Default for CacheConfig {
     fn default() -> Self {
         Self {
             enable_multi_tier: true,
-            default_ttl: 3600, // 1 hour
+            default_ttl: 3600,                // 1 hour
             max_entry_size: 10 * 1024 * 1024, // 10MB
             enable_compression: true,
             compression_threshold: 1024, // 1KB
@@ -340,7 +340,9 @@ impl CacheManager {
         let mut manager = Self::with_defaults();
 
         // Add default strategies
-        let memory_source: Arc<dyn strategies::DataSource> = Arc::new(strategies::MemoryDataSource::new("default_memory".to_string()));
+        let memory_source: Arc<dyn strategies::DataSource> = Arc::new(
+            strategies::MemoryDataSource::new("default_memory".to_string()),
+        );
 
         // Cache-aside strategy (most common)
         let cache_aside = Arc::new(strategies::CacheAsideStrategy::new(
@@ -382,27 +384,32 @@ impl CacheManager {
     pub async fn add_tier(&mut self, tier: Arc<dyn CacheTier>) -> Result<()> {
         let tier_name = tier.name().to_string();
         let tier_level = tier.level();
-        
+
         // Insert tier in order by level
-        let insert_pos = self.tiers.iter()
+        let insert_pos = self
+            .tiers
+            .iter()
             .position(|t| t.level() > tier_level)
             .unwrap_or(self.tiers.len());
-        
+
         self.tiers.insert(insert_pos, tier);
-        
+
         // Initialize tier metrics
         {
             let mut metrics = self.metrics.write().await;
-            metrics.tier_metrics.insert(tier_name.clone(), TierMetrics {
-                hits: 0,
-                misses: 0,
-                hit_ratio: 0.0,
-                entry_count: 0,
-                memory_usage: 0,
-                avg_access_time: 0.0,
-            });
+            metrics.tier_metrics.insert(
+                tier_name.clone(),
+                TierMetrics {
+                    hits: 0,
+                    misses: 0,
+                    hit_ratio: 0.0,
+                    entry_count: 0,
+                    memory_usage: 0,
+                    avg_access_time: 0.0,
+                },
+            );
         }
-        
+
         info!("Added cache tier: {} (level {})", tier_name, tier_level);
         Ok(())
     }
@@ -456,7 +463,8 @@ impl CacheManager {
     /// Get all available strategies
     pub async fn get_strategies(&self) -> HashMap<String, strategies::StrategyConfig> {
         let strategies = self.strategies.read().await;
-        strategies.iter()
+        strategies
+            .iter()
             .map(|(name, strategy)| (name.clone(), strategy.config()))
             .collect()
     }
@@ -553,7 +561,11 @@ impl CacheManager {
     }
 
     /// Read-through strategy implementation
-    async fn read_through_load<T>(&self, key: &str, strategy: &Arc<dyn strategies::CacheStrategy>) -> Result<CacheResult<T>>
+    async fn read_through_load<T>(
+        &self,
+        key: &str,
+        strategy: &Arc<dyn strategies::CacheStrategy>,
+    ) -> Result<CacheResult<T>>
     where
         T: for<'de> Deserialize<'de> + Serialize + Send + Sync + 'static,
     {
@@ -561,7 +573,11 @@ impl CacheManager {
 
         // This is a simplified implementation - in a real scenario, we'd need access to the data source
         // For now, we'll simulate a data source load
-        debug!("Attempting read-through load for key: {} using strategy: {}", key, strategy.name());
+        debug!(
+            "Attempting read-through load for key: {} using strategy: {}",
+            key,
+            strategy.name()
+        );
 
         // Simulate data source miss
         Ok(CacheResult {
@@ -573,11 +589,20 @@ impl CacheManager {
     }
 
     /// Write-through strategy implementation
-    async fn write_through_save<T>(&self, key: &str, value: &T, strategy: &Arc<dyn strategies::CacheStrategy>) -> Result<()>
+    async fn write_through_save<T>(
+        &self,
+        key: &str,
+        value: &T,
+        strategy: &Arc<dyn strategies::CacheStrategy>,
+    ) -> Result<()>
     where
         T: Serialize + Send + Sync,
     {
-        debug!("Write-through save for key: {} using strategy: {}", key, strategy.name());
+        debug!(
+            "Write-through save for key: {} using strategy: {}",
+            key,
+            strategy.name()
+        );
 
         // Serialize the value for data source storage
         let data = serde_json::to_vec(value)
@@ -590,11 +615,20 @@ impl CacheManager {
     }
 
     /// Write-behind strategy implementation
-    async fn write_behind_queue<T>(&self, key: &str, value: &T, strategy: &Arc<dyn strategies::CacheStrategy>) -> Result<()>
+    async fn write_behind_queue<T>(
+        &self,
+        key: &str,
+        value: &T,
+        strategy: &Arc<dyn strategies::CacheStrategy>,
+    ) -> Result<()>
     where
         T: Serialize + Send + Sync,
     {
-        debug!("Write-behind queue for key: {} using strategy: {}", key, strategy.name());
+        debug!(
+            "Write-behind queue for key: {} using strategy: {}",
+            key,
+            strategy.name()
+        );
 
         // Serialize the value for queuing
         let data = serde_json::to_vec(value)
@@ -611,7 +645,11 @@ impl CacheManager {
     where
         T: for<'de> Deserialize<'de> + Serialize + Send + Sync + 'static,
     {
-        debug!("Refresh-ahead check for key: {} using strategy: {}", key, strategy.name());
+        debug!(
+            "Refresh-ahead check for key: {} using strategy: {}",
+            key,
+            strategy.name()
+        );
 
         // Check if the entry exists and needs refresh
         if let Ok(Some(entry)) = self.get_cache_entry(key).await {
@@ -641,7 +679,9 @@ impl CacheManager {
     /// Check if entry should be refreshed
     fn should_refresh_entry(&self, entry: &CacheEntry) -> bool {
         if let Some(ttl) = entry.ttl {
-            let age = Utc::now().signed_duration_since(entry.created_at).num_seconds() as u64;
+            let age = Utc::now()
+                .signed_duration_since(entry.created_at)
+                .num_seconds() as u64;
             let remaining_ratio = (ttl - age) as f64 / ttl as f64;
 
             // Refresh if less than 20% of TTL remaining
@@ -652,15 +692,21 @@ impl CacheManager {
     }
 
     /// Trigger background refresh
-    async fn trigger_background_refresh<T>(&self, key: &str, strategy: &Arc<dyn strategies::CacheStrategy>)
-    where
+    async fn trigger_background_refresh<T>(
+        &self,
+        key: &str,
+        strategy: &Arc<dyn strategies::CacheStrategy>,
+    ) where
         T: for<'de> Deserialize<'de> + Serialize + Send + Sync + 'static,
     {
         let key = key.to_string();
         let strategy_name = strategy.name().to_string();
 
         tokio::spawn(async move {
-            debug!("Background refresh started for key: {} using strategy: {}", key, strategy_name);
+            debug!(
+                "Background refresh started for key: {} using strategy: {}",
+                key, strategy_name
+            );
 
             // In a real implementation, we'd load from data source and update cache
             // For now, we'll just log the operation
@@ -674,7 +720,7 @@ impl CacheManager {
         T: for<'de> Deserialize<'de>,
     {
         let start_time = Instant::now();
-        
+
         for tier in &self.tiers {
             match tier.get(key).await {
                 Ok(Some(entry)) => {
@@ -684,20 +730,21 @@ impl CacheManager {
                         let _ = tier.delete(key).await;
                         continue;
                     }
-                    
+
                     // Deserialize data
                     let data = self.decompress_data(&entry)?;
-                    let value: T = serde_json::from_slice(&data)
-                        .map_err(|e| AgentError::validation(format!("Deserialization failed: {}", e)))?;
-                    
+                    let value: T = serde_json::from_slice(&data).map_err(|e| {
+                        AgentError::validation(format!("Deserialization failed: {}", e))
+                    })?;
+
                     // Update metrics
                     self.record_hit(tier.name(), start_time.elapsed()).await;
-                    
+
                     // Promote to higher tiers if configured
                     if self.config.enable_multi_tier && tier.level() > 1 {
                         self.promote_entry(key, &entry, tier.level()).await?;
                     }
-                    
+
                     return Ok(CacheResult {
                         value: Some(value),
                         source_tier: Some(tier.name().to_string()),
@@ -716,7 +763,7 @@ impl CacheManager {
                 }
             }
         }
-        
+
         // No cache hit in any tier
         self.record_miss("all_tiers").await;
         Ok(CacheResult {
@@ -747,7 +794,7 @@ impl CacheManager {
                 access_count: 0,
                 last_accessed: Utc::now(),
                 tags: Vec::new(),
-                priority: 5, // Default priority
+                priority: 5,    // Default priority
                 source_tier: 1, // Set from L1
             },
             content_type: "application/json".to_string(),
@@ -765,7 +812,10 @@ impl CacheManager {
             }
         }
 
-        debug!("Cached entry: {} (size: {} bytes, TTL: {}s)", key, entry.metadata.size, ttl);
+        debug!(
+            "Cached entry: {} (size: {} bytes, TTL: {}s)",
+            key, entry.metadata.size, ttl
+        );
         Ok(())
     }
 
@@ -776,7 +826,7 @@ impl CacheManager {
         for tier in &self.tiers {
             match tier.delete(key).await {
                 Ok(true) => deleted = true,
-                Ok(false) => {},
+                Ok(false) => {}
                 Err(e) => warn!("Failed to delete from tier {}: {}", tier.name(), e),
             }
         }
@@ -849,13 +899,16 @@ impl CacheManager {
                 }
                 Err(e) => {
                     overall_healthy = false;
-                    tier_health.insert(tier.name().to_string(), TierHealth {
-                        is_healthy: false,
-                        health_score: 0,
-                        last_check: Utc::now(),
-                        error_count: 1,
-                        connection_status: ConnectionStatus::Error,
-                    });
+                    tier_health.insert(
+                        tier.name().to_string(),
+                        TierHealth {
+                            is_healthy: false,
+                            health_score: 0,
+                            last_check: Utc::now(),
+                            error_count: 1,
+                            connection_status: ConnectionStatus::Error,
+                        },
+                    );
                     error!("Health check failed for tier {}: {}", tier.name(), e);
                 }
             }
@@ -892,12 +945,16 @@ impl CacheManager {
 
     /// Invalidate cache entries by pattern
     pub async fn invalidate_pattern(&self, pattern: &str) -> Result<u64> {
-        self.invalidation_manager.invalidate_pattern(pattern, &self.tiers).await
+        self.invalidation_manager
+            .invalidate_pattern(pattern, &self.tiers)
+            .await
     }
 
     /// Invalidate cache entries by tags
     pub async fn invalidate_tags(&self, tags: &[String]) -> Result<u64> {
-        self.invalidation_manager.invalidate_tags(tags, &self.tiers).await
+        self.invalidation_manager
+            .invalidate_tags(tags, &self.tiers)
+            .await
     }
 
     /// Warm cache with priority keys
@@ -942,10 +999,12 @@ impl CacheManager {
         use std::io::Write;
 
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(data)
+        encoder
+            .write_all(data)
             .map_err(|e| AgentError::tool("cache", &format!("Compression failed: {}", e)))?;
-        encoder.finish()
-            .map_err(|e| AgentError::tool("cache", &format!("Compression finalization failed: {}", e)))
+        encoder.finish().map_err(|e| {
+            AgentError::tool("cache", &format!("Compression finalization failed: {}", e))
+        })
     }
 
     /// Decompress data if needed
@@ -958,8 +1017,9 @@ impl CacheManager {
 
                 let mut decoder = GzDecoder::new(&entry.data[..]);
                 let mut decompressed = Vec::new();
-                decoder.read_to_end(&mut decompressed)
-                    .map_err(|e| AgentError::tool("cache", &format!("Decompression failed: {}", e)))?;
+                decoder.read_to_end(&mut decompressed).map_err(|e| {
+                    AgentError::tool("cache", &format!("Decompression failed: {}", e))
+                })?;
                 Ok(decompressed)
             }
             _ => Err(AgentError::tool("cache", "Unsupported compression type")),

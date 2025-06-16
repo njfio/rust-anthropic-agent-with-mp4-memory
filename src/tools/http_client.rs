@@ -106,11 +106,18 @@ impl HttpClientTool {
     pub fn with_config(config: HttpClientConfig) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_seconds))
-            .redirect(reqwest::redirect::Policy::limited(config.max_redirects as usize))
+            .redirect(reqwest::redirect::Policy::limited(
+                config.max_redirects as usize,
+            ))
             .danger_accept_invalid_certs(!config.verify_ssl)
             .user_agent(&config.user_agent)
             .build()
-            .map_err(|e| AgentError::tool("http_client", &format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| {
+                AgentError::tool(
+                    "http_client",
+                    &format!("Failed to create HTTP client: {}", e),
+                )
+            })?;
 
         Ok(Self {
             client,
@@ -140,34 +147,48 @@ impl HttpClientTool {
         if !self.allowed_domains.is_empty() {
             let url = reqwest::Url::parse(&request.url)
                 .map_err(|e| AgentError::validation(format!("Invalid URL: {}", e)))?;
-            
+
             if let Some(domain) = url.domain() {
-                if !self.allowed_domains.iter().any(|allowed| domain.ends_with(allowed)) {
-                    return Err(AgentError::validation(
-                        format!("Domain '{}' is not in the allowed domains list", domain)
-                    ));
+                if !self
+                    .allowed_domains
+                    .iter()
+                    .any(|allowed| domain.ends_with(allowed))
+                {
+                    return Err(AgentError::validation(format!(
+                        "Domain '{}' is not in the allowed domains list",
+                        domain
+                    )));
                 }
             }
         }
 
         // Validate HTTP method
         let method = request.method.to_uppercase();
-        if !matches!(method.as_str(), "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS") {
-            return Err(AgentError::validation(
-                format!("Unsupported HTTP method: {}", method)
-            ));
+        if !matches!(
+            method.as_str(),
+            "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS"
+        ) {
+            return Err(AgentError::validation(format!(
+                "Unsupported HTTP method: {}",
+                method
+            )));
         }
 
         // Validate headers
         if let Some(headers) = &request.headers {
             for (key, value) in headers {
                 if key.is_empty() || value.is_empty() {
-                    return Err(AgentError::validation("Header key and value cannot be empty".to_string()));
+                    return Err(AgentError::validation(
+                        "Header key and value cannot be empty".to_string(),
+                    ));
                 }
-                
+
                 // Check for potentially dangerous headers
                 let key_lower = key.to_lowercase();
-                if matches!(key_lower.as_str(), "authorization" | "cookie" | "x-forwarded-for") {
+                if matches!(
+                    key_lower.as_str(),
+                    "authorization" | "cookie" | "x-forwarded-for"
+                ) {
                     warn!("Potentially sensitive header detected: {}", key);
                 }
             }
@@ -179,7 +200,7 @@ impl HttpClientTool {
     /// Execute an HTTP request
     async fn execute_request(&self, request: HttpRequest) -> Result<HttpResponseData> {
         let start_time = std::time::Instant::now();
-        
+
         // Parse method
         let method = Method::from_bytes(request.method.to_uppercase().as_bytes())
             .map_err(|e| AgentError::validation(format!("Invalid HTTP method: {}", e)))?;
@@ -212,12 +233,14 @@ impl HttpClientTool {
         debug!("Executing HTTP request: {} {}", request.method, request.url);
 
         // Execute request
-        let response = req_builder.send().await
+        let response = req_builder
+            .send()
+            .await
             .map_err(|e| AgentError::tool("http_client", &format!("Request failed: {}", e)))?;
 
         let status_code = response.status().as_u16();
         let final_url = response.url().to_string();
-        
+
         // Extract headers
         let mut headers = HashMap::new();
         for (key, value) in response.headers() {
@@ -231,19 +254,30 @@ impl HttpClientTool {
             if content_length as usize > self.max_response_size {
                 return Err(AgentError::tool(
                     "http_client",
-                    &format!("Response too large: {} bytes (max: {})", content_length, self.max_response_size)
+                    &format!(
+                        "Response too large: {} bytes (max: {})",
+                        content_length, self.max_response_size
+                    ),
                 ));
             }
         }
 
         // Read response body with size limit
-        let body_bytes = response.bytes().await
-            .map_err(|e| AgentError::tool("http_client", &format!("Failed to read response body: {}", e)))?;
+        let body_bytes = response.bytes().await.map_err(|e| {
+            AgentError::tool(
+                "http_client",
+                &format!("Failed to read response body: {}", e),
+            )
+        })?;
 
         if body_bytes.len() > self.max_response_size {
             return Err(AgentError::tool(
                 "http_client",
-                &format!("Response too large: {} bytes (max: {})", body_bytes.len(), self.max_response_size)
+                &format!(
+                    "Response too large: {} bytes (max: {})",
+                    body_bytes.len(),
+                    self.max_response_size
+                ),
             ));
         }
 
@@ -319,7 +353,9 @@ impl Tool for HttpClientTool {
         ToolDefinition {
             tool_type: "custom".to_string(),
             name: "http_client".to_string(),
-            description: Some("Make HTTP requests to web APIs and services with security validation".to_string()),
+            description: Some(
+                "Make HTTP requests to web APIs and services with security validation".to_string(),
+            ),
             input_schema: Some(json!({
                 "type": "object",
                 "properties": {
@@ -372,8 +408,9 @@ impl Tool for HttpClientTool {
     }
 
     async fn execute(&self, input: Value) -> Result<ToolResult> {
-        let request: HttpRequest = serde_json::from_value(input)
-            .map_err(|e| AgentError::invalid_input(format!("Invalid HTTP request format: {}", e)))?;
+        let request: HttpRequest = serde_json::from_value(input).map_err(|e| {
+            AgentError::invalid_input(format!("Invalid HTTP request format: {}", e))
+        })?;
 
         // Validate request
         self.validate_request(&request)?;
@@ -381,8 +418,12 @@ impl Tool for HttpClientTool {
         // Execute request
         match self.execute_request(request).await {
             Ok(response_data) => {
-                let result_json = serde_json::to_value(&response_data)
-                    .map_err(|e| AgentError::tool("http_client", &format!("Failed to serialize response: {}", e)))?;
+                let result_json = serde_json::to_value(&response_data).map_err(|e| {
+                    AgentError::tool(
+                        "http_client",
+                        &format!("Failed to serialize response: {}", e),
+                    )
+                })?;
 
                 let mut metadata = HashMap::new();
                 metadata.insert("response_data".to_string(), result_json);
@@ -408,7 +449,7 @@ impl Tool for HttpClientTool {
                 content: format!("HTTP request failed: {}", e),
                 is_error: true,
                 metadata: None,
-            })
+            }),
         }
     }
 }
@@ -576,7 +617,10 @@ mod tests {
 
         let result = client.execute(invalid_input).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid HTTP request format"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid HTTP request format"));
     }
 
     #[tokio::test]

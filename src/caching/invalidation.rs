@@ -1,7 +1,7 @@
 // Cache Invalidation System
 // Provides intelligent cache invalidation strategies including pattern-based, tag-based, and time-based invalidation
 
-use super::{CacheTier};
+use super::CacheTier;
 use crate::utils::error::{AgentError, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -140,8 +140,11 @@ impl InvalidationManager {
     pub async fn add_rule(&self, rule: InvalidationRule) -> Result<()> {
         let mut rules = self.rules.write().await;
         rules.insert(rule.name.clone(), rule.clone());
-        
-        info!("Added invalidation rule: {} (type: {:?})", rule.name, rule.rule_type);
+
+        info!(
+            "Added invalidation rule: {} (type: {:?})",
+            rule.name, rule.rule_type
+        );
         Ok(())
     }
 
@@ -149,24 +152,25 @@ impl InvalidationManager {
     pub async fn remove_rule(&self, rule_name: &str) -> Result<bool> {
         let mut rules = self.rules.write().await;
         let removed = rules.remove(rule_name).is_some();
-        
+
         if removed {
             info!("Removed invalidation rule: {}", rule_name);
         }
-        
+
         Ok(removed)
     }
 
     /// Register a tag mapping
     pub async fn register_tag(&self, key: &str, tags: Vec<String>) -> Result<()> {
         let mut tag_mappings = self.tag_mappings.write().await;
-        
+
         for tag in tags {
-            tag_mappings.entry(tag.clone())
+            tag_mappings
+                .entry(tag.clone())
                 .or_insert_with(HashSet::new)
                 .insert(key.to_string());
         }
-        
+
         debug!("Registered tags for key: {}", key);
         Ok(())
     }
@@ -174,28 +178,37 @@ impl InvalidationManager {
     /// Unregister tag mappings for a key
     pub async fn unregister_tags(&self, key: &str) -> Result<()> {
         let mut tag_mappings = self.tag_mappings.write().await;
-        
+
         // Remove key from all tag mappings
         for (_, keys) in tag_mappings.iter_mut() {
             keys.remove(key);
         }
-        
+
         // Clean up empty tag mappings
         tag_mappings.retain(|_, keys| !keys.is_empty());
-        
+
         debug!("Unregistered tags for key: {}", key);
         Ok(())
     }
 
     /// Add a cache dependency
-    pub async fn add_dependency(&self, source_key: &str, dependent_keys: Vec<String>, dependency_type: DependencyType) -> Result<()> {
+    pub async fn add_dependency(
+        &self,
+        source_key: &str,
+        dependent_keys: Vec<String>,
+        dependency_type: DependencyType,
+    ) -> Result<()> {
         let mut dependency_mappings = self.dependency_mappings.write().await;
-        
-        dependency_mappings.entry(source_key.to_string())
+
+        dependency_mappings
+            .entry(source_key.to_string())
             .or_insert_with(HashSet::new)
             .extend(dependent_keys.iter().cloned());
-        
-        debug!("Added dependency: {} -> {:?} (type: {:?})", source_key, dependent_keys, dependency_type);
+
+        debug!(
+            "Added dependency: {} -> {:?} (type: {:?})",
+            source_key, dependent_keys, dependency_type
+        );
         Ok(())
     }
 
@@ -203,16 +216,20 @@ impl InvalidationManager {
     pub async fn remove_dependency(&self, source_key: &str) -> Result<bool> {
         let mut dependency_mappings = self.dependency_mappings.write().await;
         let removed = dependency_mappings.remove(source_key).is_some();
-        
+
         if removed {
             debug!("Removed dependency for key: {}", source_key);
         }
-        
+
         Ok(removed)
     }
 
     /// Invalidate cache entries by pattern
-    pub async fn invalidate_pattern(&self, pattern: &str, tiers: &[Arc<dyn CacheTier>]) -> Result<u64> {
+    pub async fn invalidate_pattern(
+        &self,
+        pattern: &str,
+        tiers: &[Arc<dyn CacheTier>],
+    ) -> Result<u64> {
         let start_time = std::time::Instant::now();
         let mut total_invalidated = 0u64;
         let mut errors = Vec::new();
@@ -239,21 +256,34 @@ impl InvalidationManager {
         }
 
         let duration = start_time.elapsed();
-        
+
         // Update statistics
-        self.update_invalidation_stats(InvalidationType::Pattern, total_invalidated, duration, errors.is_empty()).await;
+        self.update_invalidation_stats(
+            InvalidationType::Pattern,
+            total_invalidated,
+            duration,
+            errors.is_empty(),
+        )
+        .await;
 
         if !errors.is_empty() {
             warn!("Pattern invalidation completed with errors: {:?}", errors);
         } else {
-            info!("Pattern invalidation completed: {} keys invalidated in {:?}", total_invalidated, duration);
+            info!(
+                "Pattern invalidation completed: {} keys invalidated in {:?}",
+                total_invalidated, duration
+            );
         }
 
         Ok(total_invalidated)
     }
 
     /// Invalidate cache entries by tags
-    pub async fn invalidate_tags(&self, tags: &[String], tiers: &[Arc<dyn CacheTier>]) -> Result<u64> {
+    pub async fn invalidate_tags(
+        &self,
+        tags: &[String],
+        tiers: &[Arc<dyn CacheTier>],
+    ) -> Result<u64> {
         let start_time = std::time::Instant::now();
         let mut total_invalidated = 0u64;
         let mut errors = Vec::new();
@@ -264,13 +294,13 @@ impl InvalidationManager {
         let keys_to_invalidate = {
             let tag_mappings = self.tag_mappings.read().await;
             let mut keys = HashSet::new();
-            
+
             for tag in tags {
                 if let Some(tag_keys) = tag_mappings.get(tag) {
                     keys.extend(tag_keys.iter().cloned());
                 }
             }
-            
+
             keys
         };
 
@@ -279,7 +309,7 @@ impl InvalidationManager {
             for tier in tiers {
                 match tier.delete(key).await {
                     Ok(true) => total_invalidated += 1,
-                    Ok(false) => {}, // Key didn't exist
+                    Ok(false) => {} // Key didn't exist
                     Err(e) => {
                         errors.push(format!("Tier {} key {}: {}", tier.name(), key, e));
                     }
@@ -297,7 +327,7 @@ impl InvalidationManager {
                     }
                 }
             }
-            
+
             // Clean up empty tag mappings
             for tag in tags {
                 if let Some(tag_keys) = tag_mappings.get(tag) {
@@ -309,21 +339,34 @@ impl InvalidationManager {
         }
 
         let duration = start_time.elapsed();
-        
+
         // Update statistics
-        self.update_invalidation_stats(InvalidationType::Tag, total_invalidated, duration, errors.is_empty()).await;
+        self.update_invalidation_stats(
+            InvalidationType::Tag,
+            total_invalidated,
+            duration,
+            errors.is_empty(),
+        )
+        .await;
 
         if !errors.is_empty() {
             warn!("Tag invalidation completed with errors: {:?}", errors);
         } else {
-            info!("Tag invalidation completed: {} keys invalidated in {:?}", total_invalidated, duration);
+            info!(
+                "Tag invalidation completed: {} keys invalidated in {:?}",
+                total_invalidated, duration
+            );
         }
 
         Ok(total_invalidated)
     }
 
     /// Invalidate cache entries by dependency
-    pub async fn invalidate_dependencies(&self, source_key: &str, tiers: &[Arc<dyn CacheTier>]) -> Result<u64> {
+    pub async fn invalidate_dependencies(
+        &self,
+        source_key: &str,
+        tiers: &[Arc<dyn CacheTier>],
+    ) -> Result<u64> {
         let start_time = std::time::Instant::now();
         let mut total_invalidated = 0u64;
 
@@ -332,7 +375,8 @@ impl InvalidationManager {
         // Get dependent keys
         let dependent_keys = {
             let dependency_mappings = self.dependency_mappings.read().await;
-            dependency_mappings.get(source_key)
+            dependency_mappings
+                .get(source_key)
                 .cloned()
                 .unwrap_or_default()
         };
@@ -342,20 +386,34 @@ impl InvalidationManager {
             for tier in tiers {
                 match tier.delete(key).await {
                     Ok(true) => total_invalidated += 1,
-                    Ok(false) => {}, // Key didn't exist
+                    Ok(false) => {} // Key didn't exist
                     Err(e) => {
-                        warn!("Failed to invalidate dependent key {} in tier {}: {}", key, tier.name(), e);
+                        warn!(
+                            "Failed to invalidate dependent key {} in tier {}: {}",
+                            key,
+                            tier.name(),
+                            e
+                        );
                     }
                 }
             }
         }
 
         let duration = start_time.elapsed();
-        
-        // Update statistics
-        self.update_invalidation_stats(InvalidationType::Dependency, total_invalidated, duration, true).await;
 
-        info!("Dependency invalidation completed: {} keys invalidated in {:?}", total_invalidated, duration);
+        // Update statistics
+        self.update_invalidation_stats(
+            InvalidationType::Dependency,
+            total_invalidated,
+            duration,
+            true,
+        )
+        .await;
+
+        info!(
+            "Dependency invalidation completed: {} keys invalidated in {:?}",
+            total_invalidated, duration
+        );
         Ok(total_invalidated)
     }
 
@@ -367,9 +425,14 @@ impl InvalidationManager {
         for tier in tiers {
             match tier.delete(key).await {
                 Ok(true) => invalidated = true,
-                Ok(false) => {}, // Key didn't exist in this tier
+                Ok(false) => {} // Key didn't exist in this tier
                 Err(e) => {
-                    warn!("Failed to invalidate key {} in tier {}: {}", key, tier.name(), e);
+                    warn!(
+                        "Failed to invalidate key {} in tier {}: {}",
+                        key,
+                        tier.name(),
+                        e
+                    );
                 }
             }
         }
@@ -381,11 +444,20 @@ impl InvalidationManager {
         self.unregister_tags(key).await?;
 
         let duration = start_time.elapsed();
-        
-        // Update statistics
-        self.update_invalidation_stats(InvalidationType::Manual, if invalidated { 1 } else { 0 }, duration, true).await;
 
-        debug!("Manual invalidation of key {} completed in {:?}", key, duration);
+        // Update statistics
+        self.update_invalidation_stats(
+            InvalidationType::Manual,
+            if invalidated { 1 } else { 0 },
+            duration,
+            true,
+        )
+        .await;
+
+        debug!(
+            "Manual invalidation of key {} completed in {:?}",
+            key, duration
+        );
         Ok(invalidated)
     }
 
@@ -400,17 +472,17 @@ impl InvalidationManager {
             let mut rules = self.rules.write().await;
             rules.clear();
         }
-        
+
         {
             let mut tag_mappings = self.tag_mappings.write().await;
             tag_mappings.clear();
         }
-        
+
         {
             let mut dependency_mappings = self.dependency_mappings.write().await;
             dependency_mappings.clear();
         }
-        
+
         {
             let mut stats = self.stats.write().await;
             *stats = InvalidationStats::default();
@@ -421,35 +493,52 @@ impl InvalidationManager {
     }
 
     /// Invalidate pattern in a specific tier (simplified implementation)
-    async fn invalidate_pattern_in_tier(&self, pattern: &str, tier: &Arc<dyn CacheTier>) -> Result<u64> {
+    async fn invalidate_pattern_in_tier(
+        &self,
+        pattern: &str,
+        tier: &Arc<dyn CacheTier>,
+    ) -> Result<u64> {
         // This is a simplified implementation. In practice, you would:
         // 1. For Redis: Use SCAN command with pattern matching
         // 2. For Memory cache: Iterate through keys and match pattern
         // 3. For other backends: Use backend-specific pattern matching
-        
+
         // For now, we'll return 0 as this requires tier-specific implementation
-        debug!("Pattern invalidation in tier {} not fully implemented for pattern: {}", tier.name(), pattern);
+        debug!(
+            "Pattern invalidation in tier {} not fully implemented for pattern: {}",
+            tier.name(),
+            pattern
+        );
         Ok(0)
     }
 
     /// Update invalidation statistics
-    async fn update_invalidation_stats(&self, invalidation_type: InvalidationType, keys_invalidated: u64, duration: std::time::Duration, success: bool) {
+    async fn update_invalidation_stats(
+        &self,
+        invalidation_type: InvalidationType,
+        keys_invalidated: u64,
+        duration: std::time::Duration,
+        success: bool,
+    ) {
         let mut stats = self.stats.write().await;
-        
+
         stats.total_invalidations += 1;
         stats.total_keys_invalidated += keys_invalidated;
         stats.last_invalidation = Some(Utc::now());
-        
+
         if !success {
             stats.failed_invalidations += 1;
         }
-        
+
         // Update average invalidation time
         let duration_ms = duration.as_millis() as f64;
         stats.avg_invalidation_time = (stats.avg_invalidation_time + duration_ms) / 2.0;
-        
+
         // Update by-type statistics
-        let type_count = stats.invalidations_by_type.entry(invalidation_type).or_insert(0);
+        let type_count = stats
+            .invalidations_by_type
+            .entry(invalidation_type)
+            .or_insert(0);
         *type_count += 1;
     }
 }

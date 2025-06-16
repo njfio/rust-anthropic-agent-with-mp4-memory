@@ -176,7 +176,7 @@ impl ConsentManager {
             purposes: HashMap::new(),
             consent_history: Vec::new(),
         };
-        
+
         manager.initialize_default_purposes();
         manager
     }
@@ -184,10 +184,10 @@ impl ConsentManager {
     /// Register a consent purpose
     pub fn register_purpose(&mut self, purpose: ConsentPurpose) -> Result<()> {
         self.validate_purpose(&purpose)?;
-        
+
         tracing::info!("Registering consent purpose: {}", purpose.name);
         self.purposes.insert(purpose.id.clone(), purpose);
-        
+
         Ok(())
     }
 
@@ -200,9 +200,10 @@ impl ConsentManager {
     ) -> Result<ConsentRequest> {
         // Validate purpose exists
         if !self.purposes.contains_key(&purpose_id) {
-            return Err(AgentError::validation(
-                format!("Unknown consent purpose: {}", purpose_id)
-            ));
+            return Err(AgentError::validation(format!(
+                "Unknown consent purpose: {}",
+                purpose_id
+            )));
         }
 
         let request = ConsentRequest {
@@ -233,10 +234,9 @@ impl ConsentManager {
         metadata: HashMap<String, String>,
     ) -> Result<ConsentRecord> {
         // Validate purpose
-        let _purpose = self.purposes.get(&purpose_id)
-            .ok_or_else(|| AgentError::validation(
-                format!("Unknown consent purpose: {}", purpose_id)
-            ))?;
+        let _purpose = self.purposes.get(&purpose_id).ok_or_else(|| {
+            AgentError::validation(format!("Unknown consent purpose: {}", purpose_id))
+        })?;
 
         // Create consent record
         let consent_record = ConsentRecord {
@@ -264,7 +264,8 @@ impl ConsentManager {
         );
 
         // Store consent record
-        self.consent_records.insert(consent_record.id.clone(), consent_record.clone());
+        self.consent_records
+            .insert(consent_record.id.clone(), consent_record.clone());
 
         tracing::info!(
             "Consent recorded for subject {} and purpose {}",
@@ -282,10 +283,9 @@ impl ConsentManager {
         reason: Option<String>,
     ) -> Result<()> {
         let (previous_status, subject_id) = {
-            let consent_record = self.consent_records.get_mut(consent_id)
-                .ok_or_else(|| AgentError::validation(
-                    format!("Consent record not found: {}", consent_id)
-                ))?;
+            let consent_record = self.consent_records.get_mut(consent_id).ok_or_else(|| {
+                AgentError::validation(format!("Consent record not found: {}", consent_id))
+            })?;
 
             let previous_status = consent_record.status.clone();
             let subject_id = consent_record.subject_id.clone();
@@ -319,21 +319,21 @@ impl ConsentManager {
     pub fn is_consent_valid(&self, subject_id: &str, purpose_id: &str) -> bool {
         // Find active consent for this subject and purpose
         for consent in self.consent_records.values() {
-            if consent.subject_id == subject_id 
-                && consent.purpose_id == purpose_id 
-                && matches!(consent.status, ConsentStatus::Given) {
-                
+            if consent.subject_id == subject_id
+                && consent.purpose_id == purpose_id
+                && matches!(consent.status, ConsentStatus::Given)
+            {
                 // Check if consent has expired
                 if let Some(expires_at) = consent.expires_at {
                     if Utc::now() > expires_at {
                         return false;
                     }
                 }
-                
+
                 return true;
             }
         }
-        
+
         false
     }
 
@@ -381,7 +381,15 @@ impl ConsentManager {
 
         // Record history entries after the mutable iteration
         for (id, subject_id, action, prev_status, new_status, reason, context) in history_entries {
-            self.record_consent_history(id, subject_id, action, prev_status, new_status, reason, context);
+            self.record_consent_history(
+                id,
+                subject_id,
+                action,
+                prev_status,
+                new_status,
+                reason,
+                context,
+            );
         }
 
         if !expired_ids.is_empty() {
@@ -394,13 +402,19 @@ impl ConsentManager {
     /// Generate consent report
     pub fn generate_consent_report(&self) -> ConsentReport {
         let total_consents = self.consent_records.len();
-        let active_consents = self.consent_records.values()
+        let active_consents = self
+            .consent_records
+            .values()
             .filter(|c| matches!(c.status, ConsentStatus::Given))
             .count();
-        let withdrawn_consents = self.consent_records.values()
+        let withdrawn_consents = self
+            .consent_records
+            .values()
             .filter(|c| matches!(c.status, ConsentStatus::Withdrawn))
             .count();
-        let expired_consents = self.consent_records.values()
+        let expired_consents = self
+            .consent_records
+            .values()
             .filter(|c| matches!(c.status, ConsentStatus::Expired))
             .count();
 
@@ -450,15 +464,21 @@ impl ConsentManager {
     /// Validate a consent purpose
     fn validate_purpose(&self, purpose: &ConsentPurpose) -> Result<()> {
         if purpose.id.is_empty() {
-            return Err(AgentError::validation("Purpose ID cannot be empty".to_string()));
+            return Err(AgentError::validation(
+                "Purpose ID cannot be empty".to_string(),
+            ));
         }
 
         if purpose.name.is_empty() {
-            return Err(AgentError::validation("Purpose name cannot be empty".to_string()));
+            return Err(AgentError::validation(
+                "Purpose name cannot be empty".to_string(),
+            ));
         }
 
         if purpose.description.is_empty() {
-            return Err(AgentError::validation("Purpose description cannot be empty".to_string()));
+            return Err(AgentError::validation(
+                "Purpose description cannot be empty".to_string(),
+            ));
         }
 
         Ok(())

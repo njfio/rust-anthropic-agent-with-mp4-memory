@@ -1,9 +1,9 @@
 // Audio Effects Processing
 // Provides noise reduction, normalization, filtering, and other audio effects
 
-use super::{EffectsConfig, codecs::AudioData};
+use super::{codecs::AudioData, EffectsConfig};
 use crate::utils::error::{AgentError, Result};
-use rustfft::{FftPlanner, num_complex::Complex};
+use rustfft::{num_complex::Complex, FftPlanner};
 use std::f32::consts::PI;
 use tracing::{debug, info, warn};
 
@@ -37,7 +37,10 @@ impl AudioEffects {
     pub fn process(&mut self, audio: &AudioData) -> Result<AudioData> {
         let mut processed = audio.clone();
 
-        info!("Applying audio effects to {} samples", processed.samples.len());
+        info!(
+            "Applying audio effects to {} samples",
+            processed.samples.len()
+        );
 
         // Apply effects in order
         if self.config.enable_noise_reduction {
@@ -62,7 +65,10 @@ impl AudioEffects {
 
     /// Apply noise reduction using spectral subtraction
     pub fn apply_noise_reduction(&mut self, audio: &AudioData) -> Result<AudioData> {
-        debug!("Applying noise reduction with strength: {}", self.config.noise_reduction_strength);
+        debug!(
+            "Applying noise reduction with strength: {}",
+            self.config.noise_reduction_strength
+        );
 
         if audio.samples.is_empty() {
             return Ok(audio.clone());
@@ -82,7 +88,10 @@ impl AudioEffects {
 
         // Estimate noise from first 0.5 seconds
         let noise_frames = (mono_audio.sample_rate as f32 * 0.5) as usize;
-        let noise_spectrum = self.estimate_noise_spectrum(&mono_audio.samples[..noise_frames.min(mono_audio.samples.len())], frame_size)?;
+        let noise_spectrum = self.estimate_noise_spectrum(
+            &mono_audio.samples[..noise_frames.min(mono_audio.samples.len())],
+            frame_size,
+        )?;
 
         // Process audio in overlapping frames
         for start in (0..mono_audio.samples.len()).step_by(hop_size) {
@@ -98,7 +107,11 @@ impl AudioEffects {
             } else {
                 let denoised_frame = self.denoise_frame(frame, &noise_spectrum)?;
                 let start_idx = if start == 0 { 0 } else { hop_size };
-                let end_idx = if end == mono_audio.samples.len() { frame_size } else { hop_size * 3 };
+                let end_idx = if end == mono_audio.samples.len() {
+                    frame_size
+                } else {
+                    hop_size * 3
+                };
                 processed_samples.extend_from_slice(&denoised_frame[start_idx..end_idx]);
             }
         }
@@ -106,7 +119,8 @@ impl AudioEffects {
         // Convert back to original channel configuration
         let final_samples = if audio.channels > 1 {
             // Duplicate mono to stereo
-            let mut stereo_samples = Vec::with_capacity(processed_samples.len() * audio.channels as usize);
+            let mut stereo_samples =
+                Vec::with_capacity(processed_samples.len() * audio.channels as usize);
             for sample in processed_samples {
                 for _ in 0..audio.channels {
                     stereo_samples.push(sample);
@@ -147,7 +161,8 @@ impl AudioEffects {
             self.apply_hann_window(&mut frame);
 
             // Convert to complex for FFT
-            let mut complex_frame: Vec<Complex<f32>> = frame.iter().map(|&x| Complex::new(x, 0.0)).collect();
+            let mut complex_frame: Vec<Complex<f32>> =
+                frame.iter().map(|&x| Complex::new(x, 0.0)).collect();
 
             // Perform FFT
             let fft = self.fft_planner.plan_fft_forward(frame_size);
@@ -180,14 +195,21 @@ impl AudioEffects {
         self.apply_hann_window(&mut windowed_frame);
 
         // Convert to complex for FFT
-        let mut complex_frame: Vec<Complex<f32>> = windowed_frame.iter().map(|&x| Complex::new(x, 0.0)).collect();
+        let mut complex_frame: Vec<Complex<f32>> = windowed_frame
+            .iter()
+            .map(|&x| Complex::new(x, 0.0))
+            .collect();
 
         // Forward FFT
         let fft = self.fft_planner.plan_fft_forward(frame_size);
         fft.process(&mut complex_frame);
 
         // Apply spectral subtraction
-        for (i, complex_val) in complex_frame.iter_mut().enumerate().take(frame_size / 2 + 1) {
+        for (i, complex_val) in complex_frame
+            .iter_mut()
+            .enumerate()
+            .take(frame_size / 2 + 1)
+        {
             let magnitude = complex_val.norm();
             let phase = complex_val.arg();
 
@@ -216,7 +238,10 @@ impl AudioEffects {
         ifft.process(&mut complex_frame);
 
         // Extract real part and normalize
-        let mut result: Vec<f32> = complex_frame.iter().map(|c| c.re / frame_size as f32).collect();
+        let mut result: Vec<f32> = complex_frame
+            .iter()
+            .map(|c| c.re / frame_size as f32)
+            .collect();
 
         // Apply window again for overlap-add
         self.apply_hann_window(&mut result);
@@ -314,19 +339,30 @@ impl AudioEffects {
         let gain_db = target_db - current_db;
         let gain_linear = 10.0_f32.powf(gain_db / 20.0);
 
-        debug!("Current level: {:.2} dB, Target: {:.2} dB, Gain: {:.2} dB", 
-               current_db, target_db, gain_db);
+        debug!(
+            "Current level: {:.2} dB, Target: {:.2} dB, Gain: {:.2} dB",
+            current_db, target_db, gain_db
+        );
 
         // Apply gain
         let normalized_samples: Vec<f32> = audio.samples.iter().map(|&s| s * gain_linear).collect();
 
         // Check for clipping
-        let peak = normalized_samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+        let peak = normalized_samples
+            .iter()
+            .map(|s| s.abs())
+            .fold(0.0f32, f32::max);
         if peak > 1.0 {
-            warn!("Normalization would cause clipping (peak: {:.2}), applying limiter", peak);
+            warn!(
+                "Normalization would cause clipping (peak: {:.2}), applying limiter",
+                peak
+            );
             let limiter_gain = 0.95 / peak;
-            let limited_samples: Vec<f32> = normalized_samples.iter().map(|&s| s * limiter_gain).collect();
-            
+            let limited_samples: Vec<f32> = normalized_samples
+                .iter()
+                .map(|&s| s * limiter_gain)
+                .collect();
+
             Ok(AudioData::new(
                 limited_samples,
                 audio.sample_rate,
@@ -419,10 +455,19 @@ impl AudioEffects {
         }
 
         // Find first non-silent sample
-        let start = audio.samples.iter().position(|&s| s.abs() > threshold).unwrap_or(0);
+        let start = audio
+            .samples
+            .iter()
+            .position(|&s| s.abs() > threshold)
+            .unwrap_or(0);
 
         // Find last non-silent sample
-        let end = audio.samples.iter().rposition(|&s| s.abs() > threshold).unwrap_or(audio.samples.len() - 1) + 1;
+        let end = audio
+            .samples
+            .iter()
+            .rposition(|&s| s.abs() > threshold)
+            .unwrap_or(audio.samples.len() - 1)
+            + 1;
 
         if start >= end {
             // All silence, return empty audio
@@ -448,7 +493,11 @@ impl AudioEffects {
     pub fn analyze_audio(&self, audio: &AudioData) -> AudioAnalysis {
         let peak = audio.samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         let rms = self.calculate_rms(&audio.samples);
-        let dynamic_range = if rms > 0.0 { 20.0 * (peak / rms).log10() } else { 0.0 };
+        let dynamic_range = if rms > 0.0 {
+            20.0 * (peak / rms).log10()
+        } else {
+            0.0
+        };
 
         // Calculate zero crossing rate
         let mut zero_crossings = 0;
@@ -462,8 +511,16 @@ impl AudioEffects {
         AudioAnalysis {
             peak_amplitude: peak,
             rms_level: rms,
-            peak_db: if peak > 0.0 { 20.0 * peak.log10() } else { -std::f32::INFINITY },
-            rms_db: if rms > 0.0 { 20.0 * rms.log10() } else { -std::f32::INFINITY },
+            peak_db: if peak > 0.0 {
+                20.0 * peak.log10()
+            } else {
+                -std::f32::INFINITY
+            },
+            rms_db: if rms > 0.0 {
+                20.0 * rms.log10()
+            } else {
+                -std::f32::INFINITY
+            },
             dynamic_range_db: dynamic_range,
             zero_crossing_rate,
             duration_seconds: audio.duration,
@@ -472,13 +529,20 @@ impl AudioEffects {
     }
 
     /// Analyze audio characteristics with comprehensive analysis
-    pub async fn analyze_audio_characteristics(&self, audio_data: &super::codecs::AudioData) -> Result<AudioAnalysis> {
+    pub async fn analyze_audio_characteristics(
+        &self,
+        audio_data: &super::codecs::AudioData,
+    ) -> Result<AudioAnalysis> {
         // Use the existing analyze_audio method
         Ok(self.analyze_audio(audio_data))
     }
 
     /// Apply effects to audio data with configuration
-    pub async fn apply_effects(&self, audio_data: &mut super::codecs::AudioData, config: &EffectsConfig) -> Result<()> {
+    pub async fn apply_effects(
+        &self,
+        audio_data: &mut super::codecs::AudioData,
+        config: &EffectsConfig,
+    ) -> Result<()> {
         // Create a temporary effects processor with the provided config
         let mut temp_effects = AudioEffects::new(config.clone());
 
@@ -489,7 +553,10 @@ impl AudioEffects {
         audio_data.samples = processed_audio.samples;
         audio_data.duration = processed_audio.duration;
 
-        debug!("Applied effects to audio data: {} samples processed", audio_data.samples.len());
+        debug!(
+            "Applied effects to audio data: {} samples processed",
+            audio_data.samples.len()
+        );
 
         Ok(())
     }
@@ -506,10 +573,10 @@ impl AudioEffects {
 
     /// Check if effects are enabled
     pub fn has_effects_enabled(&self) -> bool {
-        self.config.enable_noise_reduction ||
-        self.config.enable_normalization ||
-        self.config.enable_highpass_filter ||
-        self.config.enable_lowpass_filter
+        self.config.enable_noise_reduction
+            || self.config.enable_normalization
+            || self.config.enable_highpass_filter
+            || self.config.enable_lowpass_filter
     }
 }
 

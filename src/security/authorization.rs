@@ -60,12 +60,21 @@ pub trait AuthorizationService: Send + Sync {
     async fn evaluate_policy(&self, context: &SecurityContext, policy: &Policy) -> Result<bool>;
 
     /// Get detailed authorization decision with policy evaluation results
-    async fn get_authorization_decision(&self, context: &SecurityContext, resource: &str, action: &str) -> Result<AuthorizationDecision> {
+    async fn get_authorization_decision(
+        &self,
+        context: &SecurityContext,
+        resource: &str,
+        action: &str,
+    ) -> Result<AuthorizationDecision> {
         // Default implementation for backward compatibility
         let granted = self.check_permission(context, resource, action).await?;
         Ok(AuthorizationDecision {
             granted,
-            reason: if granted { "Access granted".to_string() } else { "Access denied".to_string() },
+            reason: if granted {
+                "Access granted".to_string()
+            } else {
+                "Access denied".to_string()
+            },
             evaluated_policies: Vec::new(),
             checked_permissions: Vec::new(),
             metadata: HashMap::new(),
@@ -588,7 +597,12 @@ impl AuthorizationService for RbacAuthorizationService {
         self.evaluate_conditions(&policy.conditions, context).await
     }
 
-    async fn get_authorization_decision(&self, context: &SecurityContext, resource: &str, action: &str) -> Result<AuthorizationDecision> {
+    async fn get_authorization_decision(
+        &self,
+        context: &SecurityContext,
+        resource: &str,
+        action: &str,
+    ) -> Result<AuthorizationDecision> {
         // Use the comprehensive policy evaluation
         self.evaluate_policies(context, resource, action).await
     }
@@ -639,20 +653,23 @@ impl RbacAuthorizationService {
     }
 
     /// Get policies that apply to a specific resource and action
-    pub async fn get_applicable_policies(&self, resource: &str, action: &str) -> Result<Vec<Policy>> {
+    pub async fn get_applicable_policies(
+        &self,
+        resource: &str,
+        action: &str,
+    ) -> Result<Vec<Policy>> {
         let policies = self.policies.read().await;
         let mut applicable = Vec::new();
 
         for policy in policies.values() {
             // Check if policy applies to this resource
-            let resource_matches = policy.resources.iter().any(|r| {
-                r == "*" || r == resource || resource.starts_with(&format!("{}:", r))
-            });
+            let resource_matches = policy
+                .resources
+                .iter()
+                .any(|r| r == "*" || r == resource || resource.starts_with(&format!("{}:", r)));
 
             // Check if policy applies to this action
-            let action_matches = policy.actions.iter().any(|a| {
-                a == "*" || a == action
-            });
+            let action_matches = policy.actions.iter().any(|a| a == "*" || a == action);
 
             if resource_matches && action_matches {
                 applicable.push(policy.clone());
@@ -665,7 +682,12 @@ impl RbacAuthorizationService {
     }
 
     /// Evaluate all applicable policies for a request
-    pub async fn evaluate_policies(&self, context: &SecurityContext, resource: &str, action: &str) -> Result<AuthorizationDecision> {
+    pub async fn evaluate_policies(
+        &self,
+        context: &SecurityContext,
+        resource: &str,
+        action: &str,
+    ) -> Result<AuthorizationDecision> {
         let applicable_policies = self.get_applicable_policies(resource, action).await?;
         let mut evaluated_policies = Vec::new();
         let mut final_decision = false;
@@ -673,7 +695,10 @@ impl RbacAuthorizationService {
         let mut metadata = HashMap::new();
 
         // Track policy evaluation statistics
-        metadata.insert("total_policies".to_string(), applicable_policies.len().to_string());
+        metadata.insert(
+            "total_policies".to_string(),
+            applicable_policies.len().to_string(),
+        );
         metadata.insert("resource".to_string(), resource.to_string());
         metadata.insert("action".to_string(), action.to_string());
         metadata.insert("user_id".to_string(), context.user_id.clone());
@@ -705,8 +730,12 @@ impl RbacAuthorizationService {
         }
 
         // If no policies matched, fall back to RBAC
-        if evaluated_policies.is_empty() || (!final_decision && decision_reason.contains("No applicable policies")) {
-            let rbac_result = self.check_permission_rbac_only(context, resource, action).await?;
+        if evaluated_policies.is_empty()
+            || (!final_decision && decision_reason.contains("No applicable policies"))
+        {
+            let rbac_result = self
+                .check_permission_rbac_only(context, resource, action)
+                .await?;
             if rbac_result {
                 final_decision = true;
                 decision_reason = "Allowed by RBAC permissions".to_string();
@@ -727,7 +756,12 @@ impl RbacAuthorizationService {
     }
 
     /// Check permission using only RBAC (without policy evaluation)
-    async fn check_permission_rbac_only(&self, context: &SecurityContext, resource: &str, action: &str) -> Result<bool> {
+    async fn check_permission_rbac_only(
+        &self,
+        context: &SecurityContext,
+        resource: &str,
+        action: &str,
+    ) -> Result<bool> {
         // Get user roles
         let user_roles = self.user_roles.read().await;
         let roles = user_roles
@@ -786,7 +820,11 @@ impl RbacAuthorizationService {
                 name: "business_hours_access".to_string(),
                 description: "Allow access only during business hours (9 AM - 5 PM)".to_string(),
                 effect: PolicyEffect::Deny,
-                resources: vec!["sensitive".to_string(), "financial".to_string(), "admin".to_string()],
+                resources: vec![
+                    "sensitive".to_string(),
+                    "financial".to_string(),
+                    "admin".to_string(),
+                ],
                 actions: vec!["*".to_string()],
                 conditions: vec![Condition {
                     field: "time.hour".to_string(),
@@ -828,8 +866,16 @@ impl RbacAuthorizationService {
                 name: "sensitive_data_protection".to_string(),
                 description: "Require special permission for sensitive data access".to_string(),
                 effect: PolicyEffect::Deny,
-                resources: vec!["sensitive".to_string(), "pii".to_string(), "financial".to_string()],
-                actions: vec!["read".to_string(), "write".to_string(), "delete".to_string()],
+                resources: vec![
+                    "sensitive".to_string(),
+                    "pii".to_string(),
+                    "financial".to_string(),
+                ],
+                actions: vec![
+                    "read".to_string(),
+                    "write".to_string(),
+                    "delete".to_string(),
+                ],
                 conditions: vec![Condition {
                     field: "user.clearance_level".to_string(),
                     condition_type: ConditionType::UserAttribute,
