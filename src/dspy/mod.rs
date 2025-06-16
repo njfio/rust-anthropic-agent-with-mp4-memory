@@ -15,9 +15,11 @@
 //! ## Example Usage
 //!
 //! ```rust
-//! use rust_memvid_agent::dspy::{Signature, Module, Predict};
+//! use rust_memvid_agent::dspy::{Signature, Module, Predict, FieldType};
 //! use rust_memvid_agent::anthropic::AnthropicClient;
+//! use rust_memvid_agent::config::AnthropicConfig;
 //! use serde::{Deserialize, Serialize};
+//! use std::sync::Arc;
 //!
 //! #[derive(Serialize, Deserialize)]
 //! struct QuestionInput {
@@ -30,29 +32,118 @@
 //!     reasoning: String,
 //! }
 //!
+//! // Create an Anthropic client
+//! let anthropic_config = AnthropicConfig {
+//!     api_key: "test_key".to_string(),
+//!     model: "claude-3-sonnet-20240229".to_string(),
+//!     base_url: "https://api.anthropic.com".to_string(),
+//!     max_tokens: 1000,
+//!     temperature: 0.7,
+//!     timeout_seconds: 30,
+//!     max_retries: 3,
+//! };
+//! let anthropic_client = Arc::new(AnthropicClient::new(anthropic_config).unwrap());
+//!
 //! // Define a signature for the task
-//! let signature = Signature::<QuestionInput, AnswerOutput>::new()
-//!     .with_input_field("question", "The question to answer")
-//!     .with_output_field("answer", "The final answer")
-//!     .with_output_field("reasoning", "Step-by-step reasoning");
+//! let signature = Signature::<QuestionInput, AnswerOutput>::new("question_answering")
+//!     .with_input_field("question", "The question to answer", FieldType::String)
+//!     .with_output_field("answer", "The final answer", FieldType::String)
+//!     .with_output_field("reasoning", "Step-by-step reasoning", FieldType::String);
 //!
 //! // Create a prediction module
 //! let predict_module = Predict::new(signature, anthropic_client);
 //! ```
 
+pub mod advanced_optimizers;
+pub mod bootstrap;
+pub mod cache;
+pub mod chain;
+pub mod compiler;
+pub mod composition;
 pub mod error;
+pub mod evaluator;
+pub mod examples;
+pub mod metrics;
 pub mod module;
+pub mod modules;
+pub mod multimodal;
+pub mod multimodal_metrics;
+pub mod optimization;
 pub mod predictor;
+pub mod reasoning;
+pub mod causal_reasoning;
 pub mod signature;
+pub mod teleprompter;
+pub mod tool_integration;
+pub mod vision;
+pub mod benchmarks;
+pub mod performance;
 
 #[cfg(test)]
 mod tests;
 
 // Re-export core types for convenience
+pub use advanced_optimizers::{
+    BootstrapFinetuneConfig, BootstrapFinetuneOptimizer, MIPROv2Config, MIPROv2Optimizer,
+    MultiObjectiveConfig, MultiObjectiveOptimizer,
+};
+pub use bootstrap::{BootstrapConfig, BootstrapFewShot, BootstrapStats, ValidationStrictness};
+pub use cache::{Cache, CacheConfig, CacheEntry, CacheStats};
+pub use chain::Chain;
+pub use compiler::{CompilationContext, CompilationMetrics, Compiler, CompilerConfig, CompilerStats};
+pub use composition::{Conditional, Parallel};
 pub use error::{DspyError, DspyResult};
+pub use evaluator::{
+    AnovaResults, EvaluationMetadata, EvaluationResult, EvaluationStats, Evaluator,
+    EvaluatorConfig, ExampleResult, MetricSummary, OverallStats, PairwiseComparison,
+    SignificanceTestResults,
+};
+pub use examples::{Example, ExampleSet, ValidationStats};
+pub use metrics::{
+    AveragingStrategy, CombinationStrategy, CompositeMetric, ExactMatch, F1Score, Metric,
+    MetricResult, SemanticSimilarity, SimilarityAlgorithm, TokenizationStrategy,
+};
 pub use module::{Module, ModuleMetadata, ModuleStats};
+pub use modules::{
+    ChainOfThought, ChainOfThoughtConfig, ProgramOfThought, ProgramOfThoughtConfig,
+    RAG, RAGConfig, RAGResult, ReAct, ReActConfig, ReActStep, SelfImproving,
+    SelfImprovingConfig, ImprovementMetrics, ReasoningMetrics, ReasoningModule,
+    SpecializedModuleConfig, SpecializedModuleRegistry,
+};
+pub use optimization::{OptimizationMetrics, OptimizationStrategy, Optimizer};
 pub use predictor::{Predict, PredictConfig};
 pub use signature::{Field, FieldType, Signature, SignatureBuilder};
+pub use teleprompter::{OptimizationResult, Teleprompter, TeleprompterConfig};
+pub use tool_integration::{
+    DspyModuleTool, DspyToolBuilder, DspyToolMetadata, DspyToolRegistry, ToolMetrics,
+};
+pub use multimodal::{
+    MediaContent, MediaType, MultiModalInput, MultiModalOutput, MultiModalPredict, MultiModalConfig,
+};
+pub use vision::{
+    VisionInput, VisionOutput, VisionLanguageModel, VisionConfig, VisionAnalysisType,
+    DetectedObject, BoundingBox,
+};
+pub use reasoning::{
+    AdvancedReasoning, AdvancedReasoningInput, AdvancedReasoningOutput, AdvancedReasoningConfig,
+    TreeOfThought, ThoughtNode, ReasoningGraph, ReasoningNode, AnalogyMapping, MetaCognition,
+    ReasoningStrategy, ExplorationStrategy, ReasoningStep, AlternativeConclusion,
+};
+pub use causal_reasoning::{
+    CausalReasoning, CausalReasoningInput, CausalReasoningOutput, CausalReasoningConfig,
+    CausalGraph, CausalNode, CausalEdge, CounterfactualScenario, CausalEffect,
+    CausalReasoningType, InterventionType, CausalDiscoveryMethod,
+};
+pub use benchmarks::{
+    BenchmarkSuite, BenchmarkConfig, BenchmarkResults, PerformanceMetrics, ResourceUsage,
+    ErrorAnalysis, OptimizationSuggestion, OptimizationCategory, OptimizationPriority,
+    ImplementationEffort, BenchmarkOutputFormat,
+};
+pub use performance::{
+    PerformanceOptimizer, OptimizerConfig, AdaptiveBatchProcessor, ConnectionPool,
+    RequestCoalescer, MemoryAwareModule, RequestMetric, ResourceMetric, PerformanceSummary,
+    OptimizationType,
+};
 
 use crate::utils::error::{AgentError, Result};
 use serde::{Deserialize, Serialize};

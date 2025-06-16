@@ -145,7 +145,7 @@ impl MetadataExtractor {
         metadata.format = audio_data.format.clone();
 
         // Calculate additional technical metadata
-        let total_samples = audio_data.samples.len();
+        let _total_samples = audio_data.samples.len();
         let bits_per_sample = 16; // Default assumption
         let byte_rate =
             audio_data.sample_rate as u32 * audio_data.channels as u32 * (bits_per_sample / 8);

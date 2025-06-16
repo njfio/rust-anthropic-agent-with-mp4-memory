@@ -67,6 +67,7 @@ toml = "0.8"
 
 # Utilities
 uuid = { version = "1.0", features = ["v4", "serde"] }
+md5 = "0.7"
 # Security dependencies
 jsonwebtoken = "9.2"
 argon2 = "0.5"
@@ -110,6 +111,9 @@ async-trait = "0.1"
 # URL parsing
 url = "2.4"
 
+# Additional dependencies for DSPy
+lazy_static = "1.4"
+
 # Security and validation
 validator = { version = "0.18", features = ["derive"] }
 secrecy = "0.8"
@@ -127,6 +131,11 @@ idna = ">=1.0.0"
 flate2 = "1.1.2"
 lz4_flex = "0.11"
 zstd = "0.13"
+tabled = "0.20.0"
+serde_yaml = "0.9.34"
+csv = "1.3.1"
+atty = "0.2.14"
+dirs = "6.0.0"
 
 [dev-dependencies]
 criterion = "0.5"

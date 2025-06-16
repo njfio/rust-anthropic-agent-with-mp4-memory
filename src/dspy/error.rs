@@ -64,6 +64,18 @@ pub enum DspyError {
     /// Integration errors with other systems
     #[error("Integration error: {system}: {message}")]
     Integration { system: String, message: String },
+
+    /// Chain execution errors
+    #[error("Chain execution error in {module_name} ({stage}): {source}")]
+    ChainExecution {
+        module_name: String,
+        stage: String,
+        source: Box<DspyError>,
+    },
+
+    /// IO errors
+    #[error("IO error: {message}")]
+    Io { message: String },
 }
 
 impl DspyError {
@@ -154,6 +166,36 @@ impl DspyError {
         }
     }
 
+    /// Create a new chain execution error
+    pub fn chain_execution<S: Into<String>>(module_name: S, stage: S, source: DspyError) -> Self {
+        Self::ChainExecution {
+            module_name: module_name.into(),
+            stage: stage.into(),
+            source: Box::new(source),
+        }
+    }
+
+    /// Create a new IO error
+    pub fn io<S: Into<String>>(message: S) -> Self {
+        Self::Io {
+            message: message.into(),
+        }
+    }
+
+    /// Create a new validation error
+    pub fn validation<S: Into<String>>(field: S, message: S) -> Self {
+        Self::TypeValidation {
+            field_name: field.into(),
+            message: message.into(),
+        }
+    }
+
+    /// Create a new invalid input error (alias for validation)
+    pub fn invalid_input<S: Into<String>>(message: S) -> Self {
+        let msg = message.into();
+        Self::validation("input", &msg)
+    }
+
     /// Get the error category for logging and monitoring
     pub fn category(&self) -> &'static str {
         match self {
@@ -168,6 +210,8 @@ impl DspyError {
             Self::Compilation { .. } => "compilation",
             Self::Cache { .. } => "cache",
             Self::Integration { .. } => "integration",
+            Self::ChainExecution { .. } => "chain_execution",
+            Self::Io { .. } => "io",
         }
     }
 
@@ -179,6 +223,7 @@ impl DspyError {
                 | Self::Cache { .. }
                 | Self::Integration { .. }
                 | Self::Optimization { .. }
+                | Self::ChainExecution { .. }
         )
     }
 
@@ -196,6 +241,8 @@ impl DspyError {
             Self::Resource { .. } => ErrorSeverity::Medium,
             Self::Cache { .. } => ErrorSeverity::Low,
             Self::Integration { .. } => ErrorSeverity::Medium,
+            Self::ChainExecution { .. } => ErrorSeverity::High,
+            Self::Io { .. } => ErrorSeverity::Medium,
         }
     }
 
@@ -258,7 +305,27 @@ impl DspyError {
                 system,
                 message
             )),
+            Self::ChainExecution {
+                module_name,
+                stage,
+                source,
+            } => AgentError::Generic(anyhow::anyhow!(
+                "DSPy chain execution error in {} ({}): {}",
+                module_name,
+                stage,
+                source
+            )),
+            Self::Io { message } => AgentError::Generic(anyhow::anyhow!(
+                "DSPy IO error: {}",
+                message
+            )),
         }
+    }
+}
+
+impl From<serde_json::Error> for DspyError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::serialization("json", &error.to_string())
     }
 }
 

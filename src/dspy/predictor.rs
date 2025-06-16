@@ -141,6 +141,12 @@ where
         &self.config
     }
 
+    /// Set configuration (chainable method)
+    pub fn with_config_chain(mut self, config: PredictConfig) -> Self {
+        self.config = config;
+        self
+    }
+
     // Test helper methods
     #[cfg(test)]
     pub async fn test_generate_prompt(&self, input: &I) -> DspyResult<String> {

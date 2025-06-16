@@ -337,7 +337,7 @@ impl CacheManager {
 
     /// Create cache manager with default strategies
     pub async fn with_default_strategies() -> Result<Self> {
-        let mut manager = Self::with_defaults();
+        let manager = Self::with_defaults();
 
         // Add default strategies
         let memory_source: Arc<dyn strategies::DataSource> = Arc::new(

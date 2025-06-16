@@ -60,6 +60,7 @@ logs/
 *.tmp
 *.temp
 .cache/
+dspy_cache/
 
 # Build artifacts
 dist/

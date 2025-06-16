@@ -1,3 +1,4 @@
+pub mod dspy;
 pub mod interactive_console;
 pub mod prompt_system;
 
