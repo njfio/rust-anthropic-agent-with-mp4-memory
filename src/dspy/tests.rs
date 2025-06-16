@@ -8,6 +8,7 @@ use super::*;
 use crate::dspy::{
     error::{DspyError, ErrorSeverity},
     module::{BaseModule, ExecutionContext, Module, ModuleMetadata, ModuleStats},
+    predictor::{Predict, PredictConfig},
     signature::{Field, FieldConstraint, FieldType, Signature, SignatureBuilder},
 };
 use async_trait::async_trait;
@@ -617,4 +618,257 @@ async fn test_dspy_system_initialization_with_invalid_config() {
 
     let result = init_dspy(config).await;
     assert!(result.is_err());
+}
+
+// Predict Module Tests
+mod predict_tests {
+    use super::*;
+    use crate::anthropic::client::AnthropicClient;
+    use crate::config::AnthropicConfig;
+    use std::sync::Arc;
+
+    // Mock Anthropic client for testing
+    struct MockAnthropicClient;
+
+    impl MockAnthropicClient {
+        fn new() -> Arc<AnthropicClient> {
+            // Create a real client for testing - in practice this would be mocked
+            let config = AnthropicConfig::default();
+            Arc::new(AnthropicClient::new(config).expect("Failed to create test client"))
+        }
+    }
+
+    #[test]
+    fn test_predict_config_default() {
+        let config = PredictConfig::default();
+
+        assert_eq!(config.model, "claude-sonnet-4-20250514");
+        assert_eq!(config.max_tokens, 4096);
+        assert_eq!(config.temperature, 0.7);
+        assert!(!config.stream);
+        assert_eq!(config.max_retries, 3);
+        assert_eq!(config.timeout_seconds, 120);
+        assert!(config.enable_security_validation);
+        assert!(config.enable_rate_limiting);
+    }
+
+    #[test]
+    fn test_predict_module_creation() {
+        let signature = SignatureBuilder::<SimpleInput, SimpleOutput>::new("test_predict")
+            .description("Test prediction module")
+            .input_field("text", "Input text", FieldType::String)
+            .output_field("result", "Output result", FieldType::String)
+            .build();
+
+        let client = MockAnthropicClient::new();
+        let predict = Predict::new(signature, client);
+
+        assert_eq!(predict.name(), "predict");
+        assert_eq!(predict.id(), "predict_test_predict");
+        assert_eq!(predict.signature().name, "test_predict");
+        assert_eq!(predict.metadata().description, "DSPy Predict Module");
+    }
+
+    #[test]
+    fn test_predict_module_with_custom_config() {
+        let signature = SignatureBuilder::<SimpleInput, SimpleOutput>::new("custom_predict")
+            .input_field("text", "Input text", FieldType::String)
+            .output_field("result", "Output result", FieldType::String)
+            .build();
+
+        let client = MockAnthropicClient::new();
+        let config = PredictConfig {
+            model: "claude-haiku-3-20240307".to_string(),
+            max_tokens: 2048,
+            temperature: 0.5,
+            stream: true,
+            max_retries: 5,
+            timeout_seconds: 60,
+            enable_security_validation: false,
+            enable_rate_limiting: false,
+        };
+
+        let predict = Predict::with_config(signature, client, config.clone());
+
+        assert_eq!(predict.config().model, "claude-haiku-3-20240307");
+        assert_eq!(predict.config().max_tokens, 2048);
+        assert_eq!(predict.config().temperature, 0.5);
+        assert!(predict.config().stream);
+        assert_eq!(predict.config().max_retries, 5);
+        assert_eq!(predict.config().timeout_seconds, 60);
+        assert!(!predict.config().enable_security_validation);
+        assert!(!predict.config().enable_rate_limiting);
+    }
+
+    #[tokio::test]
+    async fn test_predict_prompt_generation() {
+        let signature = SignatureBuilder::<QuestionInput, AnswerOutput>::new("qa_predict")
+            .description("Question answering prediction")
+            .input_field("question", "The question to answer", FieldType::String)
+            .input_field("context", "Optional context", FieldType::String)
+            .output_field("answer", "The answer", FieldType::String)
+            .output_field("confidence", "Confidence score", FieldType::Float)
+            .build();
+
+        let client = MockAnthropicClient::new();
+        let predict = Predict::new(signature, client);
+
+        let input = QuestionInput {
+            question: "What is the capital of France?".to_string(),
+            context: Some("European geography".to_string()),
+        };
+
+        let prompt = predict.test_generate_prompt(&input).await.unwrap();
+
+        assert!(prompt.contains("Question answering prediction"));
+        assert!(prompt.contains("question"));
+        assert!(prompt.contains("context"));
+    }
+
+    #[tokio::test]
+    async fn test_predict_variable_substitution() {
+        let signature = SignatureBuilder::<SimpleInput, SimpleOutput>::new("substitution_test")
+            .input_field("text", "Input text", FieldType::String)
+            .output_field("result", "Output result", FieldType::String)
+            .build();
+
+        let client = MockAnthropicClient::new();
+        let predict = Predict::new(signature, client);
+
+        let template = "Process this text: {text}. Return the result.";
+        let input_json = json!({"text": "Hello World"});
+
+        let result = predict
+            .test_substitute_variables(template, &input_json)
+            .unwrap();
+        assert_eq!(result, "Process this text: Hello World. Return the result.");
+    }
+
+    #[tokio::test]
+    async fn test_predict_input_validation() {
+        let signature = SignatureBuilder::<SimpleInput, SimpleOutput>::new("validation_test")
+            .input_field("text", "Input text", FieldType::String)
+            .output_field("result", "Output result", FieldType::String)
+            .build();
+
+        let client = MockAnthropicClient::new();
+        let predict = Predict::new(signature, client);
+
+        let valid_input = SimpleInput {
+            text: "Valid input text".to_string(),
+        };
+
+        let result = predict.validate_input(&valid_input).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_predict_output_parsing() {
+        let signature = SignatureBuilder::<SimpleInput, SimpleOutput>::new("parsing_test")
+            .input_field("text", "Input text", FieldType::String)
+            .output_field("result", "Output result", FieldType::String)
+            .build();
+
+        let client = MockAnthropicClient::new();
+        let predict = Predict::new(signature, client);
+
+        let response_json = r#"{"result": "Parsed output"}"#;
+        let output = predict.test_parse_output(response_json).await.unwrap();
+
+        assert_eq!(output.result, "Parsed output");
+    }
+
+    #[tokio::test]
+    async fn test_predict_output_parsing_invalid_json() {
+        let signature = SignatureBuilder::<SimpleInput, SimpleOutput>::new("invalid_parsing_test")
+            .input_field("text", "Input text", FieldType::String)
+            .output_field("result", "Output result", FieldType::String)
+            .build();
+
+        let client = MockAnthropicClient::new();
+        let predict = Predict::new(signature, client);
+
+        let invalid_json = "This is not valid JSON";
+        let result = predict.test_parse_output(invalid_json).await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            DspyError::TypeValidation {
+                field_name,
+                message,
+            } => {
+                assert_eq!(field_name, "output");
+                assert!(message.contains("Failed to parse response as JSON"));
+            }
+            _ => panic!("Expected TypeValidation error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_predict_chat_request_creation() {
+        let signature = SignatureBuilder::<SimpleInput, SimpleOutput>::new("request_test")
+            .input_field("text", "Input text", FieldType::String)
+            .output_field("result", "Output result", FieldType::String)
+            .build();
+
+        let client = MockAnthropicClient::new();
+        let config = PredictConfig {
+            model: "test-model".to_string(),
+            max_tokens: 1024,
+            temperature: 0.8,
+            stream: true,
+            ..Default::default()
+        };
+        let predict = Predict::with_config(signature, client, config);
+
+        let prompt = "Test prompt for API request";
+        let request = predict.test_create_chat_request(prompt).await.unwrap();
+
+        assert_eq!(request.model, "test-model");
+        assert_eq!(request.max_tokens, 1024);
+        assert_eq!(request.temperature, Some(0.8));
+        assert_eq!(request.stream, Some(true));
+        assert_eq!(request.messages.len(), 1);
+        assert!(request.system.is_some());
+        assert!(request.system.unwrap().contains("JSON"));
+    }
+
+    #[test]
+    fn test_predict_module_metadata() {
+        let signature = SignatureBuilder::<SimpleInput, SimpleOutput>::new("metadata_test")
+            .input_field("text", "Input text", FieldType::String)
+            .output_field("result", "Output result", FieldType::String)
+            .build();
+
+        let client = MockAnthropicClient::new();
+        let predict = Predict::new(signature, client);
+
+        let metadata = predict.metadata();
+        assert_eq!(metadata.description, "DSPy Predict Module");
+        assert_eq!(metadata.version, "1.0.0");
+        assert_eq!(metadata.author, Some("DSPy Integration".to_string()));
+        assert!(metadata.tags.contains(&"prediction".to_string()));
+        assert!(metadata.tags.contains(&"llm".to_string()));
+        assert_eq!(
+            metadata.custom.get("signature_name"),
+            Some(&json!("metadata_test"))
+        );
+    }
+
+    #[test]
+    fn test_predict_module_stats_access() {
+        let signature = SignatureBuilder::<SimpleInput, SimpleOutput>::new("stats_test")
+            .input_field("text", "Input text", FieldType::String)
+            .output_field("result", "Output result", FieldType::String)
+            .build();
+
+        let client = MockAnthropicClient::new();
+        let predict = Predict::new(signature, client);
+
+        let stats = predict.stats();
+        assert_eq!(stats.execution_count, 0);
+        assert_eq!(stats.success_count, 0);
+        assert_eq!(stats.error_count, 0);
+        assert_eq!(stats.success_rate(), 0.0);
+    }
 }

@@ -42,6 +42,7 @@
 
 pub mod error;
 pub mod module;
+pub mod predictor;
 pub mod signature;
 
 #[cfg(test)]
@@ -50,6 +51,7 @@ mod tests;
 // Re-export core types for convenience
 pub use error::{DspyError, DspyResult};
 pub use module::{Module, ModuleMetadata, ModuleStats};
+pub use predictor::{Predict, PredictConfig};
 pub use signature::{Field, FieldType, Signature, SignatureBuilder};
 
 use crate::utils::error::{AgentError, Result};
