@@ -41,7 +41,9 @@ impl Default for ChainOfThoughtConfig {
     fn default() -> Self {
         Self {
             base: SpecializedModuleConfig::default(),
-            reasoning_template: "Let's think step by step:\n\n{reasoning}\n\nTherefore, the answer is: {answer}".to_string(),
+            reasoning_template:
+                "Let's think step by step:\n\n{reasoning}\n\nTherefore, the answer is: {answer}"
+                    .to_string(),
             include_step_numbers: true,
             validate_chain: true,
             min_confidence: 0.7,
@@ -81,10 +83,7 @@ where
     O: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone,
 {
     /// Create a new Chain of Thought module
-    pub fn new(
-        signature: Signature<I, O>,
-        anthropic_client: Arc<AnthropicClient>,
-    ) -> Self {
+    pub fn new(signature: Signature<I, O>, anthropic_client: Arc<AnthropicClient>) -> Self {
         let id = Uuid::new_v4().to_string();
         let name = format!("ChainOfThought_{}", &id[..8]);
 
@@ -138,7 +137,7 @@ where
         }
 
         prompt.push_str(&self.config.reasoning_template);
-        
+
         Ok(prompt)
     }
 
@@ -150,14 +149,15 @@ where
 
         for (i, line) in lines.iter().enumerate() {
             let trimmed = line.trim();
-            
+
             // Look for step indicators
-            if trimmed.starts_with(&format!("Step {}:", current_step)) ||
-               trimmed.starts_with(&format!("{}.", current_step)) ||
-               (trimmed.starts_with("Step") && trimmed.contains(&current_step.to_string())) {
-                
+            if trimmed.starts_with(&format!("Step {}:", current_step))
+                || trimmed.starts_with(&format!("{}.", current_step))
+                || (trimmed.starts_with("Step") && trimmed.contains(&current_step.to_string()))
+            {
                 let input = trimmed.to_string();
-                let output = lines.get(i + 1)
+                let output = lines
+                    .get(i + 1)
                     .map(|l| l.trim().to_string())
                     .unwrap_or_default();
 
@@ -212,12 +212,12 @@ where
         for indicator in &answer_indicators {
             if let Some(pos) = response.find(indicator) {
                 let answer_text = &response[pos + indicator.len()..].trim();
-                
+
                 // Try to parse as JSON first
                 if let Ok(answer) = serde_json::from_str::<O>(answer_text) {
                     return Ok(answer);
                 }
-                
+
                 // If JSON parsing fails, try to extract from the text
                 if let Ok(answer) = serde_json::from_str::<O>(&format!("\"{}\"", answer_text)) {
                     return Ok(answer);
@@ -230,7 +230,7 @@ where
             if let Ok(answer) = serde_json::from_str::<O>(&last_step.output) {
                 return Ok(answer);
             }
-            
+
             if let Ok(answer) = serde_json::from_str::<O>(&format!("\"{}\"", last_step.output)) {
                 return Ok(answer);
             }
@@ -262,9 +262,8 @@ where
         factors += 1;
 
         // Factor 2: Average step length (longer steps might indicate more detailed reasoning)
-        let avg_length = steps.iter()
-            .map(|s| s.output.len())
-            .sum::<usize>() as f64 / steps.len() as f64;
+        let avg_length =
+            steps.iter().map(|s| s.output.len()).sum::<usize>() as f64 / steps.len() as f64;
         let length_score = (avg_length / 100.0).min(1.0); // Normalize to 100 chars
         quality_score += length_score * 0.2;
         factors += 1;
@@ -283,15 +282,23 @@ where
         let mut content_score = 0.0;
         for step in steps {
             let mut step_score = 0.5f64; // Base score
-            
+
             // Check for reasoning keywords
-            let reasoning_keywords = ["because", "therefore", "since", "thus", "hence", "so", "given"];
+            let reasoning_keywords = [
+                "because",
+                "therefore",
+                "since",
+                "thus",
+                "hence",
+                "so",
+                "given",
+            ];
             for keyword in &reasoning_keywords {
                 if step.output.to_lowercase().contains(keyword) {
                     step_score += 0.1;
                 }
             }
-            
+
             content_score += step_score.min(1.0f64);
         }
         content_score /= steps.len() as f64;
@@ -325,10 +332,10 @@ where
 
     async fn forward(&self, input: Self::Input) -> DspyResult<Self::Output> {
         let start_time = std::time::Instant::now();
-        
+
         // Generate reasoning prompt
         let prompt = self.generate_reasoning_prompt(&input)?;
-        
+
         // Execute reasoning with retries
         let mut attempts = 0;
         let mut best_result = None;
@@ -336,7 +343,7 @@ where
 
         while attempts <= self.config.max_retries {
             attempts += 1;
-            
+
             // TODO: Call Anthropic API with the prompt
             // For now, simulate a response
             let response = format!(
@@ -345,10 +352,10 @@ where
 
             // Parse reasoning steps
             let reasoning_steps = self.parse_reasoning(&response);
-            
+
             // Validate reasoning quality
             let confidence = self.validate_reasoning_quality(&reasoning_steps);
-            
+
             if confidence >= self.config.min_confidence || attempts > self.config.max_retries {
                 // Extract answer
                 match self.extract_answer(&response, &reasoning_steps) {
@@ -356,17 +363,17 @@ where
                         // Update state
                         *self.last_reasoning_steps.write().await = reasoning_steps.clone();
                         *self.last_confidence.write().await = confidence;
-                        
+
                         // Update metrics
                         let execution_time = start_time.elapsed().as_millis() as f64;
                         let mut metrics = self.metrics.write().await;
                         metrics.record_success(reasoning_steps.len(), execution_time, confidence);
-                        
+
                         info!(
                             "Chain of Thought completed successfully in {} attempts with confidence {:.3}",
                             attempts, confidence
                         );
-                        
+
                         return Ok(answer);
                     }
                     Err(e) => {
@@ -377,7 +384,7 @@ where
                     }
                 }
             }
-            
+
             if attempts <= self.config.max_retries {
                 debug!("Retrying Chain of Thought reasoning (attempt {})", attempts);
             }
@@ -389,7 +396,10 @@ where
         metrics.record_failure(execution_time);
 
         Err(best_result.unwrap_or_else(|| {
-            DspyError::module(self.name(), "Failed to generate valid reasoning chain after all retries")
+            DspyError::module(
+                self.name(),
+                "Failed to generate valid reasoning chain after all retries",
+            )
         }))
     }
 
@@ -409,15 +419,18 @@ where
     }
 
     async fn compile(&mut self, examples: Vec<(Self::Input, Self::Output)>) -> DspyResult<()> {
-        info!("Compiling Chain of Thought module with {} examples", examples.len());
-        
+        info!(
+            "Compiling Chain of Thought module with {} examples",
+            examples.len()
+        );
+
         // Analyze examples to improve reasoning template
         if !examples.is_empty() {
             // TODO: Implement example-based optimization
             // This could involve analyzing successful reasoning patterns
             // and updating the reasoning template accordingly
         }
-        
+
         Ok(())
     }
 }
@@ -478,6 +491,9 @@ impl ModuleInfo for ChainOfThought<(), ()> {
     }
 
     fn supports_capability(&self, capability: &str) -> bool {
-        matches!(capability, "reasoning" | "step_by_step" | "logical_thinking" | "problem_decomposition")
+        matches!(
+            capability,
+            "reasoning" | "step_by_step" | "logical_thinking" | "problem_decomposition"
+        )
     }
 }

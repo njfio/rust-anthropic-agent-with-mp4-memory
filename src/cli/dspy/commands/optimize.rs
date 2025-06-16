@@ -2,9 +2,9 @@
 //!
 //! This module implements CLI commands for DSPy module optimization workflows.
 
-use crate::cli::dspy::{DspyCliContext, DspyCliResult};
 use crate::cli::dspy::commands::{OptimizeCommand, OutputFormat};
 use crate::cli::dspy::utils::{OutputFormatter, ValidationUtils};
+use crate::cli::dspy::{DspyCliContext, DspyCliResult};
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 use tracing::{debug, info};
@@ -15,18 +15,48 @@ pub async fn execute_optimize_command(
     context: &DspyCliContext,
 ) -> DspyCliResult<()> {
     match command {
-        OptimizeCommand::Run { module, strategy, examples, iterations, target_metric, threshold, output, resume } => {
-            run_optimization(context, module, strategy, examples, iterations, target_metric, threshold, output, resume).await
+        OptimizeCommand::Run {
+            module,
+            strategy,
+            examples,
+            iterations,
+            target_metric,
+            threshold,
+            output,
+            resume,
+        } => {
+            run_optimization(
+                context,
+                module,
+                strategy,
+                examples,
+                iterations,
+                target_metric,
+                threshold,
+                output,
+                resume,
+            )
+            .await
         }
-        OptimizeCommand::Strategies { format, category, describe } => {
-            list_strategies(context, format, category, describe).await
-        }
-        OptimizeCommand::History { module, limit, format, strategy, successful_only } => {
-            show_history(context, module, limit, format, strategy, successful_only).await
-        }
-        OptimizeCommand::Apply { module, result_id, backup, force, validate } => {
-            apply_optimization(context, module, result_id, backup, force, validate).await
-        }
+        OptimizeCommand::Strategies {
+            format,
+            category,
+            describe,
+        } => list_strategies(context, format, category, describe).await,
+        OptimizeCommand::History {
+            module,
+            limit,
+            format,
+            strategy,
+            successful_only,
+        } => show_history(context, module, limit, format, strategy, successful_only).await,
+        OptimizeCommand::Apply {
+            module,
+            result_id,
+            backup,
+            force,
+            validate,
+        } => apply_optimization(context, module, result_id, backup, force, validate).await,
     }
 }
 
@@ -66,13 +96,13 @@ async fn run_optimization(
     _resume: Option<String>,
 ) -> DspyCliResult<()> {
     debug!("Running optimization on module: {}", module);
-    
+
     // Validate inputs
     ValidationUtils::validate_module_name(&module)?;
     ValidationUtils::validate_iterations(iterations)?;
-    
+
     let strategy = strategy.unwrap_or_else(|| context.cli_config.dspy.default_strategy.clone());
-    
+
     // TODO: Implement actual optimization
     // This would involve:
     // 1. Load the module
@@ -81,7 +111,7 @@ async fn run_optimization(
     // 4. Run optimization iterations
     // 5. Track progress and metrics
     // 6. Save results
-    
+
     // Placeholder result
     let result = OptimizationResult {
         id: uuid::Uuid::new_v4().to_string(),
@@ -94,10 +124,13 @@ async fn run_optimization(
         status: "completed".to_string(),
         timestamp: chrono::Utc::now().to_rfc3339(),
     };
-    
+
     OutputFormatter::print(&result, OutputFormat::Table)?;
-    info!("Completed optimization for module: {} using strategy: {}", module, strategy);
-    
+    info!(
+        "Completed optimization for module: {} using strategy: {}",
+        module, strategy
+    );
+
     Ok(())
 }
 
@@ -109,9 +142,9 @@ async fn list_strategies(
     describe: Option<String>,
 ) -> DspyCliResult<()> {
     debug!("Listing optimization strategies");
-    
+
     let format = format.unwrap_or(OutputFormat::Table);
-    
+
     // If describe is provided, show detailed information for that strategy
     if let Some(strategy_name) = describe {
         // TODO: Implement detailed strategy description
@@ -120,7 +153,7 @@ async fn list_strategies(
         println!("Parameters: Parameter details would go here");
         return Ok(());
     }
-    
+
     // Get strategies from configuration
     let mut strategies = Vec::new();
     for (name, config) in &context.cli_config.optimization.strategies {
@@ -131,15 +164,15 @@ async fn list_strategies(
             parameters: config.to_string(),
         });
     }
-    
+
     // Apply category filter if provided
     if let Some(filter_category) = category {
         strategies.retain(|strategy| strategy.category == filter_category);
     }
-    
+
     OutputFormatter::print_list(&strategies, format)?;
     info!("Listed {} optimization strategies", strategies.len());
-    
+
     Ok(())
 }
 
@@ -153,18 +186,18 @@ async fn show_history(
     _successful_only: bool,
 ) -> DspyCliResult<()> {
     debug!("Showing optimization history for module: {}", module);
-    
+
     let format = format.unwrap_or(OutputFormat::Table);
-    
+
     // Validate module name
     ValidationUtils::validate_module_name(&module)?;
-    
+
     // TODO: Implement actual history retrieval
     // This would involve:
     // 1. Query optimization history database
     // 2. Apply filters
     // 3. Format results
-    
+
     // Placeholder history data
     let mut history = vec![
         OptimizationResult {
@@ -190,15 +223,15 @@ async fn show_history(
             timestamp: "2024-01-14T15:30:00Z".to_string(),
         },
     ];
-    
+
     // Apply strategy filter if provided
     if let Some(filter_strategy) = strategy {
         history.retain(|result| result.strategy == filter_strategy);
     }
-    
+
     OutputFormatter::print_list(&history, format)?;
     info!("Displayed optimization history for module: {}", module);
-    
+
     Ok(())
 }
 
@@ -212,23 +245,23 @@ async fn apply_optimization(
     _validate: bool,
 ) -> DspyCliResult<()> {
     debug!("Applying optimization {} to module: {}", result_id, module);
-    
+
     // Validate inputs
     ValidationUtils::validate_module_name(&module)?;
-    
+
     // Confirm application if not forced
     if !force {
         let confirmed = crate::cli::dspy::utils::InteractionUtils::confirm(
             &format!("Apply optimization {} to module '{}'?", result_id, module),
             false,
         )?;
-        
+
         if !confirmed {
             println!("Optimization application cancelled");
             return Ok(());
         }
     }
-    
+
     // TODO: Implement actual optimization application
     // This would involve:
     // 1. Load optimization result
@@ -236,14 +269,17 @@ async fn apply_optimization(
     // 3. Apply optimized parameters to module
     // 4. Validate the updated module
     // 5. Update module registry
-    
+
     if backup {
         println!("✓ Backup created for module '{}'", module);
     }
-    
-    println!("✓ Optimization {} applied to module '{}'", result_id, module);
+
+    println!(
+        "✓ Optimization {} applied to module '{}'",
+        result_id, module
+    );
     info!("Applied optimization {} to module: {}", result_id, module);
-    
+
     Ok(())
 }
 
@@ -264,7 +300,7 @@ mod tests {
             status: "completed".to_string(),
             timestamp: "2024-01-15T10:00:00Z".to_string(),
         };
-        
+
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("test_module"));
         assert!(json.contains("mipro_v2"));
@@ -279,7 +315,7 @@ mod tests {
             description: "Multi-stage instruction proposal and revision".to_string(),
             parameters: "max_candidates: 50".to_string(),
         };
-        
+
         let json = serde_json::to_string(&strategy).unwrap();
         assert!(json.contains("mipro_v2"));
         assert!(json.contains("optimization"));

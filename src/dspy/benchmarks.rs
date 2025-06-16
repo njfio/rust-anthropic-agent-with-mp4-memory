@@ -168,11 +168,11 @@ pub enum OptimizationPriority {
 /// Implementation effort estimation
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ImplementationEffort {
-    Trivial,    // < 1 hour
-    Easy,       // 1-4 hours
-    Medium,     // 1-2 days
-    Hard,       // 1-2 weeks
-    Complex,    // > 2 weeks
+    Trivial, // < 1 hour
+    Easy,    // 1-4 hours
+    Medium,  // 1-2 days
+    Hard,    // 1-2 weeks
+    Complex, // > 2 weeks
 }
 
 /// Benchmark suite for DSPy modules
@@ -209,7 +209,10 @@ impl BenchmarkSuite {
         info!("Starting benchmark for module: {}", module.name());
 
         if test_inputs.is_empty() {
-            return Err(DspyError::configuration("test_inputs", "No test inputs provided"));
+            return Err(DspyError::configuration(
+                "test_inputs",
+                "No test inputs provided",
+            ));
         }
 
         let start_time = Instant::now();
@@ -218,14 +221,20 @@ impl BenchmarkSuite {
         let mut resource_samples = Vec::new();
 
         // Warmup phase
-        info!("Running warmup phase with {} iterations", self.config.warmup_iterations);
+        info!(
+            "Running warmup phase with {} iterations",
+            self.config.warmup_iterations
+        );
         for i in 0..self.config.warmup_iterations {
             let input = &test_inputs[i % test_inputs.len()];
             let _ = self.run_single_request(module, input.clone()).await;
         }
 
         // Benchmark phase
-        info!("Running benchmark phase with {} iterations", self.config.benchmark_iterations);
+        info!(
+            "Running benchmark phase with {} iterations",
+            self.config.benchmark_iterations
+        );
         for i in 0..self.config.benchmark_iterations {
             let input = &test_inputs[i % test_inputs.len()];
 
@@ -236,8 +245,9 @@ impl BenchmarkSuite {
             let request_start = Instant::now();
             let result = timeout(
                 Duration::from_secs(self.config.timeout_seconds),
-                self.run_single_request(module, input.clone())
-            ).await;
+                self.run_single_request(module, input.clone()),
+            )
+            .await;
 
             let latency = request_start.elapsed();
             latencies.push(latency.as_millis() as f64);
@@ -261,7 +271,11 @@ impl BenchmarkSuite {
 
             // Progress reporting
             if (i + 1) % (self.config.benchmark_iterations / 10).max(1) == 0 {
-                debug!("Completed {}/{} benchmark iterations", i + 1, self.config.benchmark_iterations);
+                debug!(
+                    "Completed {}/{} benchmark iterations",
+                    i + 1,
+                    self.config.benchmark_iterations
+                );
             }
         }
 
@@ -295,11 +309,7 @@ impl BenchmarkSuite {
     }
 
     /// Run a single request against the module
-    async fn run_single_request<I, O, M>(
-        &self,
-        module: &M,
-        input: I,
-    ) -> DspyResult<O>
+    async fn run_single_request<I, O, M>(&self, module: &M, input: I) -> DspyResult<O>
     where
         M: Module<Input = I, Output = O>,
     {
@@ -310,7 +320,7 @@ impl BenchmarkSuite {
     async fn sample_resource_usage(&self) -> ResourceSample {
         // In a real implementation, this would use system APIs to get actual resource usage
         ResourceSample {
-            memory_mb: 100.0, // Mock value
+            memory_mb: 100.0,  // Mock value
             cpu_percent: 25.0, // Mock value
             timestamp: Instant::now(),
         }
@@ -391,7 +401,8 @@ impl BenchmarkSuite {
 
         for i in 1..=10 {
             let upper_bound = bucket_size * i as f64;
-            let cumulative_count = sorted_latencies.iter()
+            let cumulative_count = sorted_latencies
+                .iter()
                 .filter(|&&latency| latency <= upper_bound)
                 .count();
 
@@ -412,7 +423,10 @@ impl BenchmarkSuite {
     }
 
     /// Analyze resource usage
-    fn analyze_resource_usage(&self, samples: &[(ResourceSample, ResourceSample)]) -> ResourceUsage {
+    fn analyze_resource_usage(
+        &self,
+        samples: &[(ResourceSample, ResourceSample)],
+    ) -> ResourceUsage {
         if samples.is_empty() {
             return ResourceUsage {
                 peak_memory_mb: 0.0,
@@ -428,24 +442,20 @@ impl BenchmarkSuite {
             };
         }
 
-        let memory_values: Vec<f64> = samples.iter()
-            .map(|(_, post)| post.memory_mb)
-            .collect();
-        let cpu_values: Vec<f64> = samples.iter()
-            .map(|(_, post)| post.cpu_percent)
-            .collect();
+        let memory_values: Vec<f64> = samples.iter().map(|(_, post)| post.memory_mb).collect();
+        let cpu_values: Vec<f64> = samples.iter().map(|(_, post)| post.cpu_percent).collect();
 
         ResourceUsage {
             peak_memory_mb: memory_values.iter().fold(0.0, |a, &b| a.max(b)),
             average_memory_mb: memory_values.iter().sum::<f64>() / memory_values.len() as f64,
             peak_cpu_percent: cpu_values.iter().fold(0.0, |a, &b| a.max(b)),
             average_cpu_percent: cpu_values.iter().sum::<f64>() / cpu_values.len() as f64,
-            network_bytes_sent: 1024 * 100, // Mock value
+            network_bytes_sent: 1024 * 100,     // Mock value
             network_bytes_received: 1024 * 200, // Mock value
-            disk_reads: 10, // Mock value
-            disk_writes: 5, // Mock value
-            gc_collections: 2, // Mock value
-            gc_time_ms: 10.0, // Mock value
+            disk_reads: 10,                     // Mock value
+            disk_writes: 5,                     // Mock value
+            gc_collections: 2,                  // Mock value
+            gc_time_ms: 10.0,                   // Mock value
         }
     }
 
@@ -458,14 +468,16 @@ impl BenchmarkSuite {
             *error_types.entry(error_type).or_insert(0) += 1;
         }
 
-        let most_common_errors: Vec<ErrorFrequency> = error_types.iter()
+        let most_common_errors: Vec<ErrorFrequency> = error_types
+            .iter()
             .map(|(error_type, &count)| {
                 let percentage = count as f64 / errors.len() as f64 * 100.0;
                 ErrorFrequency {
                     error_type: error_type.clone(),
                     count,
                     percentage,
-                    sample_message: errors.iter()
+                    sample_message: errors
+                        .iter()
                         .find(|e| self.classify_error(e) == *error_type)
                         .cloned()
                         .unwrap_or_default(),
@@ -510,7 +522,8 @@ impl BenchmarkSuite {
             suggestions.push(OptimizationSuggestion {
                 category: OptimizationCategory::Caching,
                 priority: OptimizationPriority::High,
-                description: "High average latency detected. Consider implementing caching.".to_string(),
+                description: "High average latency detected. Consider implementing caching."
+                    .to_string(),
                 expected_improvement: "30-50% latency reduction".to_string(),
                 implementation_effort: ImplementationEffort::Medium,
                 code_example: Some("module.enable_caching(CacheConfig::default())".to_string()),
@@ -522,7 +535,8 @@ impl BenchmarkSuite {
             suggestions.push(OptimizationSuggestion {
                 category: OptimizationCategory::MemoryOptimization,
                 priority: OptimizationPriority::Medium,
-                description: "High memory usage detected. Consider memory optimization.".to_string(),
+                description: "High memory usage detected. Consider memory optimization."
+                    .to_string(),
                 expected_improvement: "20-40% memory reduction".to_string(),
                 implementation_effort: ImplementationEffort::Hard,
                 code_example: Some("Use streaming processing for large inputs".to_string()),
@@ -534,7 +548,8 @@ impl BenchmarkSuite {
             suggestions.push(OptimizationSuggestion {
                 category: OptimizationCategory::ConfigurationTuning,
                 priority: OptimizationPriority::Critical,
-                description: "High error rate detected. Review configuration and error handling.".to_string(),
+                description: "High error rate detected. Review configuration and error handling."
+                    .to_string(),
                 expected_improvement: "Reduce error rate to < 1%".to_string(),
                 implementation_effort: ImplementationEffort::Easy,
                 code_example: Some("Increase timeout and add retry logic".to_string()),
@@ -564,26 +579,20 @@ impl BenchmarkSuite {
     /// Export results in specified format
     pub fn export_results(&self, format: BenchmarkOutputFormat) -> DspyResult<String> {
         match format {
-            BenchmarkOutputFormat::Json => {
-                serde_json::to_string_pretty(&self.results)
-                    .map_err(|e| DspyError::serialization("benchmark_results", &e.to_string()))
-            }
-            BenchmarkOutputFormat::Csv => {
-                self.export_csv()
-            }
-            BenchmarkOutputFormat::Table => {
-                Ok(self.export_table())
-            }
-            BenchmarkOutputFormat::Prometheus => {
-                Ok(self.export_prometheus())
-            }
+            BenchmarkOutputFormat::Json => serde_json::to_string_pretty(&self.results)
+                .map_err(|e| DspyError::serialization("benchmark_results", &e.to_string())),
+            BenchmarkOutputFormat::Csv => self.export_csv(),
+            BenchmarkOutputFormat::Table => Ok(self.export_table()),
+            BenchmarkOutputFormat::Prometheus => Ok(self.export_prometheus()),
         }
     }
 
     /// Export results as CSV
     fn export_csv(&self) -> DspyResult<String> {
         let mut csv = String::new();
-        csv.push_str("module_name,avg_latency_ms,p95_latency_ms,throughput_rps,error_rate,peak_memory_mb\n");
+        csv.push_str(
+            "module_name,avg_latency_ms,p95_latency_ms,throughput_rps,error_rate,peak_memory_mb\n",
+        );
 
         for result in &self.results {
             csv.push_str(&format!(

@@ -43,7 +43,7 @@ impl Default for CompilerConfig {
         Self {
             enable_caching: true,
             cache_dir: PathBuf::from("./dspy_cache"),
-            max_cache_size_mb: 1024, // 1GB
+            max_cache_size_mb: 1024,  // 1GB
             cache_ttl_seconds: 86400, // 24 hours
             enable_monitoring: true,
             compilation_timeout_seconds: 3600, // 1 hour
@@ -165,7 +165,9 @@ impl Compiler {
         info!("Starting module compilation");
 
         // Generate compilation context
-        let context = self.generate_context(module, &trainset, teleprompter).await?;
+        let context = self
+            .generate_context(module, &trainset, teleprompter)
+            .await?;
 
         // Check cache first
         if self.config.enable_caching {
@@ -178,7 +180,9 @@ impl Compiler {
         }
 
         // Perform compilation
-        let result = self.perform_compilation(module, teleprompter, trainset, &context).await?;
+        let result = self
+            .perform_compilation(module, teleprompter, trainset, &context)
+            .await?;
 
         // Cache the result
         if self.config.enable_caching {
@@ -235,12 +239,12 @@ impl Compiler {
         M: Module<Input = I, Output = O> + Send + Sync,
     {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        
+
         // Hash module metadata
         module.metadata().description.hash(&mut hasher);
         module.metadata().version.hash(&mut hasher);
         module.metadata().tags.hash(&mut hasher);
-        
+
         Ok(format!("{:x}", hasher.finish()))
     }
 
@@ -251,17 +255,17 @@ impl Compiler {
         O: Clone + Serialize + for<'de> Deserialize<'de> + Send + Sync + Hash,
     {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        
+
         // Hash training set characteristics
         trainset.len().hash(&mut hasher);
-        
+
         // Hash a sample of examples for efficiency
         let sample_size = std::cmp::min(10, trainset.len());
         for example in trainset.examples().iter().take(sample_size) {
             example.id.hash(&mut hasher);
             example.quality_score.to_bits().hash(&mut hasher);
         }
-        
+
         Ok(format!("{:x}", hasher.finish()))
     }
 
@@ -282,21 +286,23 @@ impl Compiler {
 
         // Set compilation timeout
         let timeout = Duration::from_secs(self.config.compilation_timeout_seconds);
-        
+
         // Perform optimization with timeout
-        let result = tokio::time::timeout(
-            timeout,
-            teleprompter.optimize(module, trainset)
-        ).await
-        .map_err(|_| DspyError::compilation("compilation_timeout", "Compilation timed out"))?
-        .map_err(|e| DspyError::compilation("optimization_failed", &format!("Optimization failed: {}", e)))?;
+        let result = tokio::time::timeout(timeout, teleprompter.optimize(module, trainset))
+            .await
+            .map_err(|_| DspyError::compilation("compilation_timeout", "Compilation timed out"))?
+            .map_err(|e| {
+                DspyError::compilation(
+                    "optimization_failed",
+                    &format!("Optimization failed: {}", e),
+                )
+            })?;
 
         // Validate result
         if result.metrics.best_score < self.config.validation_threshold {
             warn!(
                 "Compilation result below threshold: {} < {}",
-                result.metrics.best_score,
-                self.config.validation_threshold
+                result.metrics.best_score, self.config.validation_threshold
             );
         }
 
@@ -304,23 +310,26 @@ impl Compiler {
     }
 
     /// Get cached compilation result
-    async fn get_cached_compilation(&self, module_hash: &str) -> DspyResult<Option<CachedCompilation>> {
+    async fn get_cached_compilation(
+        &self,
+        module_hash: &str,
+    ) -> DspyResult<Option<CachedCompilation>> {
         let cache = self.cache.read().await;
-        
+
         if let Some(cached) = cache.get(module_hash) {
             // Check if cache entry is still valid
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs();
-            
+
             if now - cached.created_at < self.config.cache_ttl_seconds {
                 return Ok(Some(cached.clone()));
             } else {
                 debug!("Cache entry expired for module hash: {}", module_hash);
             }
         }
-        
+
         Ok(None)
     }
 
@@ -331,12 +340,12 @@ impl Compiler {
         result: &OptimizationResult,
     ) -> DspyResult<()> {
         let mut cache = self.cache.write().await;
-        
+
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let cached_compilation = CachedCompilation {
             context: context.clone(),
             parameters: HashMap::new(), // TODO: Extract module parameters
@@ -345,19 +354,19 @@ impl Compiler {
             last_accessed: now,
             access_count: 1,
         };
-        
+
         cache.insert(context.module_hash.clone(), cached_compilation);
-        
+
         // Clean up old entries if cache is too large
         self.cleanup_cache(&mut cache).await;
-        
+
         Ok(())
     }
 
     /// Update cache access statistics
     async fn update_cache_access(&self, module_hash: &str) -> DspyResult<()> {
         let mut cache = self.cache.write().await;
-        
+
         if let Some(cached) = cache.get_mut(module_hash) {
             cached.last_accessed = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -365,7 +374,7 @@ impl Compiler {
                 .as_secs();
             cached.access_count += 1;
         }
-        
+
         Ok(())
     }
 
@@ -376,32 +385,32 @@ impl Compiler {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
-        cache.retain(|_, cached| {
-            now - cached.created_at < self.config.cache_ttl_seconds
-        });
-        
+
+        cache.retain(|_, cached| now - cached.created_at < self.config.cache_ttl_seconds);
+
         // TODO: Implement size-based cleanup if needed
     }
 
     /// Update compiler statistics
     async fn update_stats(&self, cache_hit: bool, compilation_time: Duration) {
         let mut stats = self.stats.write().await;
-        
+
         stats.total_compilations += 1;
-        
+
         if cache_hit {
-            stats.cache_hit_rate = (stats.cache_hit_rate * (stats.total_compilations - 1) as f64 + 1.0) 
+            stats.cache_hit_rate = (stats.cache_hit_rate * (stats.total_compilations - 1) as f64
+                + 1.0)
                 / stats.total_compilations as f64;
         } else {
-            stats.cache_hit_rate = (stats.cache_hit_rate * (stats.total_compilations - 1) as f64) 
+            stats.cache_hit_rate = (stats.cache_hit_rate * (stats.total_compilations - 1) as f64)
                 / stats.total_compilations as f64;
             stats.successful_compilations += 1;
         }
-        
+
         let time_ms = compilation_time.as_millis() as f64;
-        stats.avg_compilation_time_ms = (stats.avg_compilation_time_ms * (stats.total_compilations - 1) as f64 + time_ms) 
-            / stats.total_compilations as f64;
+        stats.avg_compilation_time_ms =
+            (stats.avg_compilation_time_ms * (stats.total_compilations - 1) as f64 + time_ms)
+                / stats.total_compilations as f64;
     }
 
     /// Get compiler statistics

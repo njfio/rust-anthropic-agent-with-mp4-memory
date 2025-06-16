@@ -108,9 +108,7 @@ where
         description: Option<String>,
     ) -> DspyResult<Self> {
         let name = tool_name.unwrap_or_else(|| module.name().to_string());
-        let desc = description.unwrap_or_else(|| {
-            format!("DSPy module: {}", module.name())
-        });
+        let desc = description.unwrap_or_else(|| format!("DSPy module: {}", module.name()));
 
         // Generate input schema from signature
         let signature = module.signature();
@@ -149,8 +147,9 @@ where
     /// Convert input JSON to typed input
     fn convert_input(&self, input: &Value) -> DspyResult<I> {
         // Extract the actual input from the JSON structure
-        let input_value = input.get("input")
-            .ok_or_else(|| DspyError::invalid_input("Missing 'input' field in tool input".to_string()))?;
+        let input_value = input.get("input").ok_or_else(|| {
+            DspyError::invalid_input("Missing 'input' field in tool input".to_string())
+        })?;
 
         serde_json::from_value(input_value.clone())
             .map_err(|e| DspyError::invalid_input(format!("Failed to deserialize input: {}", e)))
@@ -158,8 +157,9 @@ where
 
     /// Convert typed output to JSON
     fn convert_output(&self, output: &O) -> DspyResult<String> {
-        serde_json::to_string_pretty(output)
-            .map_err(|e| DspyError::serialization("output", &format!("Failed to serialize output: {}", e)))
+        serde_json::to_string_pretty(output).map_err(|e| {
+            DspyError::serialization("output", &format!("Failed to serialize output: {}", e))
+        })
     }
 }
 
@@ -189,19 +189,17 @@ where
 
         // Execute the DSPy module
         let result = match self.module.forward(typed_input).await {
-            Ok(output) => {
-                match self.convert_output(&output) {
-                    Ok(output_str) => {
-                        let execution_time = start_time.elapsed().as_millis() as f64;
-                        debug!("DSPy tool executed successfully in {:.2}ms", execution_time);
-                        ToolResult::success(output_str)
-                    }
-                    Err(e) => {
-                        error!("DSPy tool output conversion failed: {}", e);
-                        ToolResult::error(format!("Output conversion failed: {}", e))
-                    }
+            Ok(output) => match self.convert_output(&output) {
+                Ok(output_str) => {
+                    let execution_time = start_time.elapsed().as_millis() as f64;
+                    debug!("DSPy tool executed successfully in {:.2}ms", execution_time);
+                    ToolResult::success(output_str)
                 }
-            }
+                Err(e) => {
+                    error!("DSPy tool output conversion failed: {}", e);
+                    ToolResult::error(format!("Output conversion failed: {}", e))
+                }
+            },
             Err(e) => {
                 error!("DSPy tool execution failed: {}", e);
                 ToolResult::error(format!("Module execution failed: {}", e))
@@ -282,7 +280,8 @@ where
 
     /// Build the DSPy tool
     pub fn build(self) -> DspyResult<DspyModuleTool<I, O>> {
-        let module = self.module
+        let module = self
+            .module
             .ok_or_else(|| DspyError::configuration("module", "Module is required"))?;
 
         match (self.tool_name, self.description, self.input_schema) {
@@ -406,18 +405,38 @@ impl DspyToolRegistry {
     /// Get registry statistics
     pub fn stats(&self) -> HashMap<String, serde_json::Value> {
         let mut stats = HashMap::new();
-        
-        stats.insert("total_tools".to_string(), serde_json::Value::Number(self.tools.len().into()));
-        
-        let total_executions: u64 = self.metadata.values().map(|m| m.metrics.execution_count).sum();
-        stats.insert("total_executions".to_string(), serde_json::Value::Number(total_executions.into()));
-        
+
+        stats.insert(
+            "total_tools".to_string(),
+            serde_json::Value::Number(self.tools.len().into()),
+        );
+
+        let total_executions: u64 = self
+            .metadata
+            .values()
+            .map(|m| m.metrics.execution_count)
+            .sum();
+        stats.insert(
+            "total_executions".to_string(),
+            serde_json::Value::Number(total_executions.into()),
+        );
+
         let avg_success_rate: f64 = if !self.metadata.is_empty() {
-            self.metadata.values().map(|m| m.metrics.success_rate).sum::<f64>() / self.metadata.len() as f64
+            self.metadata
+                .values()
+                .map(|m| m.metrics.success_rate)
+                .sum::<f64>()
+                / self.metadata.len() as f64
         } else {
             0.0
         };
-        stats.insert("average_success_rate".to_string(), serde_json::Value::Number(serde_json::Number::from_f64(avg_success_rate).unwrap_or_else(|| serde_json::Number::from(0))));
+        stats.insert(
+            "average_success_rate".to_string(),
+            serde_json::Value::Number(
+                serde_json::Number::from_f64(avg_success_rate)
+                    .unwrap_or_else(|| serde_json::Number::from(0)),
+            ),
+        );
 
         stats
     }

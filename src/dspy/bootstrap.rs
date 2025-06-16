@@ -166,13 +166,17 @@ where
         let (labeled_examples, unlabeled_examples) = self.split_examples(trainset)?;
 
         // Generate bootstrap examples
-        self.generate_bootstrap_examples(module, &unlabeled_examples).await?;
+        self.generate_bootstrap_examples(module, &unlabeled_examples)
+            .await?;
 
         // Combine labeled and bootstrap examples
         let combined_examples = self.combine_examples(&labeled_examples)?;
 
         // Optimize module using combined examples
-        let optimization_result = self.base_teleprompter.optimize(module, combined_examples).await?;
+        let optimization_result = self
+            .base_teleprompter
+            .optimize(module, combined_examples)
+            .await?;
 
         // Update statistics
         self.stats.generation_time_seconds = start_time.elapsed().as_secs_f64();
@@ -267,7 +271,10 @@ where
         // Create bootstrap example
         let quality_score = self.estimate_quality_score(example, &generated_output);
         let bootstrap_example = Example::new(example.input.clone(), generated_output)
-            .with_metadata("bootstrap_source".to_string(), serde_json::json!("generated"))
+            .with_metadata(
+                "bootstrap_source".to_string(),
+                serde_json::json!("generated"),
+            )
             .with_metadata("original_id".to_string(), serde_json::json!(example.id))
             .with_quality_score(quality_score);
 
@@ -291,10 +298,9 @@ where
             ValidationStrictness::Medium => {
                 Ok(bootstrap_example.quality_score >= self.config.min_confidence)
             }
-            ValidationStrictness::High => {
-                Ok(bootstrap_example.quality_score >= self.config.min_confidence
-                    && bootstrap_example.quality_score > original_example.quality_score)
-            }
+            ValidationStrictness::High => Ok(bootstrap_example.quality_score
+                >= self.config.min_confidence
+                && bootstrap_example.quality_score > original_example.quality_score),
             ValidationStrictness::Custom => {
                 // Should not reach here if metric is properly set
                 Err(DspyError::configuration(
@@ -338,7 +344,10 @@ where
     }
 
     /// Combine labeled and bootstrap examples
-    pub fn combine_examples(&self, labeled_examples: &ExampleSet<I, O>) -> DspyResult<ExampleSet<I, O>> {
+    pub fn combine_examples(
+        &self,
+        labeled_examples: &ExampleSet<I, O>,
+    ) -> DspyResult<ExampleSet<I, O>> {
         let mut combined = labeled_examples.clone();
 
         for bootstrap_example in &self.bootstrap_examples {
@@ -423,7 +432,10 @@ impl fmt::Display for BootstrapStats {
         write!(
             f,
             "BootstrapStats[attempts: {}, success: {}, validated: {}, avg_confidence: {:.2}]",
-            self.total_attempts, self.successful_generations, self.validated_examples, self.average_confidence
+            self.total_attempts,
+            self.successful_generations,
+            self.validated_examples,
+            self.average_confidence
         )
     }
 }

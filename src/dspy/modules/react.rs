@@ -124,10 +124,7 @@ where
     O: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone,
 {
     /// Create a new ReAct module
-    pub fn new(
-        signature: Signature<I, O>,
-        anthropic_client: Arc<AnthropicClient>,
-    ) -> Self {
+    pub fn new(signature: Signature<I, O>, anthropic_client: Arc<AnthropicClient>) -> Self {
         let id = Uuid::new_v4().to_string();
         let name = format!("ReAct_{}", &id[..8]);
 
@@ -176,9 +173,8 @@ where
         let input_str = serde_json::to_string_pretty(input)
             .map_err(|e| DspyError::serialization("input", &e.to_string()))?;
 
-        let mut prompt = format!(
-            "You are solving a task using the ReAct (Reasoning and Acting) approach.\n\n"
-        );
+        let mut prompt =
+            format!("You are solving a task using the ReAct (Reasoning and Acting) approach.\n\n");
 
         prompt.push_str(&format!("Task: {}\n\n", input_str));
 
@@ -194,7 +190,7 @@ where
             "Please follow this format:\n\
             Thought: [your reasoning about what to do next]\n\
             Action: [tool_name] [input_json]\n\
-            Observation: [result from the action]\n\n"
+            Observation: [result from the action]\n\n",
         );
 
         // Add previous steps if any
@@ -203,8 +199,11 @@ where
             for step in previous_steps {
                 prompt.push_str(&format!("Thought: {}\n", step.thought));
                 if let Some(action) = &step.action {
-                    prompt.push_str(&format!("Action: {} {}\n", action.tool, 
-                        serde_json::to_string(&action.input).unwrap_or_default()));
+                    prompt.push_str(&format!(
+                        "Action: {} {}\n",
+                        action.tool,
+                        serde_json::to_string(&action.input).unwrap_or_default()
+                    ));
                 }
                 if let Some(observation) = &step.observation {
                     prompt.push_str(&format!("Observation: {}\n", observation));
@@ -238,7 +237,10 @@ where
         }
 
         if thought.is_empty() {
-            return Err(DspyError::module(self.name(), "No thought found in response"));
+            return Err(DspyError::module(
+                self.name(),
+                "No thought found in response",
+            ));
         }
 
         Ok(ReActStep {
@@ -270,8 +272,9 @@ where
         }
 
         // Parse input JSON
-        let input = serde_json::from_str(input_str)
-            .map_err(|e| DspyError::module(&self.name, &format!("Invalid action input JSON: {}", e)))?;
+        let input = serde_json::from_str(input_str).map_err(|e| {
+            DspyError::module(&self.name, &format!("Invalid action input JSON: {}", e))
+        })?;
 
         Ok(Some(ReActAction {
             tool: tool_name,
@@ -282,25 +285,31 @@ where
 
     /// Execute an action
     async fn execute_action(&self, action: &ReActAction) -> DspyResult<String> {
-        let tool = self.tools.get(&action.tool)
-            .ok_or_else(|| DspyError::module(&self.name, &format!("Tool not found: {}", action.tool)))?;
+        let tool = self.tools.get(&action.tool).ok_or_else(|| {
+            DspyError::module(&self.name, &format!("Tool not found: {}", action.tool))
+        })?;
 
         // Validate input if configured
         if self.config.validate_actions {
-            tool.validate_input(&action.input)
-                .map_err(|e| DspyError::module(&self.name, &format!("Action validation failed: {}", e)))?;
+            tool.validate_input(&action.input).map_err(|e| {
+                DspyError::module(&self.name, &format!("Action validation failed: {}", e))
+            })?;
         }
 
         // Execute with timeout
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(self.config.tool_timeout_seconds),
-            tool.execute(action.input.clone())
-        ).await;
+            tool.execute(action.input.clone()),
+        )
+        .await;
 
         match result {
             Ok(Ok(tool_result)) => {
                 if tool_result.is_error && !self.config.continue_on_tool_error {
-                    return Err(DspyError::module(&self.name, &format!("Tool execution failed: {}", tool_result.content)));
+                    return Err(DspyError::module(
+                        &self.name,
+                        &format!("Tool execution failed: {}", tool_result.content),
+                    ));
                 }
                 Ok(tool_result.content)
             }
@@ -308,11 +317,17 @@ where
                 if self.config.continue_on_tool_error {
                     Ok(format!("Tool error: {}", e))
                 } else {
-                    Err(DspyError::module(&self.name, &format!("Tool execution error: {}", e)))
+                    Err(DspyError::module(
+                        &self.name,
+                        &format!("Tool execution error: {}", e),
+                    ))
                 }
             }
             Err(_) => {
-                let error_msg = format!("Tool execution timeout after {} seconds", self.config.tool_timeout_seconds);
+                let error_msg = format!(
+                    "Tool execution timeout after {} seconds",
+                    self.config.tool_timeout_seconds
+                );
                 if self.config.continue_on_tool_error {
                     Ok(error_msg)
                 } else {
@@ -327,10 +342,10 @@ where
         // Simple heuristic: task is complete if the last thought indicates completion
         if let Some(last_step) = steps.last() {
             let thought_lower = last_step.thought.to_lowercase();
-            return thought_lower.contains("complete") || 
-                   thought_lower.contains("finished") || 
-                   thought_lower.contains("done") ||
-                   thought_lower.contains("final answer");
+            return thought_lower.contains("complete")
+                || thought_lower.contains("finished")
+                || thought_lower.contains("done")
+                || thought_lower.contains("final answer");
         }
         false
     }
@@ -359,7 +374,10 @@ where
             }
         }
 
-        Err(DspyError::module(self.name(), "Could not extract final answer from ReAct steps"))
+        Err(DspyError::module(
+            self.name(),
+            "Could not extract final answer from ReAct steps",
+        ))
     }
 
     /// Calculate confidence based on ReAct execution
@@ -374,7 +392,7 @@ where
 
         for step in steps {
             total_confidence += step.confidence;
-            
+
             if step.action.is_some() {
                 total_actions += 1;
                 if step.observation.is_some() {
@@ -423,7 +441,7 @@ where
         for cycle in 1..=self.config.max_cycles {
             // Generate prompt for current cycle
             let prompt = self.generate_react_prompt(&input, &steps)?;
-            
+
             // TODO: Call Anthropic API with the prompt
             // For now, simulate a response
             let response = format!(
@@ -476,7 +494,8 @@ where
 
         info!(
             "ReAct completed successfully with {} steps and confidence {:.3}",
-            steps.len(), confidence
+            steps.len(),
+            confidence
         );
 
         Ok(answer)
@@ -549,6 +568,9 @@ impl ModuleInfo for ReAct<(), ()> {
     }
 
     fn supports_capability(&self, capability: &str) -> bool {
-        matches!(capability, "reasoning" | "acting" | "tool_usage" | "iterative_solving" | "multi_step")
+        matches!(
+            capability,
+            "reasoning" | "acting" | "tool_usage" | "iterative_solving" | "multi_step"
+        )
     }
 }

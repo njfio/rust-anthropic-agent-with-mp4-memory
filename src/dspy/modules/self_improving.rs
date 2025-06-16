@@ -284,8 +284,10 @@ where
             output: serde_json::to_value(&output)
                 .map_err(|e| DspyError::serialization("output", &e.to_string()))?,
             expected_output: if let Some(expected) = expected_output {
-                Some(serde_json::to_value(&expected)
-                    .map_err(|e| DspyError::serialization("expected_output", &e.to_string()))?)
+                Some(
+                    serde_json::to_value(&expected)
+                        .map_err(|e| DspyError::serialization("expected_output", &e.to_string()))?,
+                )
             } else {
                 None
             },
@@ -306,9 +308,12 @@ where
 
         // Add to training examples if we have expected output
         if let Some(expected) = &feedback.expected_output {
-            let example = Example::new(input, serde_json::from_value(expected.clone())
-                .map_err(|e| DspyError::serialization("expected_output", &e.to_string()))?);
-            
+            let example = Example::new(
+                input,
+                serde_json::from_value(expected.clone())
+                    .map_err(|e| DspyError::serialization("expected_output", &e.to_string()))?,
+            );
+
             let mut examples = self.training_examples.write().await;
             examples.add_example(example);
         }
@@ -330,20 +335,20 @@ where
     /// Check if improvement should be triggered
     async fn should_trigger_improvement(&self) -> bool {
         let history = self.feedback_history.read().await;
-        
+
         if history.len() < self.config.min_examples_for_improvement {
             return false;
         }
 
         // Calculate recent error rate
-        let recent_feedback: Vec<_> = history.iter()
+        let recent_feedback: Vec<_> = history
+            .iter()
             .rev()
             .take(self.config.min_examples_for_improvement)
             .collect();
 
-        let error_rate = recent_feedback.iter()
-            .filter(|f| f.score < 0.0)
-            .count() as f64 / recent_feedback.len() as f64;
+        let error_rate = recent_feedback.iter().filter(|f| f.score < 0.0).count() as f64
+            / recent_feedback.len() as f64;
 
         error_rate > self.config.improvement_threshold
     }
@@ -365,18 +370,12 @@ where
 
         // Perform improvement based on strategy
         let improvement_result = match self.config.improvement_strategy {
-            ImprovementStrategy::GradualOptimization => {
-                self.perform_gradual_optimization().await?
-            }
+            ImprovementStrategy::GradualOptimization => self.perform_gradual_optimization().await?,
             ImprovementStrategy::ReinforcementLearning => {
                 self.perform_reinforcement_learning().await?
             }
-            ImprovementStrategy::MetaLearning => {
-                self.perform_meta_learning().await?
-            }
-            ImprovementStrategy::EnsembleImprovement => {
-                self.perform_ensemble_improvement().await?
-            }
+            ImprovementStrategy::MetaLearning => self.perform_meta_learning().await?,
+            ImprovementStrategy::EnsembleImprovement => self.perform_ensemble_improvement().await?,
         };
 
         // Get performance after improvement
@@ -394,10 +393,14 @@ where
 
         improvement_metrics.improvement_iterations += 1;
         improvement_metrics.current_performance = performance_after;
-        improvement_metrics.improvement_percentage = 
-            ((performance_after - improvement_metrics.initial_performance) / improvement_metrics.initial_performance) * 100.0;
+        improvement_metrics.improvement_percentage = ((performance_after
+            - improvement_metrics.initial_performance)
+            / improvement_metrics.initial_performance)
+            * 100.0;
         improvement_metrics.last_improvement_at = Some(chrono::Utc::now());
-        improvement_metrics.improvement_history.push(improvement_record);
+        improvement_metrics
+            .improvement_history
+            .push(improvement_record);
 
         if improvement_metrics.initial_performance == 0.0 {
             improvement_metrics.initial_performance = performance_before;
@@ -416,19 +419,19 @@ where
     /// Calculate current performance based on recent feedback
     async fn calculate_current_performance(&self) -> f64 {
         let history = self.feedback_history.read().await;
-        
+
         if history.is_empty() {
             return 0.5; // Neutral performance
         }
 
-        let recent_feedback: Vec<_> = history.iter()
+        let recent_feedback: Vec<_> = history
+            .iter()
             .rev()
             .take(20) // Use last 20 feedback entries
             .collect();
 
-        let avg_score = recent_feedback.iter()
-            .map(|f| f.score)
-            .sum::<f64>() / recent_feedback.len() as f64;
+        let avg_score =
+            recent_feedback.iter().map(|f| f.score).sum::<f64>() / recent_feedback.len() as f64;
 
         // Convert from [-1, 1] to [0, 1]
         (avg_score + 1.0) / 2.0
@@ -463,10 +466,12 @@ where
         };
 
         let mut teleprompter = Teleprompter::with_config(teleprompter_config);
-        
+
         // Optimize the base module
         let mut base_module = self.base_module.write().await;
-        let optimization_result = teleprompter.optimize(&mut *base_module, examples.clone()).await?;
+        let optimization_result = teleprompter
+            .optimize(&mut *base_module, examples.clone())
+            .await?;
 
         Ok(ImprovementResult {
             success: true,
@@ -570,13 +575,15 @@ where
             Ok(output) => {
                 // Collect implicit feedback based on execution success
                 if self.config.feedback_settings.collect_implicit_feedback {
-                    let _ = self.add_feedback(
-                        input,
-                        output.clone(),
-                        None,
-                        0.5, // Neutral score for successful execution
-                        FeedbackType::Implicit,
-                    ).await;
+                    let _ = self
+                        .add_feedback(
+                            input,
+                            output.clone(),
+                            None,
+                            0.5, // Neutral score for successful execution
+                            FeedbackType::Implicit,
+                        )
+                        .await;
                 }
 
                 // Update metrics
@@ -667,6 +674,12 @@ impl ModuleInfo for SelfImproving<(), ()> {
     }
 
     fn supports_capability(&self, capability: &str) -> bool {
-        matches!(capability, "self_improvement" | "adaptive_learning" | "feedback_processing" | "continuous_learning")
+        matches!(
+            capability,
+            "self_improvement"
+                | "adaptive_learning"
+                | "feedback_processing"
+                | "continuous_learning"
+        )
     }
 }

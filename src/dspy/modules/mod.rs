@@ -6,15 +6,21 @@
 
 pub mod chain_of_thought;
 pub mod program_of_thought;
-pub mod react;
 pub mod rag;
+pub mod react;
 pub mod self_improving;
 
 pub use chain_of_thought::{ChainOfThought, ChainOfThoughtConfig};
-pub use program_of_thought::{ProgramOfThought, ProgramOfThoughtConfig, ProgrammingLanguage, SecurityRestrictions, CodeExecutionResult};
-pub use react::{ReAct, ReActConfig, ReActStep, ReActAction};
-pub use rag::{RAG, RAGConfig, RAGResult, RetrievalStrategy, RetrievedDocument};
-pub use self_improving::{SelfImproving, SelfImprovingConfig, ImprovementMetrics, ImprovementStrategy, FeedbackSettings, FeedbackEntry, FeedbackType, ImprovementRecord};
+pub use program_of_thought::{
+    CodeExecutionResult, ProgramOfThought, ProgramOfThoughtConfig, ProgrammingLanguage,
+    SecurityRestrictions,
+};
+pub use rag::{RAGConfig, RAGResult, RetrievalStrategy, RetrievedDocument, RAG};
+pub use react::{ReAct, ReActAction, ReActConfig, ReActStep};
+pub use self_improving::{
+    FeedbackEntry, FeedbackSettings, FeedbackType, ImprovementMetrics, ImprovementRecord,
+    ImprovementStrategy, SelfImproving, SelfImprovingConfig,
+};
 
 use crate::dspy::{
     error::{DspyError, DspyResult},
@@ -145,13 +151,15 @@ impl ReasoningMetrics {
     ) {
         self.total_executions += 1;
         self.successful_executions += 1;
-        
+
         // Update averages
         let total = self.total_executions as f64;
-        self.avg_reasoning_steps = (self.avg_reasoning_steps * (total - 1.0) + reasoning_steps as f64) / total;
-        self.avg_execution_time_ms = (self.avg_execution_time_ms * (total - 1.0) + execution_time_ms) / total;
+        self.avg_reasoning_steps =
+            (self.avg_reasoning_steps * (total - 1.0) + reasoning_steps as f64) / total;
+        self.avg_execution_time_ms =
+            (self.avg_execution_time_ms * (total - 1.0) + execution_time_ms) / total;
         self.avg_confidence = (self.avg_confidence * (total - 1.0) + confidence) / total;
-        
+
         self.success_rate = self.successful_executions as f64 / total;
         self.last_execution_at = Some(chrono::Utc::now());
     }
@@ -160,11 +168,12 @@ impl ReasoningMetrics {
     pub fn record_failure(&mut self, execution_time_ms: f64) {
         self.total_executions += 1;
         self.failed_executions += 1;
-        
+
         // Update averages
         let total = self.total_executions as f64;
-        self.avg_execution_time_ms = (self.avg_execution_time_ms * (total - 1.0) + execution_time_ms) / total;
-        
+        self.avg_execution_time_ms =
+            (self.avg_execution_time_ms * (total - 1.0) + execution_time_ms) / total;
+
         self.success_rate = self.successful_executions as f64 / total;
         self.last_execution_at = Some(chrono::Utc::now());
     }
@@ -213,7 +222,8 @@ impl SpecializedModuleRegistry {
     pub fn register_module<T: ModuleInfo + 'static>(&mut self, module: T) {
         let name = module.name().to_string();
         self.modules.insert(name.clone(), Box::new(module));
-        self.metrics.insert(name.clone(), ReasoningMetrics::default());
+        self.metrics
+            .insert(name.clone(), ReasoningMetrics::default());
         info!("Registered specialized module: {}", name);
     }
 
@@ -249,26 +259,40 @@ impl SpecializedModuleRegistry {
     /// Get registry statistics
     pub fn get_statistics(&self) -> HashMap<String, serde_json::Value> {
         let mut stats = HashMap::new();
-        
-        stats.insert("total_modules".to_string(), serde_json::Value::Number(self.modules.len().into()));
-        
+
+        stats.insert(
+            "total_modules".to_string(),
+            serde_json::Value::Number(self.modules.len().into()),
+        );
+
         let total_executions: u64 = self.metrics.values().map(|m| m.total_executions).sum();
-        stats.insert("total_executions".to_string(), serde_json::Value::Number(total_executions.into()));
-        
+        stats.insert(
+            "total_executions".to_string(),
+            serde_json::Value::Number(total_executions.into()),
+        );
+
         let avg_success_rate = if !self.metrics.is_empty() {
             self.metrics.values().map(|m| m.success_rate).sum::<f64>() / self.metrics.len() as f64
         } else {
             0.0
         };
-        stats.insert("average_success_rate".to_string(), 
-                    serde_json::Value::Number(serde_json::Number::from_f64(avg_success_rate).unwrap_or_else(|| serde_json::Number::from(0))));
+        stats.insert(
+            "average_success_rate".to_string(),
+            serde_json::Value::Number(
+                serde_json::Number::from_f64(avg_success_rate)
+                    .unwrap_or_else(|| serde_json::Number::from(0)),
+            ),
+        );
 
         // Module type distribution
         let mut type_counts = HashMap::new();
         for module in self.modules.values() {
             *type_counts.entry(module.module_type()).or_insert(0) += 1;
         }
-        stats.insert("module_types".to_string(), serde_json::to_value(type_counts).unwrap_or_default());
+        stats.insert(
+            "module_types".to_string(),
+            serde_json::to_value(type_counts).unwrap_or_default(),
+        );
 
         stats
     }
@@ -288,7 +312,7 @@ pub mod utils {
     pub fn parse_reasoning_steps(text: &str) -> Vec<ReasoningStep> {
         let mut steps = Vec::new();
         let lines: Vec<&str> = text.lines().collect();
-        
+
         for (i, line) in lines.iter().enumerate() {
             if line.trim().starts_with("Step") || line.trim().starts_with("Thought") {
                 let step = ReasoningStep {
@@ -303,7 +327,7 @@ pub mod utils {
                 steps.push(step);
             }
         }
-        
+
         steps
     }
 
@@ -313,11 +337,12 @@ pub mod utils {
             return 0.0;
         }
 
-        let avg_confidence: f64 = reasoning_steps.iter().map(|s| s.confidence).sum::<f64>() / reasoning_steps.len() as f64;
-        
+        let avg_confidence: f64 = reasoning_steps.iter().map(|s| s.confidence).sum::<f64>()
+            / reasoning_steps.len() as f64;
+
         // Adjust based on number of steps (more steps can indicate more thorough reasoning)
         let step_bonus = (reasoning_steps.len() as f64 * 0.05).min(0.2);
-        
+
         (avg_confidence + step_bonus).min(1.0)
     }
 
@@ -362,7 +387,7 @@ mod tests {
     #[test]
     fn test_reasoning_metrics_record_success() {
         let mut metrics = ReasoningMetrics::default();
-        
+
         metrics.record_success(3, 100.0, 0.9);
         assert_eq!(metrics.total_executions, 1);
         assert_eq!(metrics.successful_executions, 1);
@@ -371,7 +396,7 @@ mod tests {
         assert_eq!(metrics.avg_execution_time_ms, 100.0);
         assert_eq!(metrics.avg_confidence, 0.9);
         assert_eq!(metrics.success_rate, 1.0);
-        
+
         metrics.record_success(5, 200.0, 0.8);
         assert_eq!(metrics.total_executions, 2);
         assert_eq!(metrics.successful_executions, 2);
@@ -384,10 +409,10 @@ mod tests {
     #[test]
     fn test_reasoning_metrics_record_failure() {
         let mut metrics = ReasoningMetrics::default();
-        
+
         metrics.record_success(3, 100.0, 0.9);
         metrics.record_failure(50.0);
-        
+
         assert_eq!(metrics.total_executions, 2);
         assert_eq!(metrics.successful_executions, 1);
         assert_eq!(metrics.failed_executions, 1);
@@ -398,10 +423,10 @@ mod tests {
     #[test]
     fn test_reasoning_metrics_custom_metrics() {
         let mut metrics = ReasoningMetrics::default();
-        
+
         metrics.add_custom_metric("accuracy".to_string(), 0.95);
         metrics.add_custom_metric("precision".to_string(), 0.88);
-        
+
         assert_eq!(metrics.get_custom_metric("accuracy"), Some(0.95));
         assert_eq!(metrics.get_custom_metric("precision"), Some(0.88));
         assert_eq!(metrics.get_custom_metric("recall"), None);
@@ -411,17 +436,23 @@ mod tests {
     fn test_specialized_module_registry() {
         let mut registry = SpecializedModuleRegistry::new();
         assert!(registry.list_modules().is_empty());
-        
+
         let stats = registry.get_statistics();
-        assert_eq!(stats.get("total_modules").unwrap(), &serde_json::Value::Number(0.into()));
-        assert_eq!(stats.get("total_executions").unwrap(), &serde_json::Value::Number(0.into()));
+        assert_eq!(
+            stats.get("total_modules").unwrap(),
+            &serde_json::Value::Number(0.into())
+        );
+        assert_eq!(
+            stats.get("total_executions").unwrap(),
+            &serde_json::Value::Number(0.into())
+        );
     }
 
     #[test]
     fn test_utils_parse_reasoning_steps() {
         let text = "Step 1: Analyze the problem\nThis is the analysis\nStep 2: Find solution\nHere is the solution";
         let steps = utils::parse_reasoning_steps(text);
-        
+
         assert_eq!(steps.len(), 2);
         assert_eq!(steps[0].step_number, 1);
         assert!(steps[0].input.contains("Step 1"));
@@ -451,7 +482,7 @@ mod tests {
                 metadata: HashMap::new(),
             },
         ];
-        
+
         let confidence = utils::calculate_confidence(&steps);
         assert!(confidence > 0.85); // Should be average + step bonus
         assert!(confidence <= 1.0);
@@ -479,24 +510,22 @@ mod tests {
                 metadata: HashMap::new(),
             },
         ];
-        
+
         assert!(utils::validate_reasoning_chain(&valid_steps));
-        
+
         // Test invalid chain (empty input)
-        let invalid_steps = vec![
-            ReasoningStep {
-                step_number: 1,
-                step_type: "reasoning".to_string(),
-                input: "".to_string(),
-                output: "valid output".to_string(),
-                confidence: 0.8,
-                execution_time_ms: 100.0,
-                metadata: HashMap::new(),
-            },
-        ];
-        
+        let invalid_steps = vec![ReasoningStep {
+            step_number: 1,
+            step_type: "reasoning".to_string(),
+            input: "".to_string(),
+            output: "valid output".to_string(),
+            confidence: 0.8,
+            execution_time_ms: 100.0,
+            metadata: HashMap::new(),
+        }];
+
         assert!(!utils::validate_reasoning_chain(&invalid_steps));
-        
+
         // Test empty chain
         assert!(!utils::validate_reasoning_chain(&[]));
     }

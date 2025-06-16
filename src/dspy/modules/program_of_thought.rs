@@ -176,10 +176,7 @@ where
     O: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone,
 {
     /// Create a new Program of Thought module
-    pub fn new(
-        signature: Signature<I, O>,
-        anthropic_client: Arc<AnthropicClient>,
-    ) -> Self {
+    pub fn new(signature: Signature<I, O>, anthropic_client: Arc<AnthropicClient>) -> Self {
         let id = Uuid::new_v4().to_string();
         let name = format!("ProgramOfThought_{}", &id[..8]);
 
@@ -239,13 +236,18 @@ where
                 prompt.push_str("- Use only standard library functions\n");
                 prompt.push_str("- Print the final result as JSON using json.dumps()\n");
                 if !self.config.allowed_imports.is_empty() {
-                    prompt.push_str(&format!("- You may import: {}\n", self.config.allowed_imports.join(", ")));
+                    prompt.push_str(&format!(
+                        "- You may import: {}\n",
+                        self.config.allowed_imports.join(", ")
+                    ));
                 }
             }
             ProgrammingLanguage::JavaScript => {
                 prompt.push_str("Requirements:\n");
                 prompt.push_str("- Use only built-in JavaScript functions\n");
-                prompt.push_str("- Output the final result using console.log(JSON.stringify(result))\n");
+                prompt.push_str(
+                    "- Output the final result using console.log(JSON.stringify(result))\n",
+                );
             }
             _ => {
                 prompt.push_str("Requirements:\n");
@@ -284,14 +286,17 @@ where
             } else {
                 code_start
             };
-            
+
             if let Some(end_pos) = response[code_start..].find("```") {
                 let code = response[code_start..code_start + end_pos].trim();
                 return Ok(code.to_string());
             }
         }
 
-        Err(DspyError::module(self.name(), "No code block found in response"))
+        Err(DspyError::module(
+            self.name(),
+            "No code block found in response",
+        ))
     }
 
     /// Validate code for security and syntax
@@ -300,7 +305,10 @@ where
         if code.len() > self.config.max_code_length {
             return Err(DspyError::module(
                 &self.name,
-                &format!("Code exceeds maximum length of {} characters", self.config.max_code_length),
+                &format!(
+                    "Code exceeds maximum length of {} characters",
+                    self.config.max_code_length
+                ),
             ));
         }
 
@@ -321,16 +329,26 @@ where
                     let file_ops = ["open(", "file(", "with open", "os."];
                     for op in &file_ops {
                         if code.contains(op) {
-                            return Err(DspyError::module(self.name(), "File operations are not allowed"));
+                            return Err(DspyError::module(
+                                self.name(),
+                                "File operations are not allowed",
+                            ));
                         }
                     }
                 }
 
-                if self.config.security_restrictions.disallow_network_operations {
+                if self
+                    .config
+                    .security_restrictions
+                    .disallow_network_operations
+                {
                     let network_ops = ["urllib", "requests", "socket", "http"];
                     for op in &network_ops {
                         if code.contains(op) {
-                            return Err(DspyError::module(self.name(), "Network operations are not allowed"));
+                            return Err(DspyError::module(
+                                self.name(),
+                                "Network operations are not allowed",
+                            ));
                         }
                     }
                 }
@@ -339,7 +357,10 @@ where
                     let subprocess_ops = ["subprocess", "os.system", "os.popen"];
                     for op in &subprocess_ops {
                         if code.contains(op) {
-                            return Err(DspyError::module(self.name(), "Subprocess operations are not allowed"));
+                            return Err(DspyError::module(
+                                self.name(),
+                                "Subprocess operations are not allowed",
+                            ));
                         }
                     }
                 }
@@ -368,16 +389,18 @@ where
 
         // Create temporary file
         let temp_dir = std::env::temp_dir();
-        let file_name = format!("pot_{}_{}.{}", 
-            self.id, 
+        let file_name = format!(
+            "pot_{}_{}.{}",
+            self.id,
             chrono::Utc::now().timestamp_millis(),
             self.config.language.file_extension()
         );
         let file_path = temp_dir.join(file_name);
 
         // Write code to file
-        std::fs::write(&file_path, code)
-            .map_err(|e| DspyError::module(&self.name, &format!("Failed to write code to file: {}", e)))?;
+        std::fs::write(&file_path, code).map_err(|e| {
+            DspyError::module(&self.name, &format!("Failed to write code to file: {}", e))
+        })?;
 
         // Execute code
         let mut command = Command::new(self.config.language.execution_command());
@@ -385,8 +408,9 @@ where
 
         let output = tokio::time::timeout(
             std::time::Duration::from_secs(self.config.execution_timeout_seconds),
-            tokio::task::spawn_blocking(move || command.output())
-        ).await;
+            tokio::task::spawn_blocking(move || command.output()),
+        )
+        .await;
 
         // Clean up temporary file
         let _ = std::fs::remove_file(&file_path);
@@ -402,7 +426,11 @@ where
                     Ok(CodeExecutionResult {
                         success: true,
                         output: stdout.to_string(),
-                        error: if stderr.is_empty() { None } else { Some(stderr.to_string()) },
+                        error: if stderr.is_empty() {
+                            None
+                        } else {
+                            Some(stderr.to_string())
+                        },
                         execution_time_ms: execution_time,
                         memory_usage_mb: None, // TODO: Implement memory monitoring
                     })
@@ -433,7 +461,10 @@ where
             Err(_) => Ok(CodeExecutionResult {
                 success: false,
                 output: String::new(),
-                error: Some(format!("Execution timeout after {} seconds", self.config.execution_timeout_seconds)),
+                error: Some(format!(
+                    "Execution timeout after {} seconds",
+                    self.config.execution_timeout_seconds
+                )),
                 execution_time_ms: execution_time,
                 memory_usage_mb: None,
             }),
@@ -441,22 +472,30 @@ where
     }
 
     /// Extract answer from execution result
-    fn extract_answer_from_execution(&self, execution_result: &CodeExecutionResult) -> DspyResult<O> {
+    fn extract_answer_from_execution(
+        &self,
+        execution_result: &CodeExecutionResult,
+    ) -> DspyResult<O> {
         if !execution_result.success {
             return Err(DspyError::module(
                 &self.name,
-                &format!("Code execution failed: {}", 
-                    execution_result.error.as_deref().unwrap_or("Unknown error")),
+                &format!(
+                    "Code execution failed: {}",
+                    execution_result.error.as_deref().unwrap_or("Unknown error")
+                ),
             ));
         }
 
         // Try to parse JSON output
         let output = execution_result.output.trim();
-        
+
         // Look for JSON in the output
         for line in output.lines() {
             let trimmed_line = line.trim();
-            if trimmed_line.starts_with('{') || trimmed_line.starts_with('[') || trimmed_line.starts_with('"') {
+            if trimmed_line.starts_with('{')
+                || trimmed_line.starts_with('[')
+                || trimmed_line.starts_with('"')
+            {
                 if let Ok(answer) = serde_json::from_str::<O>(trimmed_line) {
                     return Ok(answer);
                 }
@@ -473,7 +512,10 @@ where
             return Ok(answer);
         }
 
-        Err(DspyError::module(self.name(), "Could not extract valid answer from code execution output"))
+        Err(DspyError::module(
+            self.name(),
+            "Could not extract valid answer from code execution output",
+        ))
     }
 
     /// Get the last generated code
@@ -588,9 +630,8 @@ where
         });
 
         // Calculate overall confidence
-        let overall_confidence = reasoning_steps.iter()
-            .map(|s| s.confidence)
-            .sum::<f64>() / reasoning_steps.len() as f64;
+        let overall_confidence = reasoning_steps.iter().map(|s| s.confidence).sum::<f64>()
+            / reasoning_steps.len() as f64;
 
         // Update state
         *self.last_reasoning_steps.write().await = reasoning_steps.clone();
@@ -679,6 +720,9 @@ impl ModuleInfo for ProgramOfThought<(), ()> {
     }
 
     fn supports_capability(&self, capability: &str) -> bool {
-        matches!(capability, "computation" | "code_generation" | "algorithmic_thinking" | "mathematical_reasoning")
+        matches!(
+            capability,
+            "computation" | "code_generation" | "algorithmic_thinking" | "mathematical_reasoning"
+        )
     }
 }

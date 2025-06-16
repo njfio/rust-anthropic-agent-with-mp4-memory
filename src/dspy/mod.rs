@@ -55,8 +55,10 @@
 //! ```
 
 pub mod advanced_optimizers;
+pub mod benchmarks;
 pub mod bootstrap;
 pub mod cache;
+pub mod causal_reasoning;
 pub mod chain;
 pub mod compiler;
 pub mod composition;
@@ -69,15 +71,13 @@ pub mod modules;
 pub mod multimodal;
 pub mod multimodal_metrics;
 pub mod optimization;
+pub mod performance;
 pub mod predictor;
 pub mod reasoning;
-pub mod causal_reasoning;
 pub mod signature;
 pub mod teleprompter;
 pub mod tool_integration;
 pub mod vision;
-pub mod benchmarks;
-pub mod performance;
 
 #[cfg(test)]
 mod tests;
@@ -87,10 +87,22 @@ pub use advanced_optimizers::{
     BootstrapFinetuneConfig, BootstrapFinetuneOptimizer, MIPROv2Config, MIPROv2Optimizer,
     MultiObjectiveConfig, MultiObjectiveOptimizer,
 };
+pub use benchmarks::{
+    BenchmarkConfig, BenchmarkOutputFormat, BenchmarkResults, BenchmarkSuite, ErrorAnalysis,
+    ImplementationEffort, OptimizationCategory, OptimizationPriority, OptimizationSuggestion,
+    PerformanceMetrics, ResourceUsage,
+};
 pub use bootstrap::{BootstrapConfig, BootstrapFewShot, BootstrapStats, ValidationStrictness};
 pub use cache::{Cache, CacheConfig, CacheEntry, CacheStats};
+pub use causal_reasoning::{
+    CausalDiscoveryMethod, CausalEdge, CausalEffect, CausalGraph, CausalNode, CausalReasoning,
+    CausalReasoningConfig, CausalReasoningInput, CausalReasoningOutput, CausalReasoningType,
+    CounterfactualScenario, InterventionType,
+};
 pub use chain::Chain;
-pub use compiler::{CompilationContext, CompilationMetrics, Compiler, CompilerConfig, CompilerStats};
+pub use compiler::{
+    CompilationContext, CompilationMetrics, Compiler, CompilerConfig, CompilerStats,
+};
 pub use composition::{Conditional, Parallel};
 pub use error::{DspyError, DspyResult};
 pub use evaluator::{
@@ -105,44 +117,33 @@ pub use metrics::{
 };
 pub use module::{Module, ModuleMetadata, ModuleStats};
 pub use modules::{
-    ChainOfThought, ChainOfThoughtConfig, ProgramOfThought, ProgramOfThoughtConfig,
-    RAG, RAGConfig, RAGResult, ReAct, ReActConfig, ReActStep, SelfImproving,
-    SelfImprovingConfig, ImprovementMetrics, ReasoningMetrics, ReasoningModule,
-    SpecializedModuleConfig, SpecializedModuleRegistry,
+    ChainOfThought, ChainOfThoughtConfig, ImprovementMetrics, ProgramOfThought,
+    ProgramOfThoughtConfig, RAGConfig, RAGResult, ReAct, ReActConfig, ReActStep, ReasoningMetrics,
+    ReasoningModule, SelfImproving, SelfImprovingConfig, SpecializedModuleConfig,
+    SpecializedModuleRegistry, RAG,
+};
+pub use multimodal::{
+    MediaContent, MediaType, MultiModalConfig, MultiModalInput, MultiModalOutput, MultiModalPredict,
 };
 pub use optimization::{OptimizationMetrics, OptimizationStrategy, Optimizer};
+pub use performance::{
+    AdaptiveBatchProcessor, ConnectionPool, MemoryAwareModule, OptimizationType, OptimizerConfig,
+    PerformanceOptimizer, PerformanceSummary, RequestCoalescer, RequestMetric, ResourceMetric,
+};
 pub use predictor::{Predict, PredictConfig};
+pub use reasoning::{
+    AdvancedReasoning, AdvancedReasoningConfig, AdvancedReasoningInput, AdvancedReasoningOutput,
+    AlternativeConclusion, AnalogyMapping, ExplorationStrategy, MetaCognition, ReasoningGraph,
+    ReasoningNode, ReasoningStep, ReasoningStrategy, ThoughtNode, TreeOfThought,
+};
 pub use signature::{Field, FieldType, Signature, SignatureBuilder};
 pub use teleprompter::{OptimizationResult, Teleprompter, TeleprompterConfig};
 pub use tool_integration::{
     DspyModuleTool, DspyToolBuilder, DspyToolMetadata, DspyToolRegistry, ToolMetrics,
 };
-pub use multimodal::{
-    MediaContent, MediaType, MultiModalInput, MultiModalOutput, MultiModalPredict, MultiModalConfig,
-};
 pub use vision::{
-    VisionInput, VisionOutput, VisionLanguageModel, VisionConfig, VisionAnalysisType,
-    DetectedObject, BoundingBox,
-};
-pub use reasoning::{
-    AdvancedReasoning, AdvancedReasoningInput, AdvancedReasoningOutput, AdvancedReasoningConfig,
-    TreeOfThought, ThoughtNode, ReasoningGraph, ReasoningNode, AnalogyMapping, MetaCognition,
-    ReasoningStrategy, ExplorationStrategy, ReasoningStep, AlternativeConclusion,
-};
-pub use causal_reasoning::{
-    CausalReasoning, CausalReasoningInput, CausalReasoningOutput, CausalReasoningConfig,
-    CausalGraph, CausalNode, CausalEdge, CounterfactualScenario, CausalEffect,
-    CausalReasoningType, InterventionType, CausalDiscoveryMethod,
-};
-pub use benchmarks::{
-    BenchmarkSuite, BenchmarkConfig, BenchmarkResults, PerformanceMetrics, ResourceUsage,
-    ErrorAnalysis, OptimizationSuggestion, OptimizationCategory, OptimizationPriority,
-    ImplementationEffort, BenchmarkOutputFormat,
-};
-pub use performance::{
-    PerformanceOptimizer, OptimizerConfig, AdaptiveBatchProcessor, ConnectionPool,
-    RequestCoalescer, MemoryAwareModule, RequestMetric, ResourceMetric, PerformanceSummary,
-    OptimizationType,
+    BoundingBox, DetectedObject, VisionAnalysisType, VisionConfig, VisionInput,
+    VisionLanguageModel, VisionOutput,
 };
 
 use crate::utils::error::{AgentError, Result};

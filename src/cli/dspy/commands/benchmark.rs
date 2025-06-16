@@ -2,9 +2,9 @@
 //!
 //! This module implements CLI commands for DSPy module benchmarking and performance analysis.
 
-use crate::cli::dspy::{DspyCliContext, DspyCliResult};
 use crate::cli::dspy::commands::{BenchmarkCommand, OutputFormat};
 use crate::cli::dspy::utils::{OutputFormatter, ValidationUtils};
+use crate::cli::dspy::{DspyCliContext, DspyCliResult};
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 use tracing::{debug, info};
@@ -15,18 +15,43 @@ pub async fn execute_benchmark_command(
     context: &DspyCliContext,
 ) -> DspyCliResult<()> {
     match command {
-        BenchmarkCommand::Run { module, iterations, timeout, input, output, format, warmup, parallel } => {
-            run_benchmark(context, module, iterations, timeout, input, output, format, warmup, parallel).await
+        BenchmarkCommand::Run {
+            module,
+            iterations,
+            timeout,
+            input,
+            output,
+            format,
+            warmup,
+            parallel,
+        } => {
+            run_benchmark(
+                context, module, iterations, timeout, input, output, format, warmup, parallel,
+            )
+            .await
         }
-        BenchmarkCommand::Compare { modules, metric, input, output, format, statistical } => {
-            compare_modules(context, modules, metric, input, output, format, statistical).await
-        }
-        BenchmarkCommand::Export { module, format, filter, since, output } => {
-            export_results(context, module, format, filter, since, output).await
-        }
-        BenchmarkCommand::History { module, limit, format, metric, trend } => {
-            show_history(context, module, limit, format, metric, trend).await
-        }
+        BenchmarkCommand::Compare {
+            modules,
+            metric,
+            input,
+            output,
+            format,
+            statistical,
+        } => compare_modules(context, modules, metric, input, output, format, statistical).await,
+        BenchmarkCommand::Export {
+            module,
+            format,
+            filter,
+            since,
+            output,
+        } => export_results(context, module, format, filter, since, output).await,
+        BenchmarkCommand::History {
+            module,
+            limit,
+            format,
+            metric,
+            trend,
+        } => show_history(context, module, limit, format, metric, trend).await,
     }
 }
 
@@ -78,12 +103,13 @@ async fn run_benchmark(
     // Load test data if provided
     let test_data = if let Some(input_path) = input {
         ValidationUtils::validate_file_path(&input_path, true)?;
-        Some(tokio::fs::read_to_string(&input_path).await
-            .map_err(|e| crate::cli::dspy::error::DspyCliError::resource_error(
+        Some(tokio::fs::read_to_string(&input_path).await.map_err(|e| {
+            crate::cli::dspy::error::DspyCliError::resource_error(
                 "filesystem",
                 format!("Failed to read input file: {}", e),
                 "Check file permissions and path",
-            ))?)
+            )
+        })?)
     } else {
         None
     };
@@ -105,7 +131,8 @@ async fn run_benchmark(
             progress.update(&format!("Warmup iteration {}/{}", i + 1, warmup));
 
             // Simulate module execution
-            let execution_time = simulate_module_execution(&module, test_data.as_deref(), timeout).await?;
+            let execution_time =
+                simulate_module_execution(&module, test_data.as_deref(), timeout).await?;
 
             // Small delay to simulate real work
             tokio::time::sleep(tokio::time::Duration::from_millis(execution_time as u64)).await;
@@ -118,7 +145,8 @@ async fn run_benchmark(
     let mut errors = 0;
     let mut memory_usage = Vec::new();
 
-    let mut progress = crate::cli::dspy::utils::ProgressIndicator::new("Benchmark", Some(iterations));
+    let mut progress =
+        crate::cli::dspy::utils::ProgressIndicator::new("Benchmark", Some(iterations));
 
     for i in 0..iterations {
         progress.update(&format!("Iteration {}/{}", i + 1, iterations));
@@ -150,12 +178,20 @@ async fn run_benchmark(
     progress.finish("Benchmark completed");
 
     // Calculate statistics
-    let avg_latency = if latencies.is_empty() { 0.0 } else {
+    let avg_latency = if latencies.is_empty() {
+        0.0
+    } else {
         latencies.iter().sum::<f64>() / latencies.len() as f64
     };
-    let throughput = if avg_latency > 0.0 { 1000.0 / avg_latency } else { 0.0 };
+    let throughput = if avg_latency > 0.0 {
+        1000.0 / avg_latency
+    } else {
+        0.0
+    };
     let error_rate = errors as f64 / iterations as f64;
-    let avg_memory = if memory_usage.is_empty() { 0.0 } else {
+    let avg_memory = if memory_usage.is_empty() {
+        0.0
+    } else {
         memory_usage.iter().sum::<f64>() / memory_usage.len() as f64
     };
 
@@ -171,17 +207,22 @@ async fn run_benchmark(
 
     // Save results if output specified
     if let Some(output_path) = output {
-        let json_result = serde_json::to_string_pretty(&result)
-            .map_err(|e| crate::cli::dspy::error::DspyCliError::internal_error(
-                format!("Failed to serialize results: {}", e)
-            ))?;
+        let json_result = serde_json::to_string_pretty(&result).map_err(|e| {
+            crate::cli::dspy::error::DspyCliError::internal_error(format!(
+                "Failed to serialize results: {}",
+                e
+            ))
+        })?;
 
-        tokio::fs::write(&output_path, json_result).await
-            .map_err(|e| crate::cli::dspy::error::DspyCliError::resource_error(
-                "filesystem",
-                format!("Failed to write results: {}", e),
-                "Check output path permissions",
-            ))?;
+        tokio::fs::write(&output_path, json_result)
+            .await
+            .map_err(|e| {
+                crate::cli::dspy::error::DspyCliError::resource_error(
+                    "filesystem",
+                    format!("Failed to write results: {}", e),
+                    "Check output path permissions",
+                )
+            })?;
 
         println!("📊 Results saved to: {}", output_path.display());
     }
@@ -195,7 +236,11 @@ async fn run_benchmark(
     println!("  Error Rate: {:.2}%", error_rate * 100.0);
     println!("  Memory Usage: {:.2}MB", avg_memory);
 
-    info!("Completed benchmark for module: {} ({} iterations)", module, latencies.len());
+    info!(
+        "Completed benchmark for module: {} ({} iterations)",
+        module,
+        latencies.len()
+    );
 
     Ok(())
 }
@@ -277,12 +322,13 @@ async fn compare_modules(
     // Load test data if provided
     let test_data = if let Some(input_path) = input {
         ValidationUtils::validate_file_path(&input_path, true)?;
-        Some(tokio::fs::read_to_string(&input_path).await
-            .map_err(|e| crate::cli::dspy::error::DspyCliError::resource_error(
+        Some(tokio::fs::read_to_string(&input_path).await.map_err(|e| {
+            crate::cli::dspy::error::DspyCliError::resource_error(
                 "filesystem",
                 format!("Failed to read input file: {}", e),
                 "Check file permissions and path",
-            ))?)
+            )
+        })?)
     } else {
         None
     };
@@ -298,7 +344,12 @@ async fn compare_modules(
     let benchmark_iterations = 50; // Fixed for comparison
 
     for (i, module_name) in module_names.iter().enumerate() {
-        println!("\n📊 Benchmarking module {} ({}/{})", module_name, i + 1, module_names.len());
+        println!(
+            "\n📊 Benchmarking module {} ({}/{})",
+            module_name,
+            i + 1,
+            module_names.len()
+        );
 
         let mut latencies = Vec::new();
         let mut errors = 0;
@@ -306,7 +357,7 @@ async fn compare_modules(
 
         let mut progress = crate::cli::dspy::utils::ProgressIndicator::new(
             &format!("Testing {}", module_name),
-            Some(benchmark_iterations)
+            Some(benchmark_iterations),
         );
 
         for j in 0..benchmark_iterations {
@@ -328,12 +379,20 @@ async fn compare_modules(
         progress.finish(&format!("Completed {}", module_name));
 
         // Calculate statistics
-        let avg_latency = if latencies.is_empty() { 0.0 } else {
+        let avg_latency = if latencies.is_empty() {
+            0.0
+        } else {
             latencies.iter().sum::<f64>() / latencies.len() as f64
         };
-        let throughput = if avg_latency > 0.0 { 1000.0 / avg_latency } else { 0.0 };
+        let throughput = if avg_latency > 0.0 {
+            1000.0 / avg_latency
+        } else {
+            0.0
+        };
         let error_rate = errors as f64 / benchmark_iterations as f64;
-        let avg_memory = if memory_usage.is_empty() { 0.0 } else {
+        let avg_memory = if memory_usage.is_empty() {
+            0.0
+        } else {
             memory_usage.iter().sum::<f64>() / memory_usage.len() as f64
         };
 
@@ -354,22 +413,43 @@ async fn compare_modules(
     println!("\n📈 Comparison Analysis:");
 
     // Find best performing module for each metric
-    let best_latency = results.iter().min_by(|a, b| a.avg_latency_ms.partial_cmp(&b.avg_latency_ms).unwrap());
-    let best_throughput = results.iter().max_by(|a, b| a.throughput_rps.partial_cmp(&b.throughput_rps).unwrap());
-    let best_error_rate = results.iter().min_by(|a, b| a.error_rate.partial_cmp(&b.error_rate).unwrap());
-    let best_memory = results.iter().min_by(|a, b| a.memory_mb.partial_cmp(&b.memory_mb).unwrap());
+    let best_latency = results
+        .iter()
+        .min_by(|a, b| a.avg_latency_ms.partial_cmp(&b.avg_latency_ms).unwrap());
+    let best_throughput = results
+        .iter()
+        .max_by(|a, b| a.throughput_rps.partial_cmp(&b.throughput_rps).unwrap());
+    let best_error_rate = results
+        .iter()
+        .min_by(|a, b| a.error_rate.partial_cmp(&b.error_rate).unwrap());
+    let best_memory = results
+        .iter()
+        .min_by(|a, b| a.memory_mb.partial_cmp(&b.memory_mb).unwrap());
 
     if let Some(best) = best_latency {
-        println!("  🏆 Lowest Latency: {} ({:.2}ms)", best.module, best.avg_latency_ms);
+        println!(
+            "  🏆 Lowest Latency: {} ({:.2}ms)",
+            best.module, best.avg_latency_ms
+        );
     }
     if let Some(best) = best_throughput {
-        println!("  🏆 Highest Throughput: {} ({:.2} rps)", best.module, best.throughput_rps);
+        println!(
+            "  🏆 Highest Throughput: {} ({:.2} rps)",
+            best.module, best.throughput_rps
+        );
     }
     if let Some(best) = best_error_rate {
-        println!("  🏆 Lowest Error Rate: {} ({:.2}%)", best.module, best.error_rate * 100.0);
+        println!(
+            "  🏆 Lowest Error Rate: {} ({:.2}%)",
+            best.module,
+            best.error_rate * 100.0
+        );
     }
     if let Some(best) = best_memory {
-        println!("  🏆 Lowest Memory Usage: {} ({:.2}MB)", best.module, best.memory_mb);
+        println!(
+            "  🏆 Lowest Memory Usage: {} ({:.2}MB)",
+            best.module, best.memory_mb
+        );
     }
 
     // Statistical analysis if requested
@@ -402,17 +482,22 @@ async fn compare_modules(
             }
         });
 
-        let json_result = serde_json::to_string_pretty(&comparison_data)
-            .map_err(|e| crate::cli::dspy::error::DspyCliError::internal_error(
-                format!("Failed to serialize comparison: {}", e)
-            ))?;
+        let json_result = serde_json::to_string_pretty(&comparison_data).map_err(|e| {
+            crate::cli::dspy::error::DspyCliError::internal_error(format!(
+                "Failed to serialize comparison: {}",
+                e
+            ))
+        })?;
 
-        tokio::fs::write(&output_path, json_result).await
-            .map_err(|e| crate::cli::dspy::error::DspyCliError::resource_error(
-                "filesystem",
-                format!("Failed to write comparison: {}", e),
-                "Check output path permissions",
-            ))?;
+        tokio::fs::write(&output_path, json_result)
+            .await
+            .map_err(|e| {
+                crate::cli::dspy::error::DspyCliError::resource_error(
+                    "filesystem",
+                    format!("Failed to write comparison: {}", e),
+                    "Check output path permissions",
+                )
+            })?;
 
         println!("📊 Comparison saved to: {}", output_path.display());
     }
@@ -430,9 +515,8 @@ fn calculate_std_dev(values: &[f64]) -> f64 {
     }
 
     let mean = values.iter().sum::<f64>() / values.len() as f64;
-    let variance = values.iter()
-        .map(|x| (x - mean).powi(2))
-        .sum::<f64>() / (values.len() - 1) as f64;
+    let variance =
+        values.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (values.len() - 1) as f64;
 
     variance.sqrt()
 }
@@ -457,7 +541,12 @@ async fn export_results(
         vec![module_name]
     } else {
         // Export all modules from registry
-        context.registry.list_modules().into_iter().map(|s| s.to_string()).collect()
+        context
+            .registry
+            .list_modules()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect()
     };
 
     for module_name in modules_to_export {
@@ -501,15 +590,18 @@ async fn export_results(
 
     // Format and export results
     let export_data = match export_format {
-        crate::cli::dspy::commands::ExportFormat::Json => {
-            serde_json::to_string_pretty(&results)
-                .map_err(|e| crate::cli::dspy::error::DspyCliError::internal_error(
-                    format!("Failed to serialize to JSON: {}", e)
-                ))?
-        }
+        crate::cli::dspy::commands::ExportFormat::Json => serde_json::to_string_pretty(&results)
+            .map_err(|e| {
+                crate::cli::dspy::error::DspyCliError::internal_error(format!(
+                    "Failed to serialize to JSON: {}",
+                    e
+                ))
+            })?,
         crate::cli::dspy::commands::ExportFormat::Csv => {
             let mut csv_data = String::new();
-            csv_data.push_str("module,iterations,avg_latency_ms,throughput_rps,error_rate,memory_mb,timestamp\n");
+            csv_data.push_str(
+                "module,iterations,avg_latency_ms,throughput_rps,error_rate,memory_mb,timestamp\n",
+            );
 
             for result in &results {
                 csv_data.push_str(&format!(
@@ -527,7 +619,8 @@ async fn export_results(
         }
         crate::cli::dspy::commands::ExportFormat::Prometheus => {
             let mut prom_data = String::new();
-            prom_data.push_str("# HELP dspy_benchmark_latency_ms Average latency in milliseconds\n");
+            prom_data
+                .push_str("# HELP dspy_benchmark_latency_ms Average latency in milliseconds\n");
             prom_data.push_str("# TYPE dspy_benchmark_latency_ms gauge\n");
 
             for result in &results {
@@ -537,7 +630,9 @@ async fn export_results(
                 ));
             }
 
-            prom_data.push_str("# HELP dspy_benchmark_throughput_rps Throughput in requests per second\n");
+            prom_data.push_str(
+                "# HELP dspy_benchmark_throughput_rps Throughput in requests per second\n",
+            );
             prom_data.push_str("# TYPE dspy_benchmark_throughput_rps gauge\n");
 
             for result in &results {
@@ -553,19 +648,30 @@ async fn export_results(
 
     // Write to file or stdout
     if let Some(output_path) = output {
-        tokio::fs::write(&output_path, export_data).await
-            .map_err(|e| crate::cli::dspy::error::DspyCliError::resource_error(
-                "filesystem",
-                format!("Failed to write export file: {}", e),
-                "Check output path permissions",
-            ))?;
+        tokio::fs::write(&output_path, export_data)
+            .await
+            .map_err(|e| {
+                crate::cli::dspy::error::DspyCliError::resource_error(
+                    "filesystem",
+                    format!("Failed to write export file: {}", e),
+                    "Check output path permissions",
+                )
+            })?;
 
-        println!("✓ Exported {} results to: {}", results.len(), output_path.display());
+        println!(
+            "✓ Exported {} results to: {}",
+            results.len(),
+            output_path.display()
+        );
     } else {
         println!("{}", export_data);
     }
 
-    info!("Exported {} benchmark results in {:?} format", results.len(), export_format);
+    info!(
+        "Exported {} benchmark results in {:?} format",
+        results.len(),
+        export_format
+    );
 
     Ok(())
 }
@@ -598,7 +704,12 @@ async fn show_history(
         vec![module_name]
     } else {
         // Show history for all modules
-        context.registry.list_modules().into_iter().map(|s| s.to_string()).collect()
+        context
+            .registry
+            .list_modules()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect()
     };
 
     for module_name in modules_to_show {
@@ -653,7 +764,10 @@ async fn show_history(
                 println!("  Sorted by memory usage (lowest first)");
             }
             _ => {
-                println!("  Unknown metric '{}', showing chronological order", metric_name);
+                println!(
+                    "  Unknown metric '{}', showing chronological order",
+                    metric_name
+                );
             }
         }
     }
@@ -663,7 +777,8 @@ async fn show_history(
         println!("\n📈 Trend Analysis:");
 
         if let Some(module_name) = &module {
-            let module_history: Vec<&BenchmarkResult> = history.iter()
+            let module_history: Vec<&BenchmarkResult> = history
+                .iter()
                 .filter(|r| r.module == *module_name)
                 .collect();
 
@@ -671,27 +786,66 @@ async fn show_history(
                 let latest = module_history[0];
                 let oldest = module_history[module_history.len() - 1];
 
-                let latency_change = ((latest.avg_latency_ms - oldest.avg_latency_ms) / oldest.avg_latency_ms) * 100.0;
-                let throughput_change = ((latest.throughput_rps - oldest.throughput_rps) / oldest.throughput_rps) * 100.0;
-                let error_change = ((latest.error_rate - oldest.error_rate) / oldest.error_rate.max(0.001)) * 100.0;
-                let memory_change = ((latest.memory_mb - oldest.memory_mb) / oldest.memory_mb) * 100.0;
+                let latency_change = ((latest.avg_latency_ms - oldest.avg_latency_ms)
+                    / oldest.avg_latency_ms)
+                    * 100.0;
+                let throughput_change = ((latest.throughput_rps - oldest.throughput_rps)
+                    / oldest.throughput_rps)
+                    * 100.0;
+                let error_change = ((latest.error_rate - oldest.error_rate)
+                    / oldest.error_rate.max(0.001))
+                    * 100.0;
+                let memory_change =
+                    ((latest.memory_mb - oldest.memory_mb) / oldest.memory_mb) * 100.0;
 
                 println!("  Module: {}", module_name);
-                println!("  Latency trend: {:.1}% {}", latency_change.abs(),
-                    if latency_change > 0.0 { "⬆️ (worse)" } else { "⬇️ (better)" });
-                println!("  Throughput trend: {:.1}% {}", throughput_change.abs(),
-                    if throughput_change > 0.0 { "⬆️ (better)" } else { "⬇️ (worse)" });
-                println!("  Error rate trend: {:.1}% {}", error_change.abs(),
-                    if error_change > 0.0 { "⬆️ (worse)" } else { "⬇️ (better)" });
-                println!("  Memory trend: {:.1}% {}", memory_change.abs(),
-                    if memory_change > 0.0 { "⬆️ (worse)" } else { "⬇️ (better)" });
+                println!(
+                    "  Latency trend: {:.1}% {}",
+                    latency_change.abs(),
+                    if latency_change > 0.0 {
+                        "⬆️ (worse)"
+                    } else {
+                        "⬇️ (better)"
+                    }
+                );
+                println!(
+                    "  Throughput trend: {:.1}% {}",
+                    throughput_change.abs(),
+                    if throughput_change > 0.0 {
+                        "⬆️ (better)"
+                    } else {
+                        "⬇️ (worse)"
+                    }
+                );
+                println!(
+                    "  Error rate trend: {:.1}% {}",
+                    error_change.abs(),
+                    if error_change > 0.0 {
+                        "⬆️ (worse)"
+                    } else {
+                        "⬇️ (better)"
+                    }
+                );
+                println!(
+                    "  Memory trend: {:.1}% {}",
+                    memory_change.abs(),
+                    if memory_change > 0.0 {
+                        "⬆️ (worse)"
+                    } else {
+                        "⬇️ (better)"
+                    }
+                );
             }
         } else {
             // Show overall trends across all modules
-            let avg_latency = history.iter().map(|r| r.avg_latency_ms).sum::<f64>() / history.len() as f64;
-            let avg_throughput = history.iter().map(|r| r.throughput_rps).sum::<f64>() / history.len() as f64;
-            let avg_error_rate = history.iter().map(|r| r.error_rate).sum::<f64>() / history.len() as f64;
-            let avg_memory = history.iter().map(|r| r.memory_mb).sum::<f64>() / history.len() as f64;
+            let avg_latency =
+                history.iter().map(|r| r.avg_latency_ms).sum::<f64>() / history.len() as f64;
+            let avg_throughput =
+                history.iter().map(|r| r.throughput_rps).sum::<f64>() / history.len() as f64;
+            let avg_error_rate =
+                history.iter().map(|r| r.error_rate).sum::<f64>() / history.len() as f64;
+            let avg_memory =
+                history.iter().map(|r| r.memory_mb).sum::<f64>() / history.len() as f64;
 
             println!("  Overall averages across all modules:");
             println!("  Average latency: {:.2}ms", avg_latency);
@@ -708,9 +862,8 @@ async fn show_history(
     if let Some(module_name) = &module {
         println!("  Module: {}", module_name);
     } else {
-        let unique_modules: std::collections::HashSet<String> = history.iter()
-            .map(|r| r.module.clone())
-            .collect();
+        let unique_modules: std::collections::HashSet<String> =
+            history.iter().map(|r| r.module.clone()).collect();
         println!("  Modules: {}", unique_modules.len());
     }
 
@@ -818,7 +971,9 @@ mod tests {
         };
 
         match run_command {
-            BenchmarkCommand::Run { module, iterations, .. } => {
+            BenchmarkCommand::Run {
+                module, iterations, ..
+            } => {
                 assert_eq!(module, "test_module");
                 assert_eq!(iterations, 100);
             }
@@ -840,7 +995,11 @@ mod tests {
         };
 
         match compare_command {
-            BenchmarkCommand::Compare { modules, statistical, .. } => {
+            BenchmarkCommand::Compare {
+                modules,
+                statistical,
+                ..
+            } => {
                 assert_eq!(modules, "module1,module2,module3");
                 assert!(statistical);
             }

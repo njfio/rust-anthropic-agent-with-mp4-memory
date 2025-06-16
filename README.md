@@ -1,17 +1,28 @@
 # Rust MemVid Agent
 
-An AI agent system in Rust with Anthropic Claude integration, rust-synaptic memory, and audio processing capabilities.
+An AI agent system in Rust with Anthropic Claude integration, DSPy framework, rust-synaptic memory, and audio processing capabilities.
 
 ## Features
 
 ### Core Agent System
 
 - **Anthropic Claude Integration**: Claude API integration with tool calling support
+- **DSPy Framework**: Production-ready DSPy implementation with advanced reasoning modules
 - **Rust-Synaptic Memory**: JSON-based persistent memory using rust-synaptic library
 - **Async/Await Architecture**: Tokio-based async runtime
 - **Tool Framework**: Extensible tool system with built-in tools
 - **Configuration Management**: TOML-based configuration with environment variable support
 - **Error Handling**: Structured error types and recovery mechanisms
+
+### DSPy Framework
+
+- **Core Modules**: Predict, Chain, Parallel composition with type-safe I/O
+- **Optimization**: MIPROv2, BootstrapFinetune, multi-objective optimization
+- **Specialized Modules**: Chain of Thought, ReAct, RAG, Program of Thought, Self-Improving
+- **Multi-Modal Support**: Vision-language integration with image processing
+- **Performance Optimization**: Async batching, caching, connection pooling
+- **CLI Integration**: Complete command-line interface for DSPy operations
+- **Agent Integration**: Seamless integration with agent tool system
 
 ### Audio Processing System
 
@@ -56,11 +67,13 @@ An AI agent system in Rust with Anthropic Claude integration, rust-synaptic memo
 - **Code Analysis**: Code parsing and analysis capabilities
 - **UUID Generator**: UUID generation for unique identifiers
 - **Audio Processing**: Audio encoding, decoding, and effects processing
+- **DSPy Tools**: DSPy modules as tools with performance monitoring and composition
 
 ## Test Coverage
 
-The codebase includes test coverage with 781 tests:
+The codebase includes comprehensive test coverage with 781+ tests:
 
+- **DSPy Framework**: 200+ tests covering all DSPy modules, optimization, and integration
 - **Monitoring System**: 32 integration tests covering monitoring pipeline
 - **Audio Processing**: 34 tests covering audio functionality and codecs
 - **Security Features**: Input validation, rate limiting, and audit logging tests
@@ -68,6 +81,7 @@ The codebase includes test coverage with 781 tests:
 - **Memory Management**: JSON storage, search, and rust-synaptic memory functionality
 - **Caching System**: Multi-backend caching with performance metrics
 - **Agent Core**: Conversation management and tool coordination tests
+- **CLI System**: Comprehensive CLI testing with integration and golden file tests
 
 ## Quick Start
 
@@ -137,6 +151,13 @@ cargo run -- memory save "Important fact about Rust"
 cargo run -- audio transcribe input.wav
 cargo run -- audio synthesize "Hello world" output.mp3
 
+# DSPy operations
+cargo run -- dspy modules list
+cargo run -- dspy modules create predict_module
+cargo run -- dspy benchmark run my_module
+cargo run -- dspy optimize run my_module
+cargo run -- dspy pipeline create my_pipeline
+
 # System monitoring
 cargo run -- monitor status
 cargo run -- monitor metrics
@@ -190,6 +211,13 @@ log_level = "info"
 name = "MemVidAgent"
 persist_conversations = true
 max_history_length = 50
+
+[dspy]
+auto_optimize = true
+max_modules = 100
+enable_security_validation = true
+enable_audit_logging = true
+module_cache_ttl = 3600
 ```
 
 ## Testing
@@ -197,6 +225,9 @@ max_history_length = 50
 ```bash
 # Run all tests
 cargo test --lib
+
+# Run DSPy framework tests
+cargo test dspy --lib
 
 # Run monitoring integration tests
 cargo test monitoring::integration_tests --lib
@@ -221,6 +252,7 @@ cargo test memory --lib
 System architecture:
 
 - **Agent Core**: Manages conversations and coordinates tool usage
+- **DSPy Framework**: Advanced language model programming with optimization
 - **Tool System**: Extensible framework for adding new capabilities
 - **Rust-Synaptic Memory**: JSON-based persistent storage with search using rust-synaptic
 - **Anthropic Client**: HTTP client with retry logic and error handling
@@ -228,6 +260,7 @@ System architecture:
 - **Monitoring System**: Metrics collection and export
 - **Caching Layer**: Multi-backend caching with performance optimization
 - **Security Layer**: Input validation, rate limiting, and audit logging
+- **CLI System**: Comprehensive command-line interface for all operations
 
 ## Dependencies
 

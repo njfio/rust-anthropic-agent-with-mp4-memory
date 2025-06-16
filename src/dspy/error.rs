@@ -315,10 +315,9 @@ impl DspyError {
                 stage,
                 source
             )),
-            Self::Io { message } => AgentError::Generic(anyhow::anyhow!(
-                "DSPy IO error: {}",
-                message
-            )),
+            Self::Io { message } => {
+                AgentError::Generic(anyhow::anyhow!("DSPy IO error: {}", message))
+            }
         }
     }
 }

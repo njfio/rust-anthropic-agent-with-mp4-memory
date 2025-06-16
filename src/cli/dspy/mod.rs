@@ -15,7 +15,7 @@ pub use error::{DspyCliError, DspyCliResult};
 
 use crate::agent::Agent;
 use crate::config::AgentConfig;
-use crate::dspy::{DspyRegistry, init_dspy, DspyConfig};
+use crate::dspy::{init_dspy, DspyConfig, DspyRegistry};
 use crate::utils::error::Result;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
@@ -41,20 +41,25 @@ impl DspyCliContext {
         // Load CLI configuration
         let config_manager = DspyConfigManager::new();
         let cli_config = config_manager.load_config().await?;
-        
+
         // Create DSPy configuration from CLI config
         let dspy_config = cli_config.to_dspy_config();
-        
+
         // Initialize DSPy system
-        let registry = Arc::new(init_dspy(dspy_config.clone()).await
-            .map_err(|e| DspyCliError::Internal {
-                message: format!("Failed to initialize DSPy system: {}", e),
-                error_id: uuid::Uuid::new_v4().to_string(),
-                context: std::collections::HashMap::new(),
-            })?);
+        let registry =
+            Arc::new(
+                init_dspy(dspy_config.clone())
+                    .await
+                    .map_err(|e| DspyCliError::Internal {
+                        message: format!("Failed to initialize DSPy system: {}", e),
+                        error_id: uuid::Uuid::new_v4().to_string(),
+                        context: std::collections::HashMap::new(),
+                    })?,
+            );
 
         // Create agent
-        let mut agent = Agent::new(agent_config).await
+        let mut agent = Agent::new(agent_config)
+            .await
             .map_err(|e| DspyCliError::Internal {
                 message: format!("Failed to create agent: {}", e),
                 error_id: uuid::Uuid::new_v4().to_string(),
@@ -62,7 +67,8 @@ impl DspyCliContext {
             })?;
 
         // Enable DSPy integration
-        agent.enable_dspy_integration(None)
+        agent
+            .enable_dspy_integration(None)
             .map_err(|e| DspyCliError::Internal {
                 message: format!("Failed to enable DSPy integration: {}", e),
                 error_id: uuid::Uuid::new_v4().to_string(),
@@ -150,13 +156,16 @@ impl DspyCliContext {
         for dir in &directories {
             if !dir.exists() {
                 debug!("Creating directory: {}", dir.display());
-                fs::create_dir_all(dir).await
+                fs::create_dir_all(dir)
+                    .await
                     .map_err(|e| DspyCliError::Resource {
                         resource: "filesystem".to_string(),
                         message: format!("Failed to create directory {}: {}", dir.display(), e),
                         current_usage: None,
                         limit: None,
-                        suggestion: Some("Check directory permissions and available disk space".to_string()),
+                        suggestion: Some(
+                            "Check directory permissions and available disk space".to_string(),
+                        ),
                     })?;
             }
         }
@@ -172,7 +181,7 @@ pub async fn execute_dspy_command(
 ) -> DspyCliResult<()> {
     // Create CLI context
     let context = DspyCliContext::new(agent_config).await?;
-    
+
     // Validate context
     context.validate().await?;
 
@@ -203,7 +212,7 @@ pub async fn init_dspy_cli() -> DspyCliResult<()> {
     // Load and validate configuration
     let config_manager = DspyConfigManager::new();
     config_manager.ensure_config_exists().await?;
-    
+
     let config = config_manager.load_config().await?;
     config.validate()?;
 
@@ -220,13 +229,16 @@ pub async fn init_dspy_cli() -> DspyCliResult<()> {
 
     for dir in &directories {
         if !dir.exists() {
-            tokio::fs::create_dir_all(dir).await
+            tokio::fs::create_dir_all(dir)
+                .await
                 .map_err(|e| DspyCliError::Resource {
                     resource: "filesystem".to_string(),
                     message: format!("Failed to create directory {}: {}", dir.display(), e),
                     current_usage: None,
                     limit: None,
-                    suggestion: Some("Check directory permissions and available disk space".to_string()),
+                    suggestion: Some(
+                        "Check directory permissions and available disk space".to_string(),
+                    ),
                 })?;
         }
     }
@@ -245,7 +257,7 @@ mod tests {
     async fn test_dspy_cli_context_creation() {
         let config = AgentConfig::default();
         let result = DspyCliContext::new(config).await;
-        
+
         // Note: This test may fail if DSPy integration has issues
         // In a real environment, we'd mock the dependencies
         match result {
@@ -257,7 +269,10 @@ mod tests {
             Err(e) => {
                 // Log the error for debugging but don't fail the test
                 // since this depends on external configuration
-                eprintln!("DSPy CLI context creation failed (expected in test env): {}", e);
+                eprintln!(
+                    "DSPy CLI context creation failed (expected in test env): {}",
+                    e
+                );
             }
         }
     }
@@ -266,7 +281,7 @@ mod tests {
     async fn test_init_dspy_cli() {
         // This test verifies the initialization process
         let result = init_dspy_cli().await;
-        
+
         // Similar to above, this may fail in test environment
         match result {
             Ok(()) => {

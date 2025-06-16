@@ -169,11 +169,13 @@ impl SurrogateModel {
             return 0.5; // Default prediction
         }
 
-        let score: f64 = self.weights
+        let score: f64 = self
+            .weights
             .iter()
             .zip(features.iter())
             .map(|(w, f)| w * f)
-            .sum::<f64>() + self.bias;
+            .sum::<f64>()
+            + self.bias;
 
         score.clamp(0.0, 1.0)
     }
@@ -218,7 +220,10 @@ where
         examples: &ExampleSet<I, O>,
         metrics: &[Arc<dyn Metric<I, O>>],
     ) -> DspyResult<OptimizationMetrics> {
-        info!("Starting MIPROv2 optimization with {} examples", examples.len());
+        info!(
+            "Starting MIPROv2 optimization with {} examples",
+            examples.len()
+        );
 
         let start_time = std::time::Instant::now();
         let mut optimization_metrics = OptimizationMetrics::new("MIPROv2".to_string());
@@ -232,28 +237,30 @@ where
         // Phase 2: Iterative optimization
         for iteration in 0..self.config.max_iterations {
             self.state.iteration = iteration;
-            
+
             // Generate candidates
             let candidates = self.generate_candidates()?;
-            
+
             // Evaluate candidates using surrogate model
             let evaluated_candidates = self.evaluate_candidates_with_surrogate(candidates)?;
-            
+
             // Select top candidates for actual evaluation
             let top_candidates = self.select_top_candidates(evaluated_candidates)?;
-            
+
             // Evaluate top candidates on mini-batch
             let mini_batch = self.create_mini_batch(examples)?;
-            let scores = self.evaluate_candidates_actual(&top_candidates, &mini_batch, metrics).await?;
-            
+            let scores = self
+                .evaluate_candidates_actual(&top_candidates, &mini_batch, metrics)
+                .await?;
+
             // Update surrogate model
             self.update_surrogate_model(&top_candidates, &scores)?;
-            
+
             // Track best performance
             if let Some(&best_score) = scores.iter().max_by(|a, b| a.partial_cmp(b).unwrap()) {
                 self.state.performance_history.push(best_score);
                 optimization_metrics.record_score(best_score);
-                
+
                 if best_score >= self.config.confidence_threshold {
                     info!("Reached confidence threshold at iteration {}", iteration);
                     break;
@@ -271,8 +278,12 @@ where
         optimization_metrics.optimization_time = elapsed.as_secs_f64();
         optimization_metrics.optimization_time_ms = elapsed.as_millis() as f64;
         optimization_metrics.examples_used = examples.len();
-        optimization_metrics.add_metric("mipro_iterations".to_string(), self.state.iteration as f64);
-        optimization_metrics.add_metric("bootstrap_traces".to_string(), self.state.bootstrap_traces.len() as f64);
+        optimization_metrics
+            .add_metric("mipro_iterations".to_string(), self.state.iteration as f64);
+        optimization_metrics.add_metric(
+            "bootstrap_traces".to_string(),
+            self.state.bootstrap_traces.len() as f64,
+        );
 
         info!(
             "MIPROv2 optimization completed in {:.2}s with best score: {:.3}",
@@ -289,14 +300,14 @@ where
         examples: &ExampleSet<I, O>,
         _metrics: &[Arc<dyn Metric<I, O>>],
     ) -> DspyResult<()> {
-        info!("Starting bootstrap phase with {} examples", self.config.num_bootstrap);
+        info!(
+            "Starting bootstrap phase with {} examples",
+            self.config.num_bootstrap
+        );
 
         let sample_size = self.config.num_bootstrap.min(examples.len());
-        let sampled_examples: Vec<&Example<I, O>> = examples
-            .examples()
-            .iter()
-            .take(sample_size)
-            .collect();
+        let sampled_examples: Vec<&Example<I, O>> =
+            examples.examples().iter().take(sample_size).collect();
 
         for example in sampled_examples {
             // Create execution trace (simplified)
@@ -311,7 +322,10 @@ where
             self.state.bootstrap_traces.push(trace);
         }
 
-        info!("Collected {} bootstrap traces", self.state.bootstrap_traces.len());
+        info!(
+            "Collected {} bootstrap traces",
+            self.state.bootstrap_traces.len()
+        );
         Ok(())
     }
 
@@ -405,7 +419,11 @@ where
                 count += 1;
             }
 
-            let avg_score = if count > 0 { total_score / count as f64 } else { 0.0 };
+            let avg_score = if count > 0 {
+                total_score / count as f64
+            } else {
+                0.0
+            };
             scores.push(avg_score);
         }
 
@@ -428,7 +446,10 @@ where
             self.surrogate_model.add_training_point(features, score);
         }
 
-        debug!("Updated surrogate model with {} new data points", scores.len());
+        debug!(
+            "Updated surrogate model with {} new data points",
+            scores.len()
+        );
         Ok(())
     }
 
@@ -438,7 +459,8 @@ where
             return false;
         }
 
-        let recent_scores = &self.state.performance_history[self.state.performance_history.len() - 5..];
+        let recent_scores =
+            &self.state.performance_history[self.state.performance_history.len() - 5..];
         let variance = {
             let mean = recent_scores.iter().sum::<f64>() / recent_scores.len() as f64;
             recent_scores
@@ -547,7 +569,10 @@ where
         examples: &ExampleSet<I, O>,
         metrics: &[Arc<dyn Metric<I, O>>],
     ) -> DspyResult<OptimizationMetrics> {
-        info!("Starting BootstrapFinetune optimization with {} examples", examples.len());
+        info!(
+            "Starting BootstrapFinetune optimization with {} examples",
+            examples.len()
+        );
 
         let start_time = std::time::Instant::now();
         let mut optimization_metrics = OptimizationMetrics::new("BootstrapFinetune".to_string());
@@ -607,8 +632,14 @@ where
         optimization_metrics.optimization_time_ms = elapsed.as_millis() as f64;
         optimization_metrics.examples_used = examples.len();
         optimization_metrics.add_metric("finetune_epochs".to_string(), self.state.epoch as f64);
-        optimization_metrics.add_metric("final_train_loss".to_string(), self.state.train_losses.last().copied().unwrap_or(0.0));
-        optimization_metrics.add_metric("final_val_loss".to_string(), self.state.val_losses.last().copied().unwrap_or(0.0));
+        optimization_metrics.add_metric(
+            "final_train_loss".to_string(),
+            self.state.train_losses.last().copied().unwrap_or(0.0),
+        );
+        optimization_metrics.add_metric(
+            "final_val_loss".to_string(),
+            self.state.val_losses.last().copied().unwrap_or(0.0),
+        );
         optimization_metrics.add_metric("best_val_loss".to_string(), self.state.best_val_loss);
 
         info!(
@@ -621,7 +652,10 @@ where
     }
 
     /// Split data into training and validation sets
-    fn split_data(&self, examples: &ExampleSet<I, O>) -> DspyResult<(ExampleSet<I, O>, ExampleSet<I, O>)> {
+    fn split_data(
+        &self,
+        examples: &ExampleSet<I, O>,
+    ) -> DspyResult<(ExampleSet<I, O>, ExampleSet<I, O>)> {
         let total_examples = examples.len();
         let val_size = (total_examples as f64 * self.config.validation_split) as usize;
         let train_size = total_examples - val_size;
@@ -722,13 +756,17 @@ where
         // 2. Apply optimizer updates (Adam, SGD, etc.)
         // 3. Update model parameters
 
-        debug!("Applied gradients with learning rate: {:.2e}", self.state.current_lr);
+        debug!(
+            "Applied gradients with learning rate: {:.2e}",
+            self.state.current_lr
+        );
         Ok(())
     }
 
     /// Decay learning rate
     fn decay_learning_rate(&mut self) {
-        self.state.current_lr = (self.state.current_lr * self.config.lr_decay).max(self.config.min_lr);
+        self.state.current_lr =
+            (self.state.current_lr * self.config.lr_decay).max(self.config.min_lr);
     }
 }
 
@@ -811,7 +849,10 @@ where
         examples: &ExampleSet<I, O>,
         metrics: &[Arc<dyn Metric<I, O>>],
     ) -> DspyResult<OptimizationMetrics> {
-        info!("Starting multi-objective optimization with {} objectives", metrics.len());
+        info!(
+            "Starting multi-objective optimization with {} objectives",
+            metrics.len()
+        );
 
         let start_time = std::time::Instant::now();
 
@@ -820,16 +861,21 @@ where
         let mut optimization_metrics = OptimizationMetrics::new("MultiObjective".to_string());
 
         if self.config.use_pareto_optimization {
-            self.pareto_optimization(examples, metrics, &mut optimization_metrics).await?;
+            self.pareto_optimization(examples, metrics, &mut optimization_metrics)
+                .await?;
         } else {
-            self.scalarized_optimization(examples, metrics, &mut optimization_metrics).await?;
+            self.scalarized_optimization(examples, metrics, &mut optimization_metrics)
+                .await?;
         }
 
         let elapsed = start_time.elapsed();
         optimization_metrics.optimization_time = elapsed.as_secs_f64();
         optimization_metrics.optimization_time_ms = elapsed.as_millis() as f64;
         optimization_metrics.examples_used = examples.len();
-        optimization_metrics.add_metric("pareto_front_size".to_string(), self.pareto_front.len() as f64);
+        optimization_metrics.add_metric(
+            "pareto_front_size".to_string(),
+            self.pareto_front.len() as f64,
+        );
         optimization_metrics.add_metric("num_objectives".to_string(), metrics.len() as f64);
 
         // Add Pareto points to optimization metrics
@@ -840,10 +886,7 @@ where
         // Add Pareto front information to custom metrics
         for (i, solution) in self.pareto_front.iter().enumerate() {
             for (j, &obj_value) in solution.objectives.iter().enumerate() {
-                optimization_metrics.add_metric(
-                    format!("pareto_point_{}_{}", i, j),
-                    obj_value,
-                );
+                optimization_metrics.add_metric(format!("pareto_point_{}_{}", i, j), obj_value);
             }
         }
 
@@ -868,7 +911,9 @@ where
 
         for iteration in 0..self.config.max_iterations {
             // Evaluate population
-            let evaluated_population = self.evaluate_population(&population, examples, metrics).await?;
+            let evaluated_population = self
+                .evaluate_population(&population, examples, metrics)
+                .await?;
 
             // Update Pareto front
             self.update_pareto_front(evaluated_population)?;
@@ -881,8 +926,12 @@ where
             optimization_metrics.record_score(hypervolume);
 
             if iteration % 10 == 0 {
-                info!("Iteration {}: Pareto front size = {}, hypervolume = {:.3}",
-                      iteration, self.pareto_front.len(), hypervolume);
+                info!(
+                    "Iteration {}: Pareto front size = {}, hypervolume = {:.3}",
+                    iteration,
+                    self.pareto_front.len(),
+                    hypervolume
+                );
             }
 
             // Check convergence
@@ -905,7 +954,10 @@ where
         // Normalize weights
         let weight_sum: f64 = self.objective_weights.iter().sum();
         let normalized_weights: Vec<f64> = if weight_sum > 0.0 {
-            self.objective_weights.iter().map(|w| w / weight_sum).collect()
+            self.objective_weights
+                .iter()
+                .map(|w| w / weight_sum)
+                .collect()
         } else {
             vec![1.0 / metrics.len() as f64; metrics.len()]
         };
@@ -924,8 +976,10 @@ where
             optimization_metrics.record_score(scalarized_score);
 
             if iteration % 10 == 0 {
-                info!("Iteration {}: scalarized score = {:.3}, objectives = {:?}",
-                      iteration, scalarized_score, objective_values);
+                info!(
+                    "Iteration {}: scalarized score = {:.3}, objectives = {:?}",
+                    iteration, scalarized_score, objective_values
+                );
             }
 
             // Simple improvement step (placeholder)
@@ -935,7 +989,10 @@ where
 
             // Check convergence
             if optimization_metrics.is_converging(10, self.config.convergence_tolerance) {
-                info!("Scalarized optimization converged at iteration {}", iteration);
+                info!(
+                    "Scalarized optimization converged at iteration {}",
+                    iteration
+                );
                 break;
             }
         }
@@ -1027,9 +1084,8 @@ where
 
                 // Limit Pareto front size
                 if self.pareto_front.len() > self.config.max_pareto_points {
-                    self.pareto_front.sort_by(|a, b| {
-                        a.objectives[0].partial_cmp(&b.objectives[0]).unwrap()
-                    });
+                    self.pareto_front
+                        .sort_by(|a, b| a.objectives[0].partial_cmp(&b.objectives[0]).unwrap());
                     self.pareto_front.truncate(self.config.max_pareto_points);
                 }
             }

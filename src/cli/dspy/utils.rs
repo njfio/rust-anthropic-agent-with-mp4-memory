@@ -2,8 +2,8 @@
 //!
 //! This module provides shared utilities and helper functions for DSPy CLI operations.
 
-use crate::cli::dspy::error::{DspyCliError, DspyCliResult};
 use crate::cli::dspy::commands::OutputFormat;
+use crate::cli::dspy::error::{DspyCliError, DspyCliResult};
 use serde::Serialize;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -37,16 +37,18 @@ impl OutputFormatter {
 
     /// Print data as JSON
     fn print_json<T: Serialize>(data: &T) -> DspyCliResult<()> {
-        let json = serde_json::to_string_pretty(data)
-            .map_err(|e| DspyCliError::internal_error(format!("JSON serialization failed: {}", e)))?;
+        let json = serde_json::to_string_pretty(data).map_err(|e| {
+            DspyCliError::internal_error(format!("JSON serialization failed: {}", e))
+        })?;
         println!("{}", json);
         Ok(())
     }
 
     /// Print data as YAML
     fn print_yaml<T: Serialize>(data: &T) -> DspyCliResult<()> {
-        let yaml = serde_yaml::to_string(data)
-            .map_err(|e| DspyCliError::internal_error(format!("YAML serialization failed: {}", e)))?;
+        let yaml = serde_yaml::to_string(data).map_err(|e| {
+            DspyCliError::internal_error(format!("YAML serialization failed: {}", e))
+        })?;
         println!("{}", yaml);
         Ok(())
     }
@@ -54,9 +56,11 @@ impl OutputFormatter {
     /// Print data as CSV
     fn print_csv<T: Serialize>(data: &T) -> DspyCliResult<()> {
         let mut writer = csv::Writer::from_writer(io::stdout());
-        writer.serialize(data)
-            .map_err(|e| DspyCliError::internal_error(format!("CSV serialization failed: {}", e)))?;
-        writer.flush()
+        writer.serialize(data).map_err(|e| {
+            DspyCliError::internal_error(format!("CSV serialization failed: {}", e))
+        })?;
+        writer
+            .flush()
             .map_err(|e| DspyCliError::internal_error(format!("CSV flush failed: {}", e)))?;
         Ok(())
     }
@@ -83,23 +87,27 @@ impl OutputFormatter {
                 println!("{}", table);
             }
             OutputFormat::Json => {
-                let json = serde_json::to_string_pretty(items)
-                    .map_err(|e| DspyCliError::internal_error(format!("JSON serialization failed: {}", e)))?;
+                let json = serde_json::to_string_pretty(items).map_err(|e| {
+                    DspyCliError::internal_error(format!("JSON serialization failed: {}", e))
+                })?;
                 println!("{}", json);
             }
             OutputFormat::Yaml => {
-                let yaml = serde_yaml::to_string(items)
-                    .map_err(|e| DspyCliError::internal_error(format!("YAML serialization failed: {}", e)))?;
+                let yaml = serde_yaml::to_string(items).map_err(|e| {
+                    DspyCliError::internal_error(format!("YAML serialization failed: {}", e))
+                })?;
                 println!("{}", yaml);
             }
             OutputFormat::Csv => {
                 let mut writer = csv::Writer::from_writer(io::stdout());
                 for item in items {
-                    writer.serialize(item)
-                        .map_err(|e| DspyCliError::internal_error(format!("CSV serialization failed: {}", e)))?;
+                    writer.serialize(item).map_err(|e| {
+                        DspyCliError::internal_error(format!("CSV serialization failed: {}", e))
+                    })?;
                 }
-                writer.flush()
-                    .map_err(|e| DspyCliError::internal_error(format!("CSV flush failed: {}", e)))?;
+                writer.flush().map_err(|e| {
+                    DspyCliError::internal_error(format!("CSV flush failed: {}", e))
+                })?;
             }
             OutputFormat::Chart => {
                 println!("Chart output for lists not yet implemented");
@@ -172,12 +180,13 @@ impl FileUtils {
     pub async fn ensure_dir_exists(path: &Path) -> DspyCliResult<()> {
         if !path.exists() {
             debug!("Creating directory: {}", path.display());
-            tokio::fs::create_dir_all(path).await
-                .map_err(|e| DspyCliError::resource_error(
+            tokio::fs::create_dir_all(path).await.map_err(|e| {
+                DspyCliError::resource_error(
                     "filesystem",
                     format!("Failed to create directory {}: {}", path.display(), e),
                     "Check directory permissions and available disk space",
-                ))?;
+                )
+            })?;
             info!("Created directory: {}", path.display());
         }
         Ok(())
@@ -195,12 +204,13 @@ impl FileUtils {
 
     /// Get file size in bytes
     pub async fn get_file_size(path: &Path) -> DspyCliResult<u64> {
-        let metadata = tokio::fs::metadata(path).await
-            .map_err(|e| DspyCliError::resource_error(
+        let metadata = tokio::fs::metadata(path).await.map_err(|e| {
+            DspyCliError::resource_error(
                 "filesystem",
                 format!("Failed to get file metadata for {}: {}", path.display(), e),
                 "Check if file exists and is accessible",
-            ))?;
+            )
+        })?;
         Ok(metadata.len())
     }
 
@@ -208,12 +218,16 @@ impl FileUtils {
     pub async fn check_file_size_limit(path: &Path, max_size_mb: usize) -> DspyCliResult<()> {
         let size_bytes = Self::get_file_size(path).await?;
         let max_size_bytes = max_size_mb * 1024 * 1024;
-        
+
         if size_bytes > max_size_bytes as u64 {
             return Err(DspyCliError::resource_error(
                 "file_size",
                 format!("File {} exceeds size limit", path.display()),
-                format!("File size: {} MB, Limit: {} MB", size_bytes / 1024 / 1024, max_size_mb),
+                format!(
+                    "File size: {} MB, Limit: {} MB",
+                    size_bytes / 1024 / 1024,
+                    max_size_mb
+                ),
             ));
         }
         Ok(())
@@ -222,25 +236,27 @@ impl FileUtils {
     /// Create a backup of a file
     pub async fn create_backup(path: &Path, backup_dir: &Path) -> DspyCliResult<PathBuf> {
         Self::ensure_dir_exists(backup_dir).await?;
-        
+
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-        let filename = path.file_name()
-            .ok_or_else(|| DspyCliError::validation_error(
+        let filename = path.file_name().ok_or_else(|| {
+            DspyCliError::validation_error(
                 "file_path",
                 "Invalid file path",
                 vec!["Provide a valid file path".to_string()],
-            ))?;
-        
+            )
+        })?;
+
         let backup_filename = format!("{}_{}", timestamp, filename.to_string_lossy());
         let backup_path = backup_dir.join(backup_filename);
-        
-        tokio::fs::copy(path, &backup_path).await
-            .map_err(|e| DspyCliError::resource_error(
+
+        tokio::fs::copy(path, &backup_path).await.map_err(|e| {
+            DspyCliError::resource_error(
                 "filesystem",
                 format!("Failed to create backup: {}", e),
                 "Check disk space and permissions",
-            ))?;
-        
+            )
+        })?;
+
         info!("Created backup: {}", backup_path.display());
         Ok(backup_path)
     }
@@ -268,7 +284,10 @@ impl ValidationUtils {
             ));
         }
 
-        if !name.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+        if !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        {
             return Err(DspyCliError::validation_error(
                 "module_name",
                 "Invalid characters in module name",
@@ -411,13 +430,15 @@ impl InteractionUtils {
     pub fn confirm(message: &str, default: bool) -> DspyCliResult<bool> {
         let default_char = if default { 'Y' } else { 'N' };
         let prompt = format!("{} [{}]: ", message, if default { "Y/n" } else { "y/N" });
-        
+
         print!("{}", prompt);
-        io::stdout().flush()
+        io::stdout()
+            .flush()
             .map_err(|e| DspyCliError::internal_error(format!("Failed to flush stdout: {}", e)))?;
 
         let mut input = String::new();
-        io::stdin().read_line(&mut input)
+        io::stdin()
+            .read_line(&mut input)
             .map_err(|e| DspyCliError::internal_error(format!("Failed to read input: {}", e)))?;
 
         let input = input.trim().to_lowercase();
@@ -433,17 +454,22 @@ impl InteractionUtils {
     }
 
     /// Prompt user for input with validation
-    pub fn prompt_input(message: &str, validator: Option<fn(&str) -> bool>) -> DspyCliResult<String> {
+    pub fn prompt_input(
+        message: &str,
+        validator: Option<fn(&str) -> bool>,
+    ) -> DspyCliResult<String> {
         print!("{}: ", message);
-        io::stdout().flush()
+        io::stdout()
+            .flush()
             .map_err(|e| DspyCliError::internal_error(format!("Failed to flush stdout: {}", e)))?;
 
         let mut input = String::new();
-        io::stdin().read_line(&mut input)
+        io::stdin()
+            .read_line(&mut input)
             .map_err(|e| DspyCliError::internal_error(format!("Failed to read input: {}", e)))?;
 
         let input = input.trim().to_string();
-        
+
         if let Some(validator) = validator {
             if !validator(&input) {
                 println!("Invalid input. Please try again.");
@@ -470,7 +496,7 @@ mod tests {
     fn test_string_utils_format_duration() {
         let duration = std::time::Duration::from_millis(1500);
         assert_eq!(StringUtils::format_duration(duration), "1.500s");
-        
+
         let duration = std::time::Duration::from_secs(3661);
         assert_eq!(StringUtils::format_duration(duration), "1h 1m 1s");
     }
@@ -486,7 +512,7 @@ mod tests {
     fn test_string_utils_parse_comma_separated() {
         let result = StringUtils::parse_comma_separated("a,b,c");
         assert_eq!(result, vec!["a", "b", "c"]);
-        
+
         let result = StringUtils::parse_comma_separated("a, b , c ");
         assert_eq!(result, vec!["a", "b", "c"]);
     }
@@ -510,7 +536,7 @@ mod tests {
     async fn test_file_utils_ensure_dir_exists() {
         let temp_dir = TempDir::new().unwrap();
         let test_dir = temp_dir.path().join("test_dir");
-        
+
         assert!(!test_dir.exists());
         FileUtils::ensure_dir_exists(&test_dir).await.unwrap();
         assert!(test_dir.exists());

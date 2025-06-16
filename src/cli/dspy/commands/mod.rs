@@ -6,11 +6,11 @@ use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
 // Re-export command implementations
-pub mod modules;
 pub mod benchmark;
+pub mod dev;
+pub mod modules;
 pub mod optimize;
 pub mod pipeline;
-pub mod dev;
 
 /// DSPy CLI commands following noun-verb hierarchy
 #[derive(Debug, Clone, Parser)]
